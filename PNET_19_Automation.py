@@ -6,6 +6,10 @@ from typing import Dict, Tuple
 import graypy
 import logging
 from numpy.array_api import arange
+from dataclasses import dataclass
+from typing import Literal
+
+from websocket import continuous_frame
 
 logger = logging.getLogger("Networkautomation")
 logger.setLevel(logging.DEBUG)
@@ -17,6 +21,13 @@ console.setLevel(logging.INFO)
 logger.addHandler(console)
 netbox_url = "http://localhost:8000"
 netbox_token = "*****"
+@dataclass
+class ValidationIssue:
+    device_ip: str
+    interface: str
+    severity: Literal["CRITICAL", "WARN", "INFO"]
+    message: str
+    code: str | None = None
 def build_index(interfaces, ip_addresses, vlans):
     interfaces_on_device = defaultdict(list)
     ip_on_interface = defaultdict(list)
@@ -208,7 +219,11 @@ def get_netbox():
 
 
     return inventory, config_data
-
+def safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 def collect_device_state(conn):
     device_state = {}
     try:
@@ -544,7 +559,6 @@ class OSPF_Checker:
             ospfv2_instances = ospf_oper_data.get("ospfv2-instance", [])
             if isinstance(ospfv2_instances, dict):
                 ospfv2_instances = [ospfv2_instances]
-            all_neighbors = {}
             healthy_neighbors = {}
             degraded_neighbors = {}
             failed_neighbors = {}
@@ -597,17 +611,18 @@ class OSPF_Checker:
                                     }
                                     continue
                             elif nbr_ip == dr_ip:
-                                role = "DR"
+                                role = "dr"
                             elif nbr_ip == bdr_ip:
-                                role = "BDR"
+                                role = "bdr"
                             else:
-                                role = "DROTHER"
-                                
-                            if role in ["DR", "BDR"]:
+                                role = "drother"
+                            nbr_record["role"] = role
+
+                            if role in ["dr", "bdr"]:
                                 if "full" in state:
                                     healthy_neighbors[nbr_ip] = nbr_record
                                 else:
-                                    self.log.warning(
+                                    self.log.error(
                                         f"[{device_ip}] {interface_name}: {nbr_ip} {role}"
                                         f"state= {state} - *** SHOULD BE FULL ***"
                                         f"(MTU/timer/authentication mismatch?)"
@@ -621,13 +636,13 @@ class OSPF_Checker:
                                 if state in ["full", "2-way", "two-way"]:
                                     healthy_neighbors[nbr_ip] = nbr_record
                                 else:
-                                    self.log.warning(
+                                    self.log.error(
                                         f"[{device_ip}] {interface_name}: {nbr_ip} ({role})"
                                         f"state= {state} (*** SHOULD BE FULL OR TWO-WAY ***)"
                                     )
                                     failed_neighbors[nbr_ip] = {
                                         **nbr_record,
-                                        "reason": "DROther_not_full_or_2way",
+                                        "reason": "drother_not_full_or_2way",
                                         "status": "FAILED"
                                     }
             actual_ips = (
@@ -644,11 +659,17 @@ class OSPF_Checker:
                 self.log.error(f"[{device_ip}] x Missing or not fully adjacent neighbors: {missing}")
                 return False
             if extra:
-                self.log.error(f"[{device_ip}] x Found a neighbor not found in NetBox. Neighbrors: {extra}")
+                self.log.error(f"[{device_ip}] x Found a neighbor not found in NetBox. Neighbors: {extra}")
                 return False
             if not failed_neighbors and not degraded_neighbors:
                 self.log.info(f"[{device_ip}] All expected neighbors healthy.")
                 return True
+            else:
+                self.log.error(
+                    f"[{device_ip}] OSPF Neighbor Validation Failed| "
+                    f"Failed Neighbors: {list(failed_neighbors.keys())}"
+                )
+                return False
         except Exception as e:
             self.log.error(
                 f"[{device_ip}] OSPF Neighbor Validation failed. {e}", exc_info=True
@@ -664,9 +685,6 @@ class OSPF_Checker:
             all_timers_valid = True
             oper_interfaces = {}
             process_id = ospf_data.get("process_id", 1)
-            # self.log.info(f"[{device_ip}] Validating Timers:"
-            #               f"Expected Hello: {expected_hello}| Expected Dead: {expected_dead}")
-
             ospf_oper = (
                 restconf_state.get("ospf_oper_restconf", {})
                 .get("Cisco-IOS-XE-ospf-oper:ospf-oper-data", {})
@@ -675,7 +693,7 @@ class OSPF_Checker:
             if isinstance(instances, dict):
                 instances = [instances]
             for instance in instances:
-                if int(instance.get("instance-id")) != int(process_id):
+                if str(instance.get("instance-id", "")) != str(process_id):
                     continue
                 areas = instance.get("ospfv2-area", [])
                 if isinstance(areas, dict):
@@ -686,15 +704,20 @@ class OSPF_Checker:
                         interfaces = [interfaces]
                     for ospf_interface in interfaces:
                         interface_name = ospf_interface.get("name", "")
-                        oper_interfaces [interface_name]= {
-                            "actual_hello": int(ospf_interface.get("hello-interval")or 0),
-                            "actual_dead": int(ospf_interface.get("dead-interval") or 0),
+                        oper_interfaces[interface_name]= {
+                            "actual_hello": safe_int(ospf_interface.get("hello-interval")),
+                            "actual_dead": safe_int(ospf_interface.get("dead-interval")),
                             "passive": ospf_interface.get("passive", False )
 
                         }
+            if not oper_interfaces:
+                self.log.error(
+                    f"[{device_ip}] No OSPF operational interfaces found."
+                )
+                return False
             for interface_name, interface_values in interfaces_config.items():
-                expected_hello = int(interface_values.get("hello_interval", 10 ))
-                expected_dead = int(interface_values.get("dead_interval", 40))
+                expected_hello = safe_int(interface_values.get("hello_interval"))
+                expected_dead = safe_int(interface_values.get("dead_interval"))
                 if interface_name not in oper_interfaces:
                     self.log.error(
                         f"[{device_ip}] {interface_name}: Not found in operational data"
@@ -719,16 +742,19 @@ class OSPF_Checker:
                     )
                     all_timers_valid = False
             if not all_timers_valid:
+                self.log.error(
+                    f"[{device_ip}] OSPF Timer Validation Failed."
+                )
                 return False
-            self.log.info(f"[{device_ip}] All OSPF Hello/Dead Timers Correct")
+            self.log.info(f"[{device_ip}] OSPF Timer Validation Passed.")
             return True
         except Exception as e:
             self.log.error(f"[{device_ip}] Could not verify OSPF Hello/Dead Timers: {e}")
             return False
-    def verify_opsf_mtu(self, restconf_state: Dict, ospf_data: Dict) -> bool:
+    def verify_ospf_mtu(self, device_ip, restconf_state: Dict, ospf_data: Dict) -> bool:
         try:
+            process_id = ospf_data.get("process-id", 1)
             interfaces_config = ospf_data.get("interfaces", {})
-            device_ip = ospf_data.get("device", "")
             if not interfaces_config:
                 self.log.warning(f"[{device_ip}] No Interfaces Configured")
                 return True
@@ -736,7 +762,7 @@ class OSPF_Checker:
                 restconf_state.get("interface_oper_restconf", {})
                 .get("Cisco-IOS-XE-interfaces-oper:interfaces", {})
             )
-            operational_interfaces = interfaces_oper.get("interfaces", [])
+            operational_interfaces = interfaces_oper.get("interface", [])
             if isinstance(operational_interfaces, dict):
                 operational_interfaces = [operational_interfaces]
 
@@ -749,8 +775,8 @@ class OSPF_Checker:
                         mtu_map[interface_name_oper] = int(interface_mtu_oper)
                     except (ValueError, TypeError):
                         self.log.warning(
-                            f"[{device_ip}] {interface_name_oper}: Failed To parse MTU value: {interface_mtu_oper}"
-                            f"from operational data"
+                            f"[{device_ip}] Try/Except Error:"
+                            f" ValueError or TypeError| MTU| Code: int(interface_mtu_oper)"
                         )
 
             ospf_oper = (
@@ -764,6 +790,8 @@ class OSPF_Checker:
             mtu_mismatch_issues = []
             for instance in instances:
                 areas = instance.get("ospfv2-area", [])
+                if safe_int(instance.get("instance-id")) != safe_int(process_id):
+                    continue
                 if isinstance(areas, dict):
                     areas = [areas]
                 for area in areas:
@@ -773,10 +801,21 @@ class OSPF_Checker:
                     for interface in interfaces:
                         interface_name = interface.get("name")
                         mtu_ignore = interface.get("mtu-ignore", False)
-
-                        if interface_name not in interfaces_config:
+                        passive = interface.get("passive", False)
+                        if passive:
+                            self.log.debug(
+                                f"[{device_ip}] {interface_name}: Passive Interface skipped MTU Check."
+                            )
                             continue
-                        expected_mtu = interfaces_config[interface_name].get("expected_mtu")
+                        if interface_name not in interfaces_config:
+                            self.log.warning(
+                                f"[{device_ip}] {interface_name}: (potential rogue) "
+                                f"Interface Not found in NetBox."
+                            )
+                            continue
+                        expected_mtu = safe_int(
+                            interfaces_config[interface_name].get("expected_mtu")
+                        )
                         actual_mtu = mtu_map.get(interface_name)
 
                         if expected_mtu is None:
@@ -784,6 +823,7 @@ class OSPF_Checker:
                                 f"[{device_ip}] {interface_name}: No Expected MTU in SOT"
                                 f"skipping MTU Validation"
                             )
+                            mtu_mismatch_issues.append(interface_name)
                         elif actual_mtu is None:
                             self.log.warning(
                                 f"[{device_ip}] {interface_name}: Expected MTU: {expected_mtu}"
@@ -819,7 +859,7 @@ class OSPF_Checker:
                     f"Interfaces: {','.join(mtu_mismatch_issues)}"
                 )
                 return False
-            self.log.info(f"[{device_ip}] MTU Validation Test Successfully Finished.")
+            self.log.info(f"[{device_ip}] OSPF MTU Validation Passed.")
             return True
         except Exception as e:
             self.log.error(f"[{device_ip}] x MTU Validation Tests via RESTCONF Failed: {e}")
@@ -853,27 +893,39 @@ class OSPF_Checker:
                     for oper_interface in oper_interfaces:
                         interface_name = oper_interface.get("name", "")
                         is_passive = oper_interface.get("passive", False)
-
+                        if not interface_name or not interface_name.strip():
+                            continue
+                        interface_name = interface_name.strip()
                         if interface_name in interfaces_config:
                             sot_interfaces_found.add(interface_name)
-
-                            auth_issues = self.validate_interface_auth(
-                                device_ip,
-                                interface_name,
-                                oper_interface,
-                                interfaces_config[interface_name]
+                        if is_passive and interface_name not in interfaces_config:
+                            info_messages.append(
+                                f"{interface_name}: (ROGUE INTERFACE) Passive OSPF interface not documented in NetBox"
                             )
-                            if auth_issues:
-                                critical_issues.extend(auth_issues)
-                        else:
-                            if is_passive:
-                                info_messages.append(
-                                    f"{interface_name}: (ROGUE INTERFACE) Passive OSPF interface not documented in NetBox"
-                                )
-                            else:
-                                critical_issues.append(
-                                    f"{interface_name}: (ROGUE INTERFACE): Active OSPF interfaace not found in NetBox"
-                                )
+                            continue
+                        config = interfaces_config[interface_name]
+                        if not config:
+                            info_messages.append(
+                                f"{interface_name}: (ROGUE INTERFACE): Active OSPF interface not found in NetBox"
+                            )
+                            continue
+                        auth_issues = self.validate_interface_auth(
+                            device_ip,
+                            interface_name,
+                            oper_interface,
+                            config
+                        )
+                        if auth_issues:
+                            for issue in auth_issues:
+                                severity = issue.severity.upper()
+                                msg = issue.message
+
+                                if severity == "CRITICAL":
+                                    critical_issues.append(msg)
+                                elif severity == "WARN":
+                                    degraded_issues.append(msg)
+                                else:
+                                    info_messages.append(msg)
             missing_interfaces = set(interfaces_config.keys()) - sot_interfaces_found
             if missing_interfaces:
                 for missing_interface in missing_interfaces:
@@ -901,63 +953,88 @@ class OSPF_Checker:
             return False
     def validate_interface_auth(self, device_ip: str, interface_name: str, oper_interface: Dict,
                                 interfaces_config: Dict
-                                ) -> list:
+                                ) -> list[ValidationIssue]:
         issues = []
-        expected_auth_type = interfaces_config.get("auth_type", "none")
-        expected_key_id = interfaces_config.get("auth_key_id")
+        expected_auth_type = str(interfaces_config.get("auth_type", "none")).lower()
+        expected_key_id = safe_int(interfaces_config.get("auth_key_id"))
 
         auth_val = oper_interface.get("auth-val", {})
         auth_key = auth_val.get("auth-key", {})
 
         if expected_auth_type == "none":
             if auth_key:
-                issues.append(f"{interface_name}: Expected NO authentication, but auth-key is configured."
-                              f"Please check authentication on device.")
+                issues.append(self.issue(
+                    device_ip,
+                    interface_name,
+                    "CRITICAL",
+                    "Expected NO authentication, but auth-key is configured. "
+                    f"Please check authentication on device.",
+                    "AUTH_UNEXPECTED"
+                ))
             return issues
         if expected_auth_type not in ["md5", "sha256"]:
-            self.log.warning(
-                f"[{device_ip}] {interface_name}: Unknown Authentication Type Found in NetBox|"
-                f"Auth Type: {expected_auth_type}"
-            )
-            return []
+            issues.append(self.issue(
+                device_ip,
+                interface_name,
+                "WARN",
+                "Unknown Authentication Type Found in NetBox| "
+                f"Auth Type: {expected_auth_type}",
+                "AUTH_UNKNOWN_TYPE"
+            ))
+            return issues
         if not auth_key:
-            issues.append(
-                f"{interface_name}: Not auth-key found (meaning potentially no authentication configured.)"
-                f"Expected Auth: {expected_auth_type}"
-
-            )
+            issues.append(self.issue(
+                device_ip,
+                interface_name,
+                "CRITICAL",
+                f"No auth-key found (meaning potentially no authentication configured.) "
+                f"Expected Auth: {expected_auth_type}",
+                "NO_AUTH_KEY"
+            ))
             return issues
 
-        actual_algo = auth_key.get("crypto-algo", "").lower()
+        actual_algo = str(auth_key.get("crypto-algo" or "")).lower()
         if expected_auth_type == "md5":
             if "md5" not in actual_algo:
-                issues.append(f"{interface_name}: Authentication Mismatch|"
-                              f"Expected: MD5| Actual: {actual_algo}")
-                return issues
+                issues.append(self.issue(
+                    device_ip,
+                    interface_name,
+                    "CRITICAL",
+                    f"Authentication Mismatch|"
+                    f"Expected: MD5| Actual: {actual_algo}",
+                    "AUTH_ALGO_MISMATCH"
+                ))
         elif expected_auth_type == "sha256":
             if "sha256" not in actual_algo and "sha-256" not in actual_algo:
-                issues.append(f"{interface_name}: Authentication Mismatch|"
-                              f"Expected: SHA265| Actual: {actual_algo}")
-                return issues
-        actual_key_id = auth_key.get("key-id")
+                issues.append(self.issue(
+                    device_ip,
+                    interface_name,
+                    "CRITICAL",
+                    f"Authentication Mismatch|"
+                    f"Expected: SHA256| Actual: {actual_algo}",
+                    "AUTH_ALGO_MISMATCH"
+                ))
+        actual_key_id = safe_int(auth_key.get("key-id"))
         if expected_key_id is not None:
             if actual_key_id is None:
-                issues.append(
-                    f"{interface_name}: No key-id found in operational data|"
-                    f"Expected Key-ID: {expected_key_id}"
-                )
-                return issues
-            try:
-                if int(actual_key_id) != int(expected_key_id):
-                    issues.append(
-                        f"{interface_name}: Key-ID mismatch|"
-                        f"Expected Key-ID: {expected_key_id}| Actual Key-ID: {actual_key_id} "
-                    )
-            except (ValueError, TypeError):
-                issues.append(
-                    f"{interface_name} TRY Failure: Could not parse integer (Value Error or Type Error"
-                )
-                return issues
+                issues.append(self.issue(
+                    device_ip,
+                    interface_name,
+                    "CRITICAL",
+                    f"No key-id found in operational data|"
+                    f"Expected Key-ID: {expected_key_id}",
+                    "AUTH_KEYID_MISSING"
+                ))
+            else:
+                if actual_key_id != expected_key_id:
+                    issues.append(self.issue(
+                        device_ip,
+                        interface_name,
+                        "CRITICAL",
+                        f"Key-ID mismatch|"
+                        f"Expected Key-ID: {expected_key_id}| Actual Key-ID: {actual_key_id}",
+                        "AUTH_KEYID_MISMATCH"
+                    ))
         return issues
     def check_lsa_age(self,device_ip, restconf_state: Dict, ospf_data: Dict) -> Tuple[str, int]:
         try:
