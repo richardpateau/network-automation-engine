@@ -7,7 +7,7 @@ from typing import Dict, Tuple
 from numpy.array_api import arange
 
 netbox_url = "http://localhost:8000"
-netbox_token = "nbt_L1ftoLIovB88.ekppmGP1Px2iBdcV01Tc799oH17Zrmip0La1yUKj"
+netbox_token = "*****"
 def build_index(interfaces, ip_addresses, vlans):
     interfaces_on_device = defaultdict(list)
     ip_on_interface = defaultdict(list)
