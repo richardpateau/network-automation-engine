@@ -367,9 +367,230 @@ def check_ospf(restconf_state, ospf_data):
     return True
 
 class OSPF_Checker:
+    def validate_device_ospf(self, device_ip: str, restconf_state: Dict, ospf_data: Dict) -> Dict:
+        results = {
+            "device": device_ip,
+            "status": "HEALTHY",
+            "checks":{
+                "ospf_config_check": False,
+                "lsdb_check": False,
+                "ospf_neighbor_check": False,
+                "timers_check": False,
+                "authentication_check": False,
+                "mtu_check": False,
+                "lsa_age_check": False
+            },
+            "citical_issues": [],
+            "warnings": [],
+            "lsa_age_seconds": None
+
+        }
+        try:
+            logger.info(
+                "ospf_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "ospf_config_check",
+                    "status": "CHECKING",
+                    "severity": "INFO",
+                    "component": "ospf_validator",
+                    "message": "Validating OSPF Operational vs NetBox"
+                }
+            )
+            try:
+                config_ok = self.check_ospf_config(device_ip,restconf_state,ospf_data)
+                results["checks"]["ospf_config_check"] = config_ok
+
+                if config_ok:
+                    logger.info(
+                        "ospf_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "check_name": "ospf_config_check",
+                            "status": "PASS",
+                            "severity": "INFO",
+                            "component": "ospf_validator",
+                            "message": "OSPF config Expected matches actual"
+                        }
+                    )
+                else:
+                    logger.info(
+                        "ospf_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "check_name": "config_check",
+                            "status": "FAIL",
+                            "severity": "CRITICAL",
+                            "component": "ospf_validator",
+                            "message": "OSPF Config mismatch"
+                        }
+                    )
+                    results["critical_issues"].append("config_mismatch")
+            except Exception as e:
+                logger.info(
+                    "ospf_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "check_name": "config_check",
+                        "status": "ERROR",
+                        "severity": "CRITICAL",
+                        "error": str(e),
+                        "message": "Exception occurred during OSPF config validation"
+                    },
+                    exc_info=True
+                )
+                results["checks"]["ospf_config_check"] = False
+                results["critical_issues"].append("config_check_exception")
+
+            logger.info(
+                "ospf_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "lsdb_check",
+                    "status": "CHECKING",
+                    "severity": "INFO",
+                    "component": "ospf_validator",
+                    "message": "Validating OSPF LSDB (not empty) "
+                }
+            )
+            try:
+                ospf_oper_ok = self.check_ospf_operational(device_ip, restconf_state, ospf_data)
+                results["checks"]["lsdb_check"] = ospf_oper_ok
+
+                if ospf_oper_ok:
+                    logger.info(
+                        "ospf_check",
+                        extra= {
+                            "device_ip": device_ip,
+                            "check_name": "lsdb_check",
+                            "status": "PASS",
+                            "severity": "INFO",
+                            "component": "ospf_validator",
+                            "message": "OSPF LSDB is not empty. LSAs Found."
+                        }
+                    )
+                else:
+                    logger.info(
+                        "ospf_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "check_name": "lsdb_check",
+                            "status": "FAIL",
+                            "severity": "CRITICAL",
+                            "component": "ospf_validator",
+                            "message": "OSPF LSDB is empty (no LSAs found)"
+                        }
+                    )
+                    results["critical_issues"].append("lsdb_failed")
+            except Exception as e:
+                logger.info(
+                    "ospf_check",
+                    extra = {
+                        "device_ip": device_ip,
+                        "check_name": "lsdb_check",
+                        "status": "ERROR",
+                        "severity": "CRITICAL",
+                        "error": str(e),
+                        "message": "Try/Exception Error| LSDB Check | ospf_oper_ok "
+                    },
+                    exc_info=True
+                )
+                results["checks"]["lsdb_check"] = False
+                results["critical_issues"].append("lsdb_check_exception")
+
+            logger.info(
+                "ospf_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "neighbor_check",
+                    "status": "CHECKING",
+                    "severity": "INFO",
+                    "component": "ospf_validator",
+                    "message": "Validating OSPF Neighbors are in correct state. "
+                }
+            )
+            try:
+                nbr_ok = self.verify_ospf_neighbors(device_ip, restconf_state, ospf_data)
+                results["checks"]["ospf_neighbor_check"] = nbr_ok
+
+                if nbr_ok:
+                    logger.info(
+                        "ospf_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "check_name": "neighbor_check",
+                            "status": "PASS",
+                            "severity": "INFO",
+                            "component": "ospf_validator",
+                            "message": "OSPF Neighbors are in a valid (expected) state."
+                        }
+                    )
+                else:
+                    logger.info(
+                        "ospf_check",
+                        extra = {
+                            "device_ip": device_ip,
+                            "check_name": "neighbor_check",
+                            "status": "FAIL",
+                            "severity": "CRITICAL",
+                            "component": "ospf_validator",
+                            "message" "OSPF Neighbor not in the correct (expected) state."
+                        }
+                    )
+            except Exception as e:
+                logger.info(
+                    "ospf_check",
+                    extra= {
+                        "device_ip": device_ip,
+                        "check_name": "neighbor_check",
+                        "status": "ERROR",
+                        "severity": "CRITICAL",
+                        "error": str(e),
+                        "message": "Try/Exception Error | OSPF Neighbor Check | nbr_ok "
+                    },
+                    exc_info=True
+                )
+                results["check"]["ospf_neighbor_check"] = False
+                results["critical_issues"].append("neighbor_check_exception")
+
+        logger.info(
+            "ospf_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "ospf_timer_check",
+                "status": "CHECKING",
+                "severity": "INFO",
+                "component": "ospf_validator",
+                "message": "Validating OSPF LSDB (not empty) "
+            }
+        )
+        try:
+            timer_ok = self.verify_ospf_timers(device_ip, restconf_state, ospf_data)
+            results["check"]["timer_check"] = timer_ok
+
+            if timer_ok:
+                logger.info(
+                    "ospf_check",
+                    extra= {
+                        "device_ip": device_ip,
+                        "check_name": "ospf_timer_check",
+                        "status": "PASS",
+                        "severity": "INFO",
+                        "component": "ospf_validator",
+                        "message": "OSPF Timers (hello/dead) are valid. No mismatches."
+
+                    }
+                )
+            else:
+                logger.info(
+                    "ospf_check",
+                    extra=
+                )
+
+
     def check_ospf_config(self, device_ip: str, restconf_state: Dict, ospf_data: Dict)-> bool:
         try:
-            expected_process_id = ospf_data.get("process_id"):
+            expected_process_id = ospf_data.get("process_id")
             if expected_process_id is None:
                 self.log.error(
                     f"[{device_ip}] Missing process-id from NetBox"
@@ -465,7 +686,6 @@ class OSPF_Checker:
                 f"Function: check_ospf_config| OSPF Configuration Validation"
             )
             return False
-
     def check_ospf_operational(self, device_ip: str, restconf_state: Dict, ospf_data: Dict) -> bool:
         try:
             process_id = ospf_data.get("process_id", "")
@@ -541,7 +761,7 @@ class OSPF_Checker:
         except Exception as e:
             self.log.error(f"OSPF Operation Check Failed: {e}", exc_info=True)
             return False
-    def verify_ospf_neighbors(self, restconf_state: Dict, ospf_data: Dict) -> bool:
+    def verify_ospf_neighbors(self, device_ip, restconf_state: Dict, ospf_data: Dict) -> bool:
         try:
             device_ip = ospf_data.get("device", "")
             process_id = ospf_data.get("process_id", "")
@@ -881,7 +1101,7 @@ class OSPF_Checker:
             critical_issues = []
             degraded_issues = []
             info_messages = []
-            sot_interfaces_found = set()
+            ospf_interfaces_seen = set()
             for ospf_instance in ospf_instances:
                 ospf_areas = ospf_instance.get("ospfv2-area", [])
                 if isinstance(ospf_areas, dict):
@@ -892,21 +1112,20 @@ class OSPF_Checker:
                         oper_interfaces = [oper_interfaces]
                     for oper_interface in oper_interfaces:
                         interface_name = oper_interface.get("name", "")
+                        if not interface_name:
+                            continue
                         is_passive = oper_interface.get("passive", False)
-                        if not interface_name or not interface_name.strip():
+                        ospf_interfaces_seen.add(interface_name)
+                        if is_passive:
+                            if interface_name not in interfaces_config:
+                                info_messages.append(
+                                    f"[{device_ip}] {interface_name}: (ROGUE INTERFACE) Passive OSPF interface not documented in NetBox"
+                                )
                             continue
-                        interface_name = interface_name.strip()
-                        if interface_name in interfaces_config:
-                            sot_interfaces_found.add(interface_name)
-                        if is_passive and interface_name not in interfaces_config:
-                            info_messages.append(
-                                f"{interface_name}: (ROGUE INTERFACE) Passive OSPF interface not documented in NetBox"
-                            )
-                            continue
-                        config = interfaces_config[interface_name]
+                        config = interfaces_config.get(interface_name)
                         if not config:
                             info_messages.append(
-                                f"{interface_name}: (ROGUE INTERFACE): Active OSPF interface not found in NetBox"
+                                f"[{device_ip}] {interface_name}: (ROGUE INTERFACE): Active OSPF interface not found in NetBox"
                             )
                             continue
                         auth_issues = self.validate_interface_auth(
@@ -926,25 +1145,25 @@ class OSPF_Checker:
                                     degraded_issues.append(msg)
                                 else:
                                     info_messages.append(msg)
-            missing_interfaces = set(interfaces_config.keys()) - sot_interfaces_found
+            missing_interfaces = set(interfaces_config.keys()) - ospf_interfaces_seen
             if missing_interfaces:
                 for missing_interface in missing_interfaces:
                     degraded_issues.append(
-                        f"{missing_interface}: (MISSING INTERFACE) Interface configured in NetBox"
+                        f"[{device_ip}] {missing_interface}: (MISSING INTERFACE) Interface configured in NetBox"
                         f"but not found in OSPF Operational Data"
                     )
             if info_messages:
                 self.log.info(f"[{device_ip}] Informational Messages:")
                 for msg in info_messages:
-                    self.log.info(f"[{device_ip}] {msg}")
+                    self.log.info(f"{msg}")
             if degraded_issues:
                 self.log.warning(f"[{device_ip}] Degraded State:")
                 for issue in degraded_issues:
-                    self.log.warning(f"[{device_ip}] Issue: {issue}")
+                    self.log.warning(f"{issue}")
             if critical_issues:
                 self.log.error(f"[{device_ip}] x Critical Authentication Issues:")
                 for issue in critical_issues:
-                    self.log.error(f"[{device_ip}] Issue: {issue}")
+                    self.log.error(f"{issue}")
                 return False
             self.log.info(f"[{device_ip}] Authentication Validation Test Passed. No issues found.")
             return True
@@ -1036,7 +1255,7 @@ class OSPF_Checker:
                         "AUTH_KEYID_MISMATCH"
                     ))
         return issues
-    def check_lsa_age(self,device_ip, restconf_state: Dict, ospf_data: Dict) -> Tuple[str, int]:
+    def check_lsa_age(self,device_ip: str, restconf_state: Dict) -> Tuple[str, int]:
         try:
             all_ages = []
             ospf_oper = (
@@ -1052,31 +1271,30 @@ class OSPF_Checker:
                     areas = [areas]
                 for area in areas:
                     lsdbs = area.get("ospfv2-lsdb-area", [])
+                    if isinstance(lsdbs, dict):
+                        lsdbs = [lsdbs]
                     for lsdb in lsdbs:
-                        ls_age = lsdb.get("lsa-age")
-                        try:
-                            if ls_age is None:
-                                continue
-                            all_ages.append(int(ls_age))
-                        except (ValueError, TypeError):
-                            self.log.warning(f"[{device_ip}] Try Exception Error|"
-                                             f"LS Age| Code: all_ages.append(ls_age)")
+                        ls_age = safe_int(lsdb.get("lsa-age"))
+                        if ls_age is None:
                             continue
+                        all_ages.append(ls_age)
+
+
             if not all_ages:
                 return "unknown", 0
             max_age = max(all_ages)
             if max_age < 300:
-                self.log.info(f"[{device_ip}] OSPF LSAs Healthy|"
-                              f"Max Age in LSDB: {max_age}")
+                self.log.info(f"[{device_ip}] LSA Health Check | State: healthy | "
+                              f"Max Age: {max_age}")
                 return "healthy", max_age
             elif max_age < 3600:
-                self.log.warning(f"[{device_ip}] OSPF LSAs are degraded|"
-                                 f"Max Age in LSDB: {max_age}")
+                self.log.warning(f"[{device_ip}] LSA Health Check | State: degraded | "
+                              f"Max Age: {max_age}")
                 return "degraded", max_age
-            self.log.warning(f"[{device_ip}] OSPF LSAs are older/stale|"
-                             f"Max Age in LSDB: {max_age}")
+            self.log.warning(f"[{device_ip}] LSA Health Check | State: stale | "
+                              f"Max Age: {max_age}")
             return "stale", max_age
-        except Exception as e:
+        except Exception:
             self.log.error(f"[{device_ip}] Try Exception Error|"
                            f"Function: check_lsa_age", exc_info=True)
             return "error", 0
