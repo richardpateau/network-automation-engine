@@ -11,7 +11,12 @@ import logging
 from numpy.array_api import arange
 from dataclasses import dataclass
 from typing import Literal
-
+from jinja2 import Environment, FileSystemLoader
+template_env = Environment(
+    loader=FileSystemLoader("/run/media/rich/HDD/Templates/"),
+    trim_blocks=True,
+    lstrip_blocks=True
+)
 from websocket import continuous_frame
 
 logger = logging.getLogger("Networkautomation")
@@ -62,7 +67,6 @@ def build_index(interfaces, ip_addresses, vlans):
         vlan_by_id[v.id] = v
 
         return interfaces_on_device, ip_on_interface, ip_in_subnet, vlan_by_id, ospf_config_by_interface
-
 def get_netbox():
     nb = pynetbox.api(url=netbox_url, token=netbox_token)
     inventory = []
@@ -1538,7 +1542,92 @@ class OSPF_Checker:
             self.log.error(f"[{device_ip}] Try Exception Error|"
                            f"Function: check_lsa_age", exc_info=True)
             return "error", 0
+def configure_vlan(conn, device_ip, vlan_data):
+    vlan_id, name = vlan_data["vlan_id"], vlan_data["name"]
+    results = {
+        "device_ip": device_ip,
+        "vlan_id": vlan_id,
+        "name": name,
+        "configured": False,
+        "validated": False
+    }
+    try:
+        logger.info(
+            "vlan_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "vlan_config",
+                "severity": "INFO",
+                "message": f"**** Configuring VLAN {vlan_id} for {name} ****"
+            }
+        )
+        template = template_env.get("vlan.j2")
+        commands = template.render(
+            vlan_id=vlan_id,
+            name=name
+        )
 
+        send_config = conn.send_config_set(commands.splitlines())
+
+        logger.info(
+            "vlan_check",
+            extra = {
+                "device_ip": device_ip,
+                "check_name" "vlan_config"
+                "status": "CONFIGURED",
+                "severity": "INFO",
+                "message": f"VLAN {vlan_id} for {name} successfully configured."
+
+            }
+        )
+        results["configured"] = True
+
+        device_state = collect_device_state(conn)
+
+        vlan_ok = check_vlan(device_state, vlan_id, name)
+
+        results["validated"] = vlan_ok
+
+        if vlan_ok:
+            logger.info(
+                "vlan_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "vlan_validation",
+                    "status": "PASS",
+                    "severity": "INFO",
+                    "message": f"VLAN {vlan_id} for {name} validated successfully."
+                }
+            )
+        else:
+            logger.info(
+                "vlan_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "vlan_validation",
+                    "status": "FAIL",
+                    "severity": "CRITICAL",
+                    "message": f"VLAN Validation Failed  | VLAN: {vlan_ok} | Name: {name}"
+                }
+            )
+        return results
+    except Exception as e:
+        logger.info(
+            "vlan_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "vlan_config",
+                "status": "ERROR",
+                "severity": "CRITICAL",
+                "error": str(e),
+                "message": "Try/Exception Error | VLAN Configuration | "
+                           "Function: def configure_vlan",
+            },                 exc_info=True
+
+        )
+
+        results["error"] = str(e)
+        return results 
 
 
 
