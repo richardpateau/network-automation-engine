@@ -231,6 +231,12 @@ def safe_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+def safe_send_config(conn, commands):
+    try:
+        conn.send_config_set(commands.splitlines())
+        return True, None
+    except Exception as e:
+        return False, str(e)
 def collect_device_state(conn):
     device_state = {}
     try:
@@ -1549,7 +1555,9 @@ def configure_vlan(conn, device_ip, vlan_data):
         "vlan_id": vlan_id,
         "name": name,
         "configured": False,
-        "validated": False
+        "validated": False,
+        "status": "PENDING",
+        "component": "vlan_automation"
     }
     try:
         logger.info(
@@ -1558,30 +1566,35 @@ def configure_vlan(conn, device_ip, vlan_data):
                 "device_ip": device_ip,
                 "check_name": "vlan_config",
                 "severity": "INFO",
+                "component": "vlan_automation",
                 "message": f"**** Configuring VLAN {vlan_id} for {name} ****"
             }
         )
-        template = template_env.get("vlan.j2")
+        template = template_env.get_template("vlan.j2")
         commands = template.render(
             vlan_id=vlan_id,
             name=name
         )
 
-        send_config = conn.send_config_set(commands.splitlines())
+        configured, error = safe_send_config(conn, commands)
+        results["configured"] = configured
+        if not configured:
+            results["status"] = "FAILED_CONFIG"
+            results["error"] = error
+            return results
 
         logger.info(
             "vlan_check",
             extra = {
                 "device_ip": device_ip,
-                "check_name" "vlan_config"
+                "check_name": "vlan_config",
                 "status": "CONFIGURED",
                 "severity": "INFO",
+                "component": "vlan_automation",
                 "message": f"VLAN {vlan_id} for {name} successfully configured."
 
             }
         )
-        results["configured"] = True
-
         device_state = collect_device_state(conn)
 
         vlan_ok = check_vlan(device_state, vlan_id, name)
@@ -1596,9 +1609,11 @@ def configure_vlan(conn, device_ip, vlan_data):
                     "check_name": "vlan_validation",
                     "status": "PASS",
                     "severity": "INFO",
+                    "component": "vlan_automation",
                     "message": f"VLAN {vlan_id} for {name} validated successfully."
                 }
             )
+            results["status"] = "SUCCESS"
         else:
             logger.info(
                 "vlan_check",
@@ -1607,10 +1622,11 @@ def configure_vlan(conn, device_ip, vlan_data):
                     "check_name": "vlan_validation",
                     "status": "FAIL",
                     "severity": "CRITICAL",
-                    "message": f"VLAN Validation Failed  | VLAN: {vlan_ok} | Name: {name}"
+                    "component": "vlan_automation",
+                    "message": f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}"
                 }
             )
-        return results
+            results["status"] = "FAILED_VALIDATION"
     except Exception as e:
         logger.info(
             "vlan_check",
@@ -1620,16 +1636,116 @@ def configure_vlan(conn, device_ip, vlan_data):
                 "status": "ERROR",
                 "severity": "CRITICAL",
                 "error": str(e),
+                "component": "vlan_automation",
                 "message": "Try/Exception Error | VLAN Configuration | "
                            "Function: def configure_vlan",
             },                 exc_info=True
 
         )
-
         results["error"] = str(e)
-        return results 
+        results["status"] = "ERROR"
+        results["configured"] = False
+        results["validated"] = False
+        return results
+    return results
+def configure_access_ports(conn, device_ip, access_data):
+    access_interface,  access_vlan = access_data["access_interface"], access_data["access_vlan"]
+    results = {
+        "device_ip": device_ip,
+        "interface": access_interface,
+        "vlan_id": access_vlan,
+        "configured": False,
+        "validated": False,
+        "status": "PENDING",
+        "component": "access_port_automation"
+    }
+    try:
+        logger.info(
+            "access_port_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "access_port_config",
+                "severity": "INFO",
+                "component": "access_port_automation",
+                "message": f"**** Configuring Access Port {access_interface} "
+                           f"for VLAN {access_vlan} ****"
+            }
+        )
+        template = template_env.get_template("access_port.j2")
+        commands = template.render(
+            access_interface=access_interface,
+            access_vlan=access_vlan
+        )
+        configured, error = safe_send_config(conn, commands)
 
+        results["configured"] = configured
 
+        if not configured:
+            results["status"] = "FAILED_CONFIG"
+            results["error"] = error
+            return results
+
+        device_state = collect_device_state(conn)
+
+        access_port_ok = check_switch_mode(
+            device_state,
+            access_interface,
+            "access",
+            access_vlan
+        )
+
+        results["validated"] = access_port_ok
+
+        if access_port_ok:
+            logger.info(
+                "access_port_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "access_port_validation",
+                    "status": "PASS",
+                    "severity": "INFO",
+                    "component": "access_port_automation",
+                    "message": f"Access Port Validation Passed. | VLAN: {access_vlan} | "
+                               f"Interface: {access_interface}"
+                }
+            )
+            results["status"] = "SUCCESS"
+        else:
+            logger.info(
+                "access_port_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "access_port_validation",
+                    "status": "FAIL",
+                    "severity": "CRITICAL",
+                    "component": "access_port_automation",
+                    "message": f"Access Port Validation Failed. | VLAN: {access_vlan} | "
+                               f"Interface: {access_interface}"
+                }
+            )
+            results["status"] = "FAILED_VALIDATION"
+
+    except Exception as e:
+        logger.info(
+            "access_port_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "access_port_config",
+                "status": "ERROR",
+                "severity": "CRITICAL",
+                "component": "access_port_automation",
+                "error": str(e),
+                "message": "Try/Exception Error | Access Port | Function: "
+                           "def configurd_access_ports"
+            }, exc_info=True
+        )
+        results["status"] = "ERROR"
+        results["error"] = str(e)
+        results["configured"] = False
+        results["validated"] = False
+    return results
+def configure_trunk_ports(conn, device_ip, trunk_data):
+    
 
 
 
