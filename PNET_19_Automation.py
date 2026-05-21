@@ -1685,6 +1685,19 @@ def configure_access_ports(conn, device_ip, access_data):
             results["error"] = error
             return results
 
+        logger.info(
+            "access_port_check",
+            extra = {
+                "device_ip": device_ip,
+                "check_name": "access_port_config",
+                "status": "CONFIGURED",
+                "severity": "INFO",
+                "component": "vlan_automation",
+                "message": f"Access Port {access_interface} for VLAN {access_vlan} successfully conigured."
+
+            }
+        )
+
         device_state = collect_device_state(conn)
 
         access_port_ok = check_switch_mode(
@@ -1745,8 +1758,113 @@ def configure_access_ports(conn, device_ip, access_data):
         results["validated"] = False
     return results
 def configure_trunk_ports(conn, device_ip, trunk_data):
-    
+    trunk_interface, allowed_vlans = trunk_data["trunk_interface"], trunk_data["allowed_vlans"]
+    results = {
+        "device_ip": device_ip,
+        "interface": trunk_interface,
+        "allowed_vlans": allowed_vlans,
+        "configured": False,
+        "validated": False,
+        "status": "PENDING",
+        "component": "trunk_port_automation"
+    }
+    try:
+        logger.info(
+            "trunk_port_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "trunk_port_config",
+                "severity": "INFO",
+                "component": "trunk_port_automation",
+                "message": f"**** Configuring Trunk Port for {trunk_interface} | "
+                           f"Allowed VLANs: {allowed_vlans} ****"
+            }
+        )
+        template = template_env.get_template("trunk.j2")
+        commands = template.render(
+            trunk_interface=trunk_interface,
+            allowed_vlans=allowed_vlans
+        )
 
+        configured, error = safe_send_config(conn, commands)
 
+        results["configured"] = configured
 
+        if not configured:
+            results["status"] = "FAILED_CONFIG"
+            results["error"] = error
+            return results
 
+        logger.info(
+            "trunk_port_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "trunk_port_config",
+                "status": "CONFIGURED",
+                "severity": "INFO",
+                "component": "trunk_port_automation",
+                "message": f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                           f"Allowed VLANs: {allowed_vlans}"
+            }
+        )
+
+        device_state = collect_device_state(conn)
+
+        trunk_ok = check_switch_mode(
+            device_state,
+            trunk_interface,
+            "trunk",
+            allowed_vlans
+        )
+
+        results["validated"] = trunk_ok
+
+        if trunk_ok:
+            logger.info(
+                "trunk_port_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "trunk_port_validation",
+                    "status": "PASS",
+                    "severity": "INFO",
+                    "component": "trunk_port_automation",
+                    "message": f"Trunk Port Validation Passed | Interface: {trunk_interface} | "
+                               f"Allowed VLANs: {allowed_vlans}"
+                }
+            )
+            results["status"] = "SUCCESS"
+        else:
+            logger.info(
+                "trunk_port_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "trunk_port_validation",
+                    "status": "FAIL",
+                    "severity": "CRITICAL",
+                    "component": "trunk_port_automation",
+                    "message": f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
+                               f"Expected Allowed VLANs: {allowed_vlans}"
+                }
+            )
+            results["status"] = "FAILED_VALIDATION"
+
+    except Exception as e:
+        logger.info(
+            "trunk_port_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "trunk_port_config",
+                "status": "ERROR",
+                "severity": "CRITICAL",
+                "component": "trunk_port_automation",
+                "error": str(e),
+                "message": "Try/Exception Error | Trunk Port Config | "
+                           "Function: def configure_trunk_ports"
+            }
+        )
+        results["configured"] = False
+        results["validated"] = False
+        results["error"] = str(e)
+        results["status"] = "ERROR"
+        return results
+    return results
