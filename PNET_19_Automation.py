@@ -1,7 +1,7 @@
 import ipaddress
-from logging import critical
+from logging import critical, exception
 from sys import exc_info
-
+import json
 import requests
 import pynetbox
 from genie.gre import defaultdict
@@ -129,7 +129,8 @@ def get_netbox():
                 if device_interface.type and device_interface.type.value not in ["virtual", "lag", "bridge"]
                     config_data['interface'].append({
                         'device':host_ip,
-                        'r_interface': device_interface.name
+                        'r_interface': device_interface.name,
+                        "description": "- configured via Network Automation"
                     })
                 router_ips = ip_on_interface(device_interface.id, [])
                 for rip in router_ips:
@@ -237,6 +238,32 @@ def safe_send_config(conn, commands):
         return True, None
     except Exception as e:
         return False, str(e)
+def create_restconf_session(auth):
+
+    headers = {
+        "Accept": "application/yang-data+json",
+        "Content-Type": "application/yang-data+json"
+    }
+
+    session = requests.Session()
+
+    session.auth = auth
+    session.verify = False
+    session.headers.update(headers)
+
+    return session
+def safe_restconf_patch(session, url, data):
+
+    try:
+        response = session.patch(url, data=payload, timeout=20)
+
+        if response.status_code in [200, 201, 204]:
+            return True, None
+
+        return False, response.text
+
+    except Exception as e:
+        return False, str(e)
 def collect_device_state(conn):
     device_state = {}
     try:
@@ -273,8 +300,8 @@ def check_interface(device_state, r_interface):
     interfaces = device_state.get("interfaces", {})
     status = interfaces.get(r_interface, {}).get("status", "")
     protocol = interfaces.get(r_interface, {}).get("protocol", "")
-    return status == "up" and protocol is "up"
-def restconf_state(device_ip, auth, log):
+    return status == "up" and protocol == "up"
+def restconf_state(device_ip, auth):
     headers = {"Accept": "application/yang-data+json"}
     session = requests.Session()
     session.auth = auth
@@ -320,7 +347,7 @@ def check_roas(restconf_state, roas_data):
     router_interface = roas_data["router_interface"]
     router_vlan = roas_data["router_vlan"]
     ip = roas_data["ip"]
-    n_interface = "".join([c for c in router_interface if c.isdigit() or c == "/" or c =="."])
+    n_interface = "".join([c for c in router_interface if c.isdigit() or c == "/" or c == "."])
 
     GigabitEthernet = interface_data.get("Cisco-IOS-XE-native:interface", {}).get("GigabitEthernet", [])
     for gig in GigabitEthernet:
@@ -1868,3 +1895,258 @@ def configure_trunk_ports(conn, device_ip, trunk_data):
         results["status"] = "ERROR"
         return results
     return results
+def configure_interface(conn, device_ip, interface_data):
+    interface = interface_data["interface"]
+    description = interface_data["description"]
+    results = {
+        "device_ip": device_ip,
+        "interface": interface,
+        "configured": False,
+        "validated": False,
+        "status": "PENDING",
+        "component": "interface_automation"
+    }
+    try:
+        logger.info(
+            "interface_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "interface_config",
+                "severity": "INFO",
+                "component": "interface_automation",
+                "message": f"**** Configuring Interface {interface} ****"
+            }
+        )
+
+        template = template_env.get_template("interface.j2")
+        commands = template.render(interface=interface,
+                                   description=description)
+
+        configured, error = safe_send_config(conn, commands)
+
+        results["configured"] = configured
+        if not configured:
+            results["status"] = "FAILED_CONFIG"
+            results["error"] = error
+            return results
+
+        logger.info(
+            "interface_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "interface_config",
+                "status": "CONFIGURED",
+                "severity": "INFO",
+                "component": "interface_automation",
+                "message": f"Interface {interface} successfully configured."
+            }
+        )
+
+        device_state = collect_device_state(conn)
+
+        interface_ok = check_interface(device_state, interface)
+
+        results["validated"] = interface_ok
+
+        if interface_ok:
+            logger.info(
+                "interface_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "interface_validation",
+                    "status": "PASS",
+                    "severity": "INFO",
+                    "component": "interface_automation",
+                    "message": f"Interface Validation Passed. | Interface: {interface}"
+                }
+            )
+            results["status"] = "SUCCESS"
+        else:
+            logger.info(
+                "interface_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "interface_validation",
+                    "status": "FAIL",
+                    "severity": "CRITICAL",
+                    "component": "interface_automation",
+                    "message": f"Interface Validation Failed. | Interface: {interface}"
+                }
+            )
+            results["status"] = "FAILED_VALIDATION"
+    except Exception as e:
+        logger.info(
+            "interface_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "interface_config",
+                "status": "ERROR",
+                "error": str(e),
+                "component": "interface_automation",
+                "severity": "CRITICAL",
+                "message": "Try/Exception Error | Interface Config | "
+                           "Function: def configure_interface"
+                }, exc_info=True
+        )
+        results["configured"] = False
+        results["validated"] = False
+        results["error"] = str(e)
+        results["status"] = "ERROR"
+        return results
+    return results
+
+def configure_roas(device_ip, roas_data, session):
+    router_interface = roas_data["router_interface"]
+    router_vlan = roas_data["router_vlan"]
+    ip = roas_data["ip"]
+    mask = roas_data["mask"]
+    new_interface = "".join([c for c in router_interface if c.isdigit() or c == "/" or c == "."])
+    url = f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/interface/GigabitEthernet={new_interface}"
+    results = {
+        "device_ip": device_ip,
+        "router_interface": router_interface,
+        "router_vlan": router_vlan,
+        "ip": f"{ip}/{mask}",
+        "configured": False,
+        "validated": False,
+        "status": "PENDING",
+        "component": "roas_automation"
+
+    }
+
+    try:
+        logger.info(
+            "roas_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "roas_config",
+                "severity":"INFO",
+                "component": "roas_automation",
+                "message": f"**** Configuring ROAS | Interface: {router_interface}.{router_vlan} |"
+                           f" VLAN: {router_vlan} | IP: {ip}/{mask}"
+
+            }
+        )
+        template = template_env.get_template("roas.j2")
+        commands = template.render(
+            new_interface=new_interface,
+            router_vlan=router_vlan,
+            ip=ip,
+            mask=mask
+        )
+
+        configured, error = safe_restconf_patch(session, url, commands)
+
+        results["configured"] = configured
+
+        if not configured:
+            results["status"] = "FAILED_CONFIG"
+            results["error"] = error
+            return results
+
+        logger.info(
+            "roas_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "roas_config",
+                "status": "CONFIGURED",
+                "severity": "INFO",
+                "component": "roas_automation",
+                "message": f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
+                           f"VLAN: {router_vlan} | IP: {ip}/{mask}"
+            }
+        )
+
+        state = restconf_state(device_ip, session.auth)
+        roas_ok = check_roas(state, roas_data)
+        results["validated"] = roas_ok
+
+        if roas_ok:
+            results["status"] = "SUCCESS"
+            logger.info(
+                "roas_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "roas_validation",
+                    "status": "PASS",
+                    "severity": "INFO",
+                    "component": "roas_automation",
+                    "message": f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
+                               f"IP: {ip}/{mask}"
+                }
+            )
+        else:
+            results["status"] = "FAILED_VALIDATION"
+            logger.info(
+                "roas_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "roas_validation",
+                    "status": "FAIL",
+                    "severity": "CRITICAL",
+                    "component": "roas_automation",
+                    "message": f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
+                               f"IP: {ip}/{mask}"
+                }
+            )
+    except Exception as e:
+        logger.info(
+            "roas_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "roas_config",
+                "status": "ERROR",
+                "severity": "CRITICAL",
+                "component": "roas_automation",
+                "error": str(e),
+                "message": "Try/Exception Error | ROAS Config | Function: def configured_roas"
+            }, exc_info=True
+        )
+        results["configured"] = False
+        results["validated"] = False
+        results["status"] = "ERROR"
+        results["error"] = str(e)
+        return results
+    return results
+def configure_ospf(session, device_ip, ospf_data):
+    process_id = ospf_data["process_id"]
+    router_id = ospf_data["router_id"]
+    network_list = ospf_data["network_list"]
+    for network in network_list:
+        subnet = network.get("subnet", "")
+        wildcard = network.get("wildcard", "")
+        area = network.get("area", "")
+    url = f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/router"
+    results = {
+        "device_ip": device_ip,
+        "process_id": process_id,
+        "router_id": router_id,
+        "configured": False,
+        "validated": False,
+        "status": "PENDING",
+        "component": "ospf_automation"
+    }
+    try:
+        logger.info(
+            "ospf_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "ospf_config",
+                "severity": "INFO",
+                "component": "ospf_automation",
+                "message": f"Configuring OSPF | Process ID: {process_id} | RID: {router_id} | "
+                           f"Network: {subnet}/{wildcard} | Area: {area}"
+            }
+        )
+
+        template = template_env.get_template("Cisco_Router_OSPF")
+        commands = template.render(
+            process_id=process_id,
+            router_id=router_id,
+            subnet=subnet,
+            wildcard=wildcard,
+            area=area
+        )
+        configured, error = safe_restconf_patch(session,url, commands)
+
+        results["configured"] = configured
