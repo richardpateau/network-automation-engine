@@ -255,7 +255,7 @@ def create_restconf_session(auth):
 def safe_restconf_patch(session, url, data):
 
     try:
-        response = session.patch(url, data=payload, timeout=20)
+        response = session.patch(url, data=data, timeout=20)
 
         if response.status_code in [200, 201, 204]:
             return True, None
@@ -301,7 +301,7 @@ def check_interface(device_state, r_interface):
     status = interfaces.get(r_interface, {}).get("status", "")
     protocol = interfaces.get(r_interface, {}).get("protocol", "")
     return status == "up" and protocol == "up"
-def restconf_state(device_ip, auth):
+def restconf_state(device_ip, session, log):
     headers = {"Accept": "application/yang-data+json"}
     session = requests.Session()
     session.auth = auth
@@ -1994,8 +1994,7 @@ def configure_interface(conn, device_ip, interface_data):
         results["status"] = "ERROR"
         return results
     return results
-
-def configure_roas(device_ip, roas_data, session):
+def configure_roas(device_ip, roas_data, session, log):
     router_interface = roas_data["router_interface"]
     router_vlan = roas_data["router_vlan"]
     ip = roas_data["ip"]
@@ -2010,12 +2009,16 @@ def configure_roas(device_ip, roas_data, session):
         "configured": False,
         "validated": False,
         "status": "PENDING",
+        "summary_config": None,
+        "summary_validation": None,
+        "summary": None,
+        "event": {},
         "component": "roas_automation"
 
     }
 
     try:
-        logger.info(
+        log.info(
             "roas_check",
             extra={
                 "device_ip": device_ip,
@@ -2044,7 +2047,7 @@ def configure_roas(device_ip, roas_data, session):
             results["error"] = error
             return results
 
-        logger.info(
+        log.info(
             "roas_check",
             extra={
                 "device_ip": device_ip,
@@ -2056,14 +2059,15 @@ def configure_roas(device_ip, roas_data, session):
                            f"VLAN: {router_vlan} | IP: {ip}/{mask}"
             }
         )
-
-        state = restconf_state(device_ip, session.auth)
+        results["summary_config"] = (f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
+                              f"VLAN: {router_vlan} | IP: {ip}/{mask}")
+        state = restconf_state(device_ip, session)
         roas_ok = check_roas(state, roas_data)
         results["validated"] = roas_ok
 
         if roas_ok:
             results["status"] = "SUCCESS"
-            logger.info(
+            log.info(
                 "roas_check",
                 extra={
                     "device_ip": device_ip,
@@ -2075,9 +2079,11 @@ def configure_roas(device_ip, roas_data, session):
                                f"IP: {ip}/{mask}"
                 }
             )
+            results["summary_validation"] = (f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
+                                  f"IP: {ip}/{mask}")
         else:
             results["status"] = "FAILED_VALIDATION"
-            logger.info(
+            log.info(
                 "roas_check",
                 extra={
                     "device_ip": device_ip,
@@ -2089,8 +2095,10 @@ def configure_roas(device_ip, roas_data, session):
                                f"IP: {ip}/{mask}"
                 }
             )
+            results["summary_validation"] = (f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
+                                  f"IP: {ip}/{mask}")
     except Exception as e:
-        logger.info(
+        log.info(
             "roas_check",
             extra={
                 "device_ip": device_ip,
@@ -2107,15 +2115,33 @@ def configure_roas(device_ip, roas_data, session):
         results["status"] = "ERROR"
         results["error"] = str(e)
         return results
+
+    results["event"] = {
+        "component": "roas",
+        "device": device_ip,
+        "interface": router_interface,
+        "vlan": router_vlan,
+        "status": results["status"],
+    }
+    results["summary"] = {
+        "config": results["summary_config"],
+        "validation": results["summary_validation"]
+    }
     return results
 def configure_ospf(session, device_ip, ospf_data):
     process_id = ospf_data["process_id"]
     router_id = ospf_data["router_id"]
     network_list = ospf_data["network_list"]
+    network_log = []
     for network in network_list:
         subnet = network.get("subnet", "")
         wildcard = network.get("wildcard", "")
         area = network.get("area", "")
+
+        network_log.append(
+            f"{subnet}/{wildcard} Area: {area}"
+        )
+    network = " | ".join(network_log)
     url = f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/router"
     results = {
         "device_ip": device_ip,
@@ -2134,19 +2160,84 @@ def configure_ospf(session, device_ip, ospf_data):
                 "check_name": "ospf_config",
                 "severity": "INFO",
                 "component": "ospf_automation",
-                "message": f"Configuring OSPF | Process ID: {process_id} | RID: {router_id} | "
-                           f"Network: {subnet}/{wildcard} | Area: {area}"
+                "message": f"Configuring OSPF | Network: {network}"
             }
         )
 
-        template = template_env.get_template("Cisco_Router_OSPF")
+        template = template_env.get_template("Cisco_Router_OSPF.j2")
         commands = template.render(
             process_id=process_id,
             router_id=router_id,
-            subnet=subnet,
-            wildcard=wildcard,
-            area=area
+            network_list=network_list
         )
         configured, error = safe_restconf_patch(session,url, commands)
 
         results["configured"] = configured
+
+        if not configured:
+            results["status"] = "FAILED_CONFIG"
+            results["error"] = error
+            return results
+
+        logger.info(
+            "ospf_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "ospf_config",
+                "status": "CONFIGURED",
+                "severity": "INFO",
+                "component": "ospf_automation",
+                "message": f"OSPF Successfully Configured | Network: {network}"
+            }
+        )
+        results["status"] = "SUCESS"
+        return results
+    except Exception as e:
+        logger.info(
+            "ospf_check",
+            extra={
+                "device_ip": device_ip,
+                "check_name": "ospf_config",
+                "status": "ERROR",
+                "severity": "CRITICAL",
+                "component": "ospf_automation",
+                "error": str(e),
+                "message": f"Try/Exception Error | OSPF Config Failed | Function: "
+                           f"def configure_ospf"
+            }, exc_info=True
+        )
+        results["configured"] = False
+        results["validated"] = False
+        results["error"] = str(e)
+        results["status"] = "ERROR"
+        return results
+def main_process(task):
+    device = task["device"]
+    context = task["context"]
+    host_ip = task["device"]
+
+    adapter = logging.LoggerAdapter(logger, {"dev": device["name"]})
+
+    device_result = {
+        "device_name": device["name"],
+        "device_ip": host_ip,
+        "status": "COMPLIANT",
+        "actions_taken": [],
+        "ospf_report": {}
+    }
+
+    try:
+        if device["device_type"] in ["cisco_ios_xe"]:
+            auth = (device["username"], device["password"])
+
+        with create_restconf_session(auth) as session:
+            state = restconf_state(host_ip, session, adapter)
+
+            updated = False
+
+            for roas_data in context.get("roas", []):
+                config_roas = configure_roas(host_ip, roas_data, session, adapter)
+                if config_roas.get("status") == "SUCCESS":
+                    updated = True
+
+                    device_result["actions_taken"].append(config_roas["summary"])
