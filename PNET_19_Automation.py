@@ -18,6 +18,7 @@ template_env = Environment(
     lstrip_blocks=True
 )
 from websocket import continuous_frame
+from datetime import datetime, timezone
 
 logger = logging.getLogger("Networkautomation")
 logger.setLevel(logging.DEBUG)
@@ -1575,8 +1576,9 @@ class OSPF_Checker:
             self.log.error(f"[{device_ip}] Try Exception Error|"
                            f"Function: check_lsa_age", exc_info=True)
             return "error", 0
-def configure_vlan(conn, device_ip, vlan_data):
+def configure_vlan(conn, device_ip, vlan_data, log):
     vlan_id, name = vlan_data["vlan_id"], vlan_data["name"]
+    timestamp = datetime.utcnow().isoformat()
     results = {
         "device_ip": device_ip,
         "vlan_id": vlan_id,
@@ -1584,8 +1586,16 @@ def configure_vlan(conn, device_ip, vlan_data):
         "configured": False,
         "validated": False,
         "status": "PENDING",
-        "component": "vlan_automation"
+        "component": "vlan_automation",
+
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "event": {}
     }
+    results["summary"] = (results["summary_validation"]
+                          if results["validated"] else results["summary_config"])
     try:
         logger.info(
             "vlan_check",
@@ -1594,7 +1604,7 @@ def configure_vlan(conn, device_ip, vlan_data):
                 "check_name": "vlan_config",
                 "severity": "INFO",
                 "component": "vlan_automation",
-                "message": f"**** Configuring VLAN {vlan_id} for {name} ****"
+                "message": f"Configuring VLAN | VLAN: {vlan_id} | Name: {name}"
             }
         )
         template = template_env.get_template("vlan.j2")
@@ -1608,6 +1618,15 @@ def configure_vlan(conn, device_ip, vlan_data):
         if not configured:
             results["status"] = "FAILED_CONFIG"
             results["error"] = error
+
+            results["event"] = {
+                "type": "vlan",
+                "device": device_ip,
+                "vlan_id": vlan_id,
+                "status": "FAILED_CONFIG",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            results["summary_config"] = f"VLAN Config Failed | VLAN: {vlan_id} | Name: {name}"
             return results
 
         logger.info(
@@ -1618,10 +1637,13 @@ def configure_vlan(conn, device_ip, vlan_data):
                 "status": "CONFIGURED",
                 "severity": "INFO",
                 "component": "vlan_automation",
-                "message": f"VLAN {vlan_id} for {name} successfully configured."
+                "message": f"VLAN Successfully Configured. | VLAN: {vlan_id} | Name: {name}",
+                "timestamp": timestamp
 
             }
         )
+        results["summary_config"] = f"Configuring VLAN | VLAN: {vlan_id} | Name: {name}"
+
         device_state = collect_device_state(conn)
 
         vlan_ok = check_vlan(device_state, vlan_id, name)
@@ -1637,10 +1659,11 @@ def configure_vlan(conn, device_ip, vlan_data):
                     "status": "PASS",
                     "severity": "INFO",
                     "component": "vlan_automation",
-                    "message": f"VLAN {vlan_id} for {name} validated successfully."
+                    "message": f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
                 }
             )
             results["status"] = "SUCCESS"
+            results["summary_validation"] = f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
         else:
             logger.info(
                 "vlan_check",
@@ -1654,8 +1677,9 @@ def configure_vlan(conn, device_ip, vlan_data):
                 }
             )
             results["status"] = "FAILED_VALIDATION"
+            results["summary_validation"] = f"VLAN Validation Failed | VLAN: {vlan_id} | Name: {name}"
     except Exception as e:
-        logger.info(
+        logger.exception(
             "vlan_check",
             extra={
                 "device_ip": device_ip,
@@ -1666,7 +1690,7 @@ def configure_vlan(conn, device_ip, vlan_data):
                 "component": "vlan_automation",
                 "message": "Try/Exception Error | VLAN Configuration | "
                            "Function: def configure_vlan",
-            },                 exc_info=True
+            },
 
         )
         results["error"] = str(e)
@@ -1674,6 +1698,19 @@ def configure_vlan(conn, device_ip, vlan_data):
         results["configured"] = False
         results["validated"] = False
         return results
+
+    results["event"] = {
+        "type": "vlan",
+        "device": device_ip,
+        "vlan_id": vlan_id,
+        "name": name,
+        "configured": configured,
+        "validated": vlan_ok,
+        "status": results["status"],
+        "timestamp": timestamp
+    }
+
+
     return results
 def configure_access_ports(conn, device_ip, access_data):
     access_interface,  access_vlan = access_data["access_interface"], access_data["access_vlan"]
@@ -2000,7 +2037,8 @@ def configure_roas(device_ip, roas_data, session, log):
     ip = roas_data["ip"]
     mask = roas_data["mask"]
     new_interface = "".join([c for c in router_interface if c.isdigit() or c == "/" or c == "."])
-    url = f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/interface/GigabitEthernet={new_interface}"
+    url = (f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/"
+           f"interface/GigabitEthernet={new_interface}")
     results = {
         "device_ip": device_ip,
         "router_interface": router_interface,
@@ -2025,7 +2063,7 @@ def configure_roas(device_ip, roas_data, session, log):
                 "check_name": "roas_config",
                 "severity":"INFO",
                 "component": "roas_automation",
-                "message": f"**** Configuring ROAS | Interface: {router_interface}.{router_vlan} |"
+                "message": f"Configuring ROAS | Interface: {router_interface}.{router_vlan} |"
                            f" VLAN: {router_vlan} | IP: {ip}/{mask}"
 
             }
@@ -2045,60 +2083,60 @@ def configure_roas(device_ip, roas_data, session, log):
         if not configured:
             results["status"] = "FAILED_CONFIG"
             results["error"] = error
-            return results
 
-        log.info(
-            "roas_check",
-            extra={
-                "device_ip": device_ip,
-                "check_name": "roas_config",
-                "status": "CONFIGURED",
-                "severity": "INFO",
-                "component": "roas_automation",
-                "message": f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
-                           f"VLAN: {router_vlan} | IP: {ip}/{mask}"
-            }
-        )
-        results["summary_config"] = (f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
-                              f"VLAN: {router_vlan} | IP: {ip}/{mask}")
-        state = restconf_state(device_ip, session)
-        roas_ok = check_roas(state, roas_data)
-        results["validated"] = roas_ok
-
-        if roas_ok:
-            results["status"] = "SUCCESS"
+        if configured:
             log.info(
                 "roas_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "roas_validation",
-                    "status": "PASS",
+                    "check_name": "roas_config",
+                    "status": "CONFIGURED",
                     "severity": "INFO",
                     "component": "roas_automation",
-                    "message": f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
-                               f"IP: {ip}/{mask}"
+                    "message": f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
+                               f"VLAN: {router_vlan} | IP: {ip}/{mask}"
                 }
             )
-            results["summary_validation"] = (f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
-                                  f"IP: {ip}/{mask}")
-        else:
-            results["status"] = "FAILED_VALIDATION"
-            log.info(
-                "roas_check",
-                extra={
-                    "device_ip": device_ip,
-                    "check_name": "roas_validation",
-                    "status": "FAIL",
-                    "severity": "CRITICAL",
-                    "component": "roas_automation",
-                    "message": f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
-                               f"IP: {ip}/{mask}"
-                }
-            )
-            results["summary_validation"] = (f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
-                                  f"IP: {ip}/{mask}")
+            results["summary_config"] = (f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
+                                  f"VLAN: {router_vlan} | IP: {ip}/{mask}")
+            state = restconf_state(device_ip, session)
+            roas_ok = check_roas(state, roas_data)
+            results["validated"] = roas_ok
+
+            if roas_ok:
+                results["status"] = "SUCCESS"
+                log.info(
+                    "roas_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "check_name": "roas_validation",
+                        "status": "PASS",
+                        "severity": "INFO",
+                        "component": "roas_automation",
+                        "message": f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
+                                   f"IP: {ip}/{mask}"
+                    }
+                )
+                results["summary_validation"] = (f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
+                                      f"IP: {ip}/{mask}")
+            else:
+                results["status"] = "FAILED_VALIDATION"
+                log.info(
+                    "roas_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "check_name": "roas_validation",
+                        "status": "FAIL",
+                        "severity": "CRITICAL",
+                        "component": "roas_automation",
+                        "message": f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
+                                   f"IP: {ip}/{mask}"
+                    }
+                )
+                results["summary_validation"] = (f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
+                                      f"IP: {ip}/{mask}")
     except Exception as e:
-        log.info(
+        log.exception(
             "roas_check",
             extra={
                 "device_ip": device_ip,
@@ -2108,7 +2146,7 @@ def configure_roas(device_ip, roas_data, session, log):
                 "component": "roas_automation",
                 "error": str(e),
                 "message": "Try/Exception Error | ROAS Config | Function: def configured_roas"
-            }, exc_info=True
+            },
         )
         results["configured"] = False
         results["validated"] = False
@@ -2117,18 +2155,19 @@ def configure_roas(device_ip, roas_data, session, log):
         return results
 
     results["event"] = {
-        "component": "roas",
+        "component": "roas_automation",
         "device": device_ip,
         "interface": router_interface,
         "vlan": router_vlan,
         "status": results["status"],
+        "timestamp": datetime.utcnow().isoformat(),
     }
-    results["summary"] = {
-        "config": results["summary_config"],
-        "validation": results["summary_validation"]
-    }
+    results["summary"] = (
+        results["summary_validation"]
+        if results["validated"] else results["summary_config"]
+    )
     return results
-def configure_ospf(session, device_ip, ospf_data):
+def configure_ospf(device_ip, ospf_data, session, log):
     process_id = ospf_data["process_id"]
     router_id = ospf_data["router_id"]
     network_list = ospf_data["network_list"]
@@ -2148,8 +2187,12 @@ def configure_ospf(session, device_ip, ospf_data):
         "process_id": process_id,
         "router_id": router_id,
         "configured": False,
-        "validated": False,
+        "validated": "PENDING",
         "status": "PENDING",
+        "summary_config": None,
+        "summary_validation": None,
+        "summary": None,
+        "event": {},
         "component": "ospf_automation"
     }
     try:
@@ -2160,7 +2203,8 @@ def configure_ospf(session, device_ip, ospf_data):
                 "check_name": "ospf_config",
                 "severity": "INFO",
                 "component": "ospf_automation",
-                "message": f"Configuring OSPF | Network: {network}"
+                "message": f"Configuring OSPF | Process ID: {process_id} | "
+                           f"RID: {router_id} | Networks: {network}"
             }
         )
 
@@ -2177,21 +2221,29 @@ def configure_ospf(session, device_ip, ospf_data):
         if not configured:
             results["status"] = "FAILED_CONFIG"
             results["error"] = error
-            return results
 
-        logger.info(
-            "ospf_check",
-            extra={
-                "device_ip": device_ip,
-                "check_name": "ospf_config",
-                "status": "CONFIGURED",
-                "severity": "INFO",
-                "component": "ospf_automation",
-                "message": f"OSPF Successfully Configured | Network: {network}"
-            }
-        )
-        results["status"] = "SUCESS"
-        return results
+            results["summary_config"] = (
+                f"OSPF Configuration Failed | Process ID: {process_id} | "
+                           f"RID: {router_id} | Networks: {network}"
+            )
+        else:
+            logger.info(
+                "ospf_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "ospf_config",
+                    "status": "CONFIGURED",
+                    "severity": "INFO",
+                    "component": "ospf_automation",
+                    "message": f"OSPF Successfully Configured | Process ID: {process_id} | "
+                           f"RID: {router_id} | Networks: {network}"
+                }
+            )
+            results["status"] = "CONFIGURED"
+            results["summary_config"] = (
+                f"OSPF Successfully Configured | Process ID: {process_id} | "
+                f"RID: {router_id} | Networks: {network}"
+            )
     except Exception as e:
         logger.info(
             "ospf_check",
@@ -2211,10 +2263,23 @@ def configure_ospf(session, device_ip, ospf_data):
         results["error"] = str(e)
         results["status"] = "ERROR"
         return results
+    results["event"] = {
+        "component": "ospf",
+        "device": device_ip,
+        "process_id": process_id,
+        "router_id": router_id,
+        "network_count": len(network_list),
+        "status": results["status"],
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    results["summary"] = {
+        "sum_config": results["summary_config"],
+    }
+    return results
 def main_process(task):
     device = task["device"]
     context = task["context"]
-    host_ip = task["device"]
+    host_ip = device["device"]
 
     adapter = logging.LoggerAdapter(logger, {"dev": device["name"]})
 
@@ -2222,8 +2287,19 @@ def main_process(task):
         "device_name": device["name"],
         "device_ip": host_ip,
         "status": "COMPLIANT",
+
         "actions_taken": [],
-        "ospf_report": {}
+        "events": [],
+        "checks_passed": 0,
+        "checks_failed": 0,
+
+        "start_time": datetime.utcnow().isoformat(),
+        "end_time": None,
+        "duration_seconds": None,
+
+        "ospf_report": {},
+        "errors": []
+
     }
 
     try:
@@ -2235,9 +2311,36 @@ def main_process(task):
 
             updated = False
 
-            for roas_data in context.get("roas", []):
+            for roas_data in context.get("roass", []):
                 config_roas = configure_roas(host_ip, roas_data, session, adapter)
                 if config_roas.get("status") == "SUCCESS":
                     updated = True
-
                     device_result["actions_taken"].append(config_roas["summary"])
+                    device_result.append(
+                        config_roas["event"]
+                    )
+            for ospf_data in context.get("ospf", []):
+                config_ospf = configure_ospf(host_ip, ospf_data, session, adapter)
+                if config_ospf.get("status") == "CONFIGURED":
+                    updated = True
+                    device_result["actions_taken"].append(config_ospf["summary"])
+                    device_result.append(
+                        config_ospf["event"]
+                    )
+            if updated and not DRY_RUN:
+                adapter.info("⏳ Changes detected. Waiting 30s for network convergence...")
+                time.sleep(30)
+
+            checker = OSPF_Checker()
+            for ospf_data in context("ospf", []):
+                report = checker.validate_device_ospf(host_ip, state , ospf_data)
+
+                device_result["ospf_report"].append(report)
+                if report["status"] != "HEALTHY":
+                    device_result["status"] = "NON-COMPLIANT"
+                    device_result.setdefault("critical_issues", []).append(
+                        {
+                            "process_id": ospf_data["process_id"],
+                            "issues": report.get("critical_issues", [])
+                        })
+
