@@ -19,6 +19,7 @@ template_env = Environment(
 )
 from websocket import continuous_frame
 from datetime import datetime, timezone
+from netmiko import ConnectHandler
 
 logger = logging.getLogger("Networkautomation")
 logger.setLevel(logging.DEBUG)
@@ -371,6 +372,8 @@ class OSPF_Checker:
         results = {
             "device": device_ip,
             "status": "HEALTHY",
+            "status_raw": "HEALTHY",
+
             "checks":{
                 "ospf_config_check": False,
                 "ospf_lsdb_check": False,
@@ -382,7 +385,40 @@ class OSPF_Checker:
             },
             "critical_issues": [],
             "warnings": [],
-            "lsa_age_seconds": None
+            "lsa_age_seconds": None,
+
+            "events": [],
+            "metrics":  {
+                "neighbor_count": 0,
+                "full_neighbors": 0,
+                "lsa_count": 0,
+                "max_lsa_age": 0,
+                "mtu_mismatches": 0,
+                "checks_run": 0,
+
+                "config_checks_passed": 0,
+                "config_checks_failed": 0,
+
+                "lsdb_check_passed": 0,
+                "lsdb_check_failed":0,
+
+                "neighbor_check_passed": 0,
+                "neighbor_check_failed": 0,
+
+                "ospf_timers_passed": 0,
+                "ospf_timers_failed": 0,
+
+                "ospf_auth_passed": 0,
+                "ospf_auth_failed": 0,
+
+                "ospf_mtu_passed": 0,
+                "ospf_mtu_failed": 0,
+
+                "lsa_age_passed": 0,
+                "lsa_age_failed": 0
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+
 
         }
         try:
@@ -398,10 +434,13 @@ class OSPF_Checker:
                 }
             )
             try:
+                results["metrics"]["checks_run"] += 1
                 config_ok = self.check_ospf_config(device_ip,restconf_state,ospf_data)
                 results["checks"]["ospf_config_check"] = config_ok
 
                 if config_ok:
+                    results["metrics"]["config_checks_passed"] = +=1
+                    results["status_raw"] = "PASS"
                     logger.info(
                         "ospf_check",
                         extra={
@@ -413,7 +452,16 @@ class OSPF_Checker:
                             "message": "OSPF config Expected matches actual"
                         }
                     )
+                    results["events"].append({
+                        "type": "ospf_config_check",
+                        "severity": "INFO",
+                        "device": device_ip,
+                        "status": results["status_raw"],
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
                 else:
+                    results["metrics"]["config_checks_failed"] +=1
+                    results["status_raw"] = "FAIL"
                     logger.info(
                         "ospf_check",
                         extra={
@@ -425,7 +473,17 @@ class OSPF_Checker:
                             "message": "OSPF Config mismatch"
                         }
                     )
-                    results["critical_issues"].append("ospf_config_check")
+                    results["events"].append({
+                        "type": "ospf_config_check",
+                        "severity": "CRITICAL",
+                        "device": device_ip,
+                        "status": results["status_raw"],
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    results["critical_issues"].append({
+                        "check": "ospf_config_check",
+                        "reason": "Operational state does not match intended NetBox config"
+                    })
             except Exception as e:
                 logger.info(
                     "ospf_check",
@@ -441,7 +499,20 @@ class OSPF_Checker:
                     exc_info=True
                 )
                 results["checks"]["ospf_config_check"] = False
-                results["critical_issues"].append("config_check_exception")
+                results["critical_issues"].append({
+                    "check": "ospf_config_check",
+                    "reason": "Python Try/Exception",
+                    "details": str(e)
+                })
+                results["events"].append({
+                    "type": "ospf_config_check",
+                    "severity": "CRITICAL",
+                    "device": device_ip,
+                    "status": "ERROR",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                results["status_raw"] = "ERROR"
 
             logger.info(
                 "ospf_check",
@@ -455,10 +526,13 @@ class OSPF_Checker:
                 }
             )
             try:
+                results["metrics"]["checks_run"] += 1
                 ospf_oper_ok = self.check_ospf_operational(device_ip, restconf_state, ospf_data)
                 results["checks"]["ospf_lsdb_check"] = ospf_oper_ok
 
                 if ospf_oper_ok:
+                    results["metrics"]["lsdb_check_passed"] += 1
+                    results["status_raw"] = "PASS"
                     logger.info(
                         "ospf_check",
                         extra= {
@@ -470,7 +544,16 @@ class OSPF_Checker:
                             "message": "OSPF LSDB is not empty. LSAs Found."
                         }
                     )
+                    results["events"].append({
+                        "type": "ospf_lsdb_check",
+                        "severity": "INFO",
+                        "device": device_ip,
+                        "status": "PASS",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
                 else:
+                    results["metrics"]["lsdb_check_failed"] += 1
+                    results["status_raw"] = "FAIL"
                     logger.info(
                         "ospf_check",
                         extra={
@@ -482,8 +565,19 @@ class OSPF_Checker:
                             "message": "OSPF LSDB is empty (no LSAs found)"
                         }
                     )
-                    results["critical_issues"].append("ospf_lsdb_check")
+                    results["critical_issues"].append({
+                        "check_name": "ospf_lsdb_check",
+                        "reason": "OSPF LSDB is empty (no LSAs found)"
+                    })
+                    results["events"].append({
+                        "type": "ospf_lsdb_check",
+                        "severity": "CRITICAL",
+                        "device": device_ip,
+                        "status": "FAIL",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
             except Exception as e:
+                results["status_raw"] = "ERROR"
                 logger.info(
                     "ospf_check",
                     extra = {
@@ -498,7 +592,18 @@ class OSPF_Checker:
                     exc_info=True
                 )
                 results["checks"]["ospf_lsdb_check"] = False
-                results["critical_issues"].append("lsdb_check_exception")
+                results["critical_issues"].append({
+                    "check_name": "lsbd_check_exception",
+                    "reason": "Try/Exception Error| LSDB Check | ospf_oper_ok",
+                    "details": str(e)
+                })
+                results["events"].append({
+                        "type": "ospf_lsdb_check",
+                        "severity": "INFO",
+                        "device": device_ip,
+                        "status": results["status_raw"],
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
 
             logger.info(
                 "ospf_check",
@@ -1594,10 +1699,8 @@ def configure_vlan(conn, device_ip, vlan_data, log):
         "summary_validation": None,
         "event": {}
     }
-    results["summary"] = (results["summary_validation"]
-                          if results["validated"] else results["summary_config"])
     try:
-        logger.info(
+        log.info(
             "vlan_check",
             extra={
                 "device_ip": device_ip,
@@ -1619,67 +1722,59 @@ def configure_vlan(conn, device_ip, vlan_data, log):
             results["status"] = "FAILED_CONFIG"
             results["error"] = error
 
-            results["event"] = {
-                "type": "vlan",
-                "device": device_ip,
-                "vlan_id": vlan_id,
-                "status": "FAILED_CONFIG",
-                "timestamp": datetime.utcnow().isoformat()
-            }
             results["summary_config"] = f"VLAN Config Failed | VLAN: {vlan_id} | Name: {name}"
-            return results
-
-        logger.info(
-            "vlan_check",
-            extra = {
-                "device_ip": device_ip,
-                "check_name": "vlan_config",
-                "status": "CONFIGURED",
-                "severity": "INFO",
-                "component": "vlan_automation",
-                "message": f"VLAN Successfully Configured. | VLAN: {vlan_id} | Name: {name}",
-                "timestamp": timestamp
-
-            }
-        )
-        results["summary_config"] = f"Configuring VLAN | VLAN: {vlan_id} | Name: {name}"
-
-        device_state = collect_device_state(conn)
-
-        vlan_ok = check_vlan(device_state, vlan_id, name)
-
-        results["validated"] = vlan_ok
-
-        if vlan_ok:
-            logger.info(
+        else:
+            log.info(
                 "vlan_check",
-                extra={
+                extra = {
                     "device_ip": device_ip,
-                    "check_name": "vlan_validation",
-                    "status": "PASS",
+                    "check_name": "vlan_config",
+                    "status": "CONFIGURED",
                     "severity": "INFO",
                     "component": "vlan_automation",
-                    "message": f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
+                    "message": f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}",
+                    "timestamp": timestamp
+
                 }
             )
-            results["status"] = "SUCCESS"
-            results["summary_validation"] = f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
-        else:
-            logger.info(
-                "vlan_check",
-                extra={
-                    "device_ip": device_ip,
-                    "check_name": "vlan_validation",
-                    "status": "FAIL",
-                    "severity": "CRITICAL",
-                    "component": "vlan_automation",
-                    "message": f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}"
-                }
-            )
-            results["status"] = "FAILED_VALIDATION"
-            results["summary_validation"] = f"VLAN Validation Failed | VLAN: {vlan_id} | Name: {name}"
+            results["summary_config"] = f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}"
+
+            device_state = collect_device_state(conn)
+
+            vlan_ok = check_vlan(device_state, vlan_id, name)
+
+            results["validated"] = vlan_ok
+
+            if vlan_ok:
+                log.info(
+                    "vlan_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "check_name": "vlan_validation",
+                        "status": "PASS",
+                        "severity": "INFO",
+                        "component": "vlan_automation",
+                        "message": f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
+                    }
+                )
+                results["status"] = "SUCCESS"
+                results["summary_validation"] = f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
+            else:
+                log.info(
+                    "vlan_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "check_name": "vlan_validation",
+                        "status": "FAIL",
+                        "severity": "CRITICAL",
+                        "component": "vlan_automation",
+                        "message": f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}"
+                    }
+                )
+                results["status"] = "FAILED_VALIDATION"
+                results["summary_validation"] = f"VLAN Validation Failed | VLAN: {vlan_id} | Name: {name}"
     except Exception as e:
-        logger.exception(
+        log.exception(
             "vlan_check",
             extra={
                 "device_ip": device_ip,
@@ -1704,11 +1799,16 @@ def configure_vlan(conn, device_ip, vlan_data, log):
         "device": device_ip,
         "vlan_id": vlan_id,
         "name": name,
-        "configured": configured,
-        "validated": vlan_ok,
+        "configured": results["configured"],
+        "validated": results["validated"],
         "status": results["status"],
         "timestamp": timestamp
     }
+    results["summary"] = (
+            results["summary_validation"]
+            or results["summary_config"]
+            or f"VLAN {vlan_id} | {results['status']}"
+    )
 
 
     return results
@@ -2292,6 +2392,8 @@ def main_process(task):
         "events": [],
         "checks_passed": 0,
         "checks_failed": 0,
+        "critical_issues": [],
+        "warnings": [],
 
         "start_time": datetime.utcnow().isoformat(),
         "end_time": None,
@@ -2306,41 +2408,59 @@ def main_process(task):
         if device["device_type"] in ["cisco_ios_xe"]:
             auth = (device["username"], device["password"])
 
-        with create_restconf_session(auth) as session:
-            state = restconf_state(host_ip, session, adapter)
+            with create_restconf_session(auth) as session:
+                state = restconf_state(host_ip, session, adapter)
 
-            updated = False
+                updated = False
 
-            for roas_data in context.get("roass", []):
-                config_roas = configure_roas(host_ip, roas_data, session, adapter)
-                if config_roas.get("status") == "SUCCESS":
-                    updated = True
-                    device_result["actions_taken"].append(config_roas["summary"])
-                    device_result.append(
-                        config_roas["event"]
-                    )
-            for ospf_data in context.get("ospf", []):
-                config_ospf = configure_ospf(host_ip, ospf_data, session, adapter)
-                if config_ospf.get("status") == "CONFIGURED":
-                    updated = True
-                    device_result["actions_taken"].append(config_ospf["summary"])
-                    device_result.append(
-                        config_ospf["event"]
-                    )
-            if updated and not DRY_RUN:
-                adapter.info("⏳ Changes detected. Waiting 30s for network convergence...")
-                time.sleep(30)
+                for roas_data in context.get("roass", []):
+                    config_roas = configure_roas(host_ip, roas_data, session, adapter)
+                    if config_roas.get("status") == "SUCCESS":
+                        updated = True
+                        device_result["actions_taken"].append(config_roas["summary"])
+                        device_result.append(
+                            config_roas["event"]
+                        )
+                for ospf_data in context.get("ospf", []):
+                    config_ospf = configure_ospf(host_ip, ospf_data, session, adapter)
+                    if config_ospf.get("status") == "CONFIGURED":
+                        updated = True
+                        device_result["actions_taken"].append(config_ospf["summary"])
+                        device_result.append(
+                            config_ospf["event"]
+                        )
+                if updated and not DRY_RUN:
+                    adapter.info("⏳ Changes detected. Waiting 30s for network convergence...")
+                    time.sleep(30)
 
-            checker = OSPF_Checker()
-            for ospf_data in context("ospf", []):
-                report = checker.validate_device_ospf(host_ip, state , ospf_data)
+                checker = OSPF_Checker()
+                for ospf_data in context("ospf", []):
+                    report = checker.validate_device_ospf(host_ip, state , ospf_data)
 
-                device_result["ospf_report"].append(report)
-                if report["status"] != "HEALTHY":
-                    device_result["status"] = "NON-COMPLIANT"
-                    device_result.setdefault("critical_issues", []).append(
-                        {
-                            "process_id": ospf_data["process_id"],
-                            "issues": report.get("critical_issues", [])
-                        })
+                    device_result["ospf_report"].append(report)
+                    if report["status"] != "HEALTHY":
+                        device_result["status"] = "NON-COMPLIANT"
+                        device_result["critical_issues"].append(
+                            {
+                                "process_id": ospf_data["process_id"],
+                                "issues": report.get("critical_issues", [])
+                            })
+                    if report["warnings"]:
+                        device_result["warnings"].append(
+                            {
+                                "process_id": ospf_data["process_id"],
+                                "issues": report["warnings"]
+                            }
+                        )
+        else:
+            with ConnectHandler(**device) as conn:
+                conn.enable()
 
+                state = collect_device_state(conn)
+                changed = False
+
+                for vlan_data in context.get("vlan", [])
+                    config_vlan = configure_vlan(conn, host_ip, vlan_data, log)
+                    if config_vlan.get("status") == "SUCCESS":
+                        changed = True
+                        device_result["actions_taken"].append("summary")
