@@ -12,6 +12,9 @@ from numpy.array_api import arange
 from dataclasses import dataclass
 from typing import Literal
 from jinja2 import Environment, FileSystemLoader
+
+from Python.learning_archive.CLAUDE import results
+
 template_env = Environment(
     loader=FileSystemLoader("/run/media/rich/HDD/Templates/"),
     trim_blocks=True,
@@ -20,7 +23,7 @@ template_env = Environment(
 from websocket import continuous_frame
 from datetime import datetime, timezone
 from netmiko import ConnectHandler
-
+from enum import Enum
 logger = logging.getLogger("Networkautomation")
 logger.setLevel(logging.DEBUG)
 handler = graypy.GELFUDPHandler("127.0.0.1", 12201)
@@ -31,6 +34,27 @@ console.setLevel(logging.INFO)
 logger.addHandler(console)
 netbox_url = "http://localhost:8000"
 netbox_token = "*****"
+DRY_RUN = True
+class OpStatus(Enum):
+    SUCCESS="SUCCESS"
+    CONFIG_FAILED= "FAILED_CONFIG"
+    VALIDATION_FAILED= "FAILED_VALIDATION"
+    ERROR="ERROR"
+    PENDING="PENDING"
+    CONFIGURED="CONFIGURED"
+class StepStatus(Enum):
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    ERROR = "ERROR"
+    DRY_RUN= "DRY_RUN"
+def get_severity(status):
+    if status in {
+        OpStatus.ERROR.value,
+        OpStatus.CONFIG_FAILED.value,
+        OpStatus.VALIDATION_FAILED.value
+    }:
+        return "CRITICAL"
+    return "INFO"
 @dataclass
 class ValidationIssue:
     device_ip: str
@@ -41,7 +65,7 @@ class ValidationIssue:
 def build_event(
         device_ip: str,
         component: str,
-        check_name: str,
+        event_type: str,
         status: str,
         severity: str = "INFO",
         **kwargs
@@ -50,11 +74,47 @@ def build_event(
         "timestamp": datetime.utcnow().isoformat(),
         "device_ip": device_ip,
         "component": component,
-        "check_name": check_name,
+        "event_type": event_type,
         "status": status,
         "severity": severity,
         **kwargs
     }
+def emit_event(
+    device_ip,
+    component,
+    event_type,
+    outcome,
+    vlan_id,
+    name,
+    timestamp,
+    error=None,
+    reason=None,
+    **kwargs
+):
+    status_map = {
+        "SUCCESS": StepStatus.SUCCESS.value,
+        "FAIL": StepStatus.FAILED.value,
+        "ERROR": StepStatus.ERROR.value,
+        "DRY_RUN": StepStatus.DRY_RUN.value
+    }
+
+    default_reason = f"{event_type} - {outcome}"
+
+    return build_event(
+        device_ip=device_ip,
+        component=component,
+        event_type=event_type,
+        status=status_map[outcome],
+        severity=(
+            "CRITICAL" if outcome in ["FAIL", "ERROR"] else "INFO"
+        ),
+        vlan=vlan_id,
+        name=name,
+        timestamp=timestamp,
+        error=error,
+        reason=reason or default_reason,
+        **kwargs
+    )
 def build_index(interfaces, ip_addresses, vlans):
     interfaces_on_device = defaultdict(list)
     ip_on_interface = defaultdict(list)
@@ -145,7 +205,7 @@ def get_netbox():
                         for v in device_interface.tagged_vlans:
                             device_vlans[v.vid] = v
             if is_router:
-                if device_interface.type and device_interface.type.value not in ["virtual", "lag", "bridge"]
+                if device_interface.type and device_interface.type.value not in ["virtual", "lag", "bridge"]:
                     config_data['interface'].append({
                         'device':host_ip,
                         'r_interface': device_interface.name,
@@ -1954,7 +2014,7 @@ class OSPF_Checker:
                            f"Function: check_lsa_age", exc_info=True)
             return "error", 0
 def configure_vlan(conn, device_ip, vlan_data, log):
-    vlan_id, name = vlan_data["vlan_id"], vlan_data["name"]
+    vlan_id, name = vlan_data.get("vlan_id", ""), vlan_data.get("name", "")
     timestamp = datetime.utcnow().isoformat()
     results = {
         "device_ip": device_ip,
@@ -1962,14 +2022,14 @@ def configure_vlan(conn, device_ip, vlan_data, log):
         "name": name,
         "configured": False,
         "validated": False,
-        "status": "PENDING",
+        "status": OpStatus.PENDING.value,
         "component": "vlan_automation",
 
         "timestamp": timestamp,
         "summary": None,
         "summary_config": None,
         "summary_validation": None,
-        "events": {}
+        "events": []
     }
     try:
         log.info(
@@ -1982,6 +2042,24 @@ def configure_vlan(conn, device_ip, vlan_data, log):
                 "message": f"Configuring VLAN | VLAN: {vlan_id} | Name: {name}"
             }
         )
+        if dry_run:
+            results["configured"] = True
+            results["status"] = OpStatus.SUCCESS.value
+            results["summary_config"] = f"DRY RUN | VLAN {vlan_id} | {name}"
+
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="vlan_automation",
+                    check_name="vlan_config",
+                    outcome="DRY_RUN",
+                    vlan_id=vlan_id,
+                    name=name,
+                    timestamp=timestamp,
+                    reason="Dry run - no config pushed"
+                )
+            )
+            return results
         template = template_env.get_template("vlan.j2")
         commands = template.render(
             vlan_id=vlan_id,
@@ -1991,67 +2069,116 @@ def configure_vlan(conn, device_ip, vlan_data, log):
         configured, error = safe_send_config(conn, commands)
         results["configured"] = configured
         if not configured:
-            results["status"] = "FAILED_CONFIG"
+            results["status"] = OpStatus.CONFIG_FAILED.value
             results["error"] = error
-
             results["summary_config"] = f"VLAN Config Failed | VLAN: {vlan_id} | Name: {name}"
+
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="vlan_automation",
+                    check_name="vlan_config",
+                    outcome="FAIL",
+                    vlan_id=vlan_id,
+                    name=name,
+                    timestamp=timestamp,
+                    error=error
+                )
+            )
+            return results
+
+        log.info(
+            "vlan_check",
+            extra = {
+                "device_ip": device_ip,
+                "check_name": "vlan_config",
+                "status": StepStatus.SUCCESS.value,
+                "severity": "INFO",
+                "component": "vlan_automation",
+                "message": f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}",
+                "timestamp": timestamp
+
+            }
+        )
+        results["summary_config"] = f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}"
+
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="vlan_automation",
+                check_name="vlan_config",
+                outcome="SUCCESS",
+                vlan_id=vlan_id,
+                name=name,
+                reason=f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}",
+                timestamp=timestamp
+            )
+        )
+        device_state = collect_device_state(conn)
+
+        vlan_ok = check_vlan(device_state, vlan_id, name)
+
+        results["validated"] = vlan_ok
+
+        if vlan_ok:
+            log.info(
+                "vlan_check",
+                extra={
+                    "device_ip": device_ip,
+                    "check_name": "vlan_validation",
+                    "status": StepStatus.SUCCESS.value,
+                    "severity": "INFO",
+                    "component": "vlan_automation",
+                    "message": f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
+                }
+            )
+            results["status"] = OpStatus.SUCCESS.value
+            results["summary_validation"] = f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="vlan_automation",
+                    check_name="vlan_validation",
+                    outcome="SUCCESS",
+                    vlan_id=vlan_id,
+                    name=name,
+                    timestamp=timestamp,
+                    reason=f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}",
+                )
+            )
         else:
             log.info(
                 "vlan_check",
-                extra = {
+                extra={
                     "device_ip": device_ip,
-                    "check_name": "vlan_config",
-                    "status": "CONFIGURED",
-                    "severity": "INFO",
+                    "check_name": "vlan_validation",
+                    "status": StepStatus.FAILED.value,
+                    "severity": "CRITICAL",
                     "component": "vlan_automation",
-                    "message": f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}",
-                    "timestamp": timestamp
-
+                    "message": f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}"
                 }
             )
-            results["summary_config"] = f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}"
-
-            device_state = collect_device_state(conn)
-
-            vlan_ok = check_vlan(device_state, vlan_id, name)
-
-            results["validated"] = vlan_ok
-
-            if vlan_ok:
-                log.info(
-                    "vlan_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "check_name": "vlan_validation",
-                        "status": "PASS",
-                        "severity": "INFO",
-                        "component": "vlan_automation",
-                        "message": f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
-                    }
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="vlan_automation",
+                    check_name="vlan_validation",
+                    outcome="FAIL",
+                    vlan_id=vlan_id,
+                    name=name,
+                    reason=f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}",
+                    timestamp=timestamp
                 )
-                results["status"] = "SUCCESS"
-                results["summary_validation"] = f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
-            else:
-                log.info(
-                    "vlan_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "check_name": "vlan_validation",
-                        "status": "FAIL",
-                        "severity": "CRITICAL",
-                        "component": "vlan_automation",
-                        "message": f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}"
-                    }
-                )
-                results["status"] = "FAILED_VALIDATION"
-                results["summary_validation"] = f"VLAN Validation Failed | VLAN: {vlan_id} | Name: {name}"
+            )
+            results["status"] = OpStatus.VALIDATION_FAILED.value
+            results["summary_validation"] = f"VLAN Validation Failed | VLAN: {vlan_id} | Name: {name}"
     except Exception as e:
         log.exception(
             "vlan_check",
             extra={
                 "device_ip": device_ip,
                 "check_name": "vlan_config",
-                "status": "ERROR",
+                "status": StepStatus.ERROR.value,
                 "severity": "CRITICAL",
                 "error": str(e),
                 "component": "vlan_automation",
@@ -2060,55 +2187,93 @@ def configure_vlan(conn, device_ip, vlan_data, log):
             },
 
         )
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="vlan_automation",
+                check_name="vlan_config",
+                outcome="ERROR",
+                vlan_id=vlan_id,
+                name=name,
+                error=str(e),
+                timestamp=timestamp,
+                reason="Exception Error"
+            )
+        )
         results["error"] = str(e)
-        results["status"] = "ERROR"
+        results["status"] = OpStatus.ERROR.value
         results["configured"] = False
         results["validated"] = False
         return results
 
-    results["events"].append(
-        build_event(
-            device_ip=device_ip,
-            component="vlan_automation",
-            check_name="vlan_config",
-            status=results["status"],
-            severity="INFO" if results["status"] == "SUCCESS" else "CRITICAL",
-            vlan_id=vlan_id,
-            name=name
-
-        )
-    )
     results["summary"] = (
             results["summary_validation"]
             or results["summary_config"]
             or f"VLAN {vlan_id} | {results['status']}"
     )
-
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="vlan_automation",
+            check_name="vlan_overall",
+            outcome="SUCCESS" if results["status"] == OpStatus.SUCCESS.value else "FAIL",
+            vlan_id=vlan_id,
+            name=name,
+            timestamp=timestamp,
+            reason="VLAN Automation completed"
+        )
+    )
 
     return results
-def configure_access_ports(conn, device_ip, access_data):
+def configure_access_ports(conn, device_ip, access_data, log):
     access_interface,  access_vlan = access_data["access_interface"], access_data["access_vlan"]
+    timestamp = datetime.utcnow().isoformat()
     results = {
         "device_ip": device_ip,
         "interface": access_interface,
         "vlan_id": access_vlan,
         "configured": False,
         "validated": False,
-        "status": "PENDING",
-        "component": "access_port_automation"
+        "status": OpStatus.PENDING.value,
+        "component": "access_port_automation",
+
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "events": []
     }
     try:
-        logger.info(
+        log.info(
             "access_port_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "access_port_config",
+                "event_type": "access_port_config",
                 "severity": "INFO",
                 "component": "access_port_automation",
-                "message": f"**** Configuring Access Port {access_interface} "
-                           f"for VLAN {access_vlan} ****"
+                "message": f"Configuring Access Port | Interface: {access_interface} |"
+                           f" VLAN: {access_vlan}"
             }
         )
+        if DRY_RUN:
+            results["configured"] = True
+            results["status"] = OpStatus.SUCCESS.value
+            results["summary_config"] = (f"[DRY-RUN] Would Configure Access Port | "
+                                         f"Interface: {access_interface} | VLAN: {access_vlan}")
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="access_port_automation",
+                    event_type="access_port_config",
+                    outcome="DRY_RUN",
+                    vlan_id=access_vlan,
+                    interface=access_interface,
+                    timestamp=timestamp,
+                    reason=(f"[DRY-RUN] Would Configure Access Port | "
+                                         f"Interface: {access_interface} | VLAN: {access_vlan}")
+                )
+            )
+            return results
         template = template_env.get_template("access_port.j2")
         commands = template.render(
             access_interface=access_interface,
@@ -2119,22 +2284,54 @@ def configure_access_ports(conn, device_ip, access_data):
         results["configured"] = configured
 
         if not configured:
-            results["status"] = "FAILED_CONFIG"
+            results["status"] = OpStatus.CONFIG_FAILED.value
             results["error"] = error
+            results["summary_config"] = (f"Access Port Config Failed | "
+                                         f"Interface: {access_interface} | VLAN: {access_vlan} ")
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="access_port_automation",
+                    event_type="access_port_config",
+                    outcome="FAIL",
+                    vlan_id=access_vlan,
+                    interface=access_interface,
+                    timestamp=timestamp,
+                    error=error
+                )
+            )
             return results
 
-        logger.info(
+        log.info(
             "access_port_check",
             extra = {
                 "device_ip": device_ip,
-                "check_name": "access_port_config",
-                "status": "CONFIGURED",
+                "event_type": "access_port_config",
+                "status": StepStatus.SUCCESS.value,
                 "severity": "INFO",
-                "component": "vlan_automation",
-                "message": f"Access Port {access_interface} for VLAN {access_vlan} successfully conigured."
+                "component": "access_port_automation",
+                "message": f"Access Port Successfully Configured | "
+                           f"Interface: {access_interface} | VLAN: {access_vlan}"
 
             }
         )
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="access_port_automation",
+                event_type="access_port_config",
+                outcome="SUCCESS",
+                vlan_id=access_vlan,
+                interface=access_interface,
+                timestamp=timestamp,
+                reason=f"Access Port Successfully Configured | "
+                           f"Interface: {access_interface} | VLAN: {access_vlan}"
+
+            )
+        )
+
+        results["summary_config"] = (f"Access Port Successfully Configured | "
+                                     f"Interface: {access_interface} | VLAN: {access_vlan} ")
 
         device_state = collect_device_state(conn)
 
@@ -2148,151 +2345,303 @@ def configure_access_ports(conn, device_ip, access_data):
         results["validated"] = access_port_ok
 
         if access_port_ok:
-            logger.info(
+            log.info(
                 "access_port_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "access_port_validation",
-                    "status": "PASS",
+                    "event_type": "access_port_validation",
+                    "status": StepStatus.SUCCESS.value,
                     "severity": "INFO",
                     "component": "access_port_automation",
-                    "message": f"Access Port Validation Passed. | VLAN: {access_vlan} | "
+                    "message": f"Access Port Validation Passed | VLAN: {access_vlan} | "
                                f"Interface: {access_interface}"
                 }
             )
-            results["status"] = "SUCCESS"
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="access_port_automation",
+                    event_type="access_port_validation",
+                    outcome="SUCCESS",
+                    vlan_id=access_vlan,
+                    interface=access_interface,
+                    timestamp=timestamp,
+                    reason=f"Access Port Validation Passed | VLAN: {access_vlan} | "
+                               f"Interface: {access_interface}"
+                )
+            )
+            results["status"] = OpStatus.SUCCESS.value
+            results["summary_validation"] = (f"Access Port Validation Passed | VLAN: {access_vlan} | "
+                               f"Interface: {access_interface}")
+
         else:
-            logger.info(
+            log.info(
                 "access_port_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "access_port_validation",
-                    "status": "FAIL",
+                    "event_type": "access_port_validation",
+                    "status": StepStatus.FAILED.value,
                     "severity": "CRITICAL",
                     "component": "access_port_automation",
-                    "message": f"Access Port Validation Failed. | VLAN: {access_vlan} | "
+                    "message": f"Access Port Validation Failed | VLAN: {access_vlan} | "
                                f"Interface: {access_interface}"
                 }
             )
-            results["status"] = "FAILED_VALIDATION"
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="access_port_automation",
+                    event_type="access_port_validation",
+                    outcome="FAIL",
+                    vlan_id=access_vlan,
+                    interface=access_interface,
+                    timestamp=timestamp,
+                    reason=f"Access Port Validation Failed | VLAN: {access_vlan} | "
+                               f"Interface: {access_interface}"
+                )
+            )
+            results["status"] = OpStatus.VALIDATION_FAILED.value
+            results["summary_validation"] = (f"Access Port Validation Failed | VLAN: {access_vlan} | "
+                               f"Interface: {access_interface}")
 
     except Exception as e:
-        logger.info(
+        log.exception(
             "access_port_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "access_port_config",
-                "status": "ERROR",
+                "event_type": "access_port_config",
+                "status": OpStatus.ERROR.value,
                 "severity": "CRITICAL",
                 "component": "access_port_automation",
                 "error": str(e),
                 "message": "Try/Exception Error | Access Port | Function: "
-                           "def configurd_access_ports"
-            }, exc_info=True
+                           "def configure_access_ports"
+            },
         )
-        results["status"] = "ERROR"
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="access_port_automation",
+                event_type="access_port_config",
+                outcome="ERROR",
+                vlan_id=access_vlan,
+                interface=access_interface,
+                error=str(e),
+                timestamp=timestamp,
+                reason=f"Try/Exception Error | def configure_access_ports"
+            )
+        )
+        results["status"] = OpStatus.ERROR.value
         results["error"] = str(e)
         results["configured"] = False
         results["validated"] = False
+        return results
+
+    results["summary"] = (
+            results["summary_validation"]
+            or results["summary_config"]
+    )
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="access_port_validation",
+            event_type="access_port_overall",
+            outcome="SUCCESS" if results["status"] == OpStatus.SUCCESS.value else "FAIL",
+            vlan_id=access_vlan,
+            interface=access_interface,
+            timestamp=timestamp,
+            reason=f"Access Port Automation Completed."
+
+        )
+    )
+
     return results
-def configure_trunk_ports(conn, device_ip, trunk_data):
-    trunk_interface, allowed_vlans = trunk_data["trunk_interface"], trunk_data["allowed_vlans"]
+def configure_trunk_ports(conn, device_ip, trunk_data, log):
+    trunk_interface, allowed_vlans = (trunk_data.get("trunk_interface"),
+                                      trunk_data.get("allowed_vlans"))
+    timestamp = datetime.utcnow().isoformat()
     results = {
         "device_ip": device_ip,
         "interface": trunk_interface,
         "allowed_vlans": allowed_vlans,
         "configured": False,
         "validated": False,
-        "status": "PENDING",
-        "component": "trunk_port_automation"
+        "status": OpStatus.PENDING.value,
+        "component": "trunk_port_automation",
+
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "events": []
     }
     try:
-        logger.info(
+        log.info(
             "trunk_port_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "trunk_port_config",
+                "event_type": "trunk_port_config",
                 "severity": "INFO",
                 "component": "trunk_port_automation",
-                "message": f"**** Configuring Trunk Port for {trunk_interface} | "
-                           f"Allowed VLANs: {allowed_vlans} ****"
-            }
-        )
-        template = template_env.get_template("trunk.j2")
-        commands = template.render(
-            trunk_interface=trunk_interface,
-            allowed_vlans=allowed_vlans
-        )
-
-        configured, error = safe_send_config(conn, commands)
-
-        results["configured"] = configured
-
-        if not configured:
-            results["status"] = "FAILED_CONFIG"
-            results["error"] = error
-            return results
-
-        logger.info(
-            "trunk_port_check",
-            extra={
-                "device_ip": device_ip,
-                "check_name": "trunk_port_config",
-                "status": "CONFIGURED",
-                "severity": "INFO",
-                "component": "trunk_port_automation",
-                "message": f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                "message": f"Configuring Trunk Port | Trunk: {trunk_interface} | "
                            f"Allowed VLANs: {allowed_vlans}"
             }
         )
-
-        device_state = collect_device_state(conn)
-
-        trunk_ok = check_switch_mode(
-            device_state,
-            trunk_interface,
-            "trunk",
-            allowed_vlans
-        )
-
-        results["validated"] = trunk_ok
-
-        if trunk_ok:
-            logger.info(
-                "trunk_port_check",
-                extra={
-                    "device_ip": device_ip,
-                    "check_name": "trunk_port_validation",
-                    "status": "PASS",
-                    "severity": "INFO",
-                    "component": "trunk_port_automation",
-                    "message": f"Trunk Port Validation Passed | Interface: {trunk_interface} | "
-                               f"Allowed VLANs: {allowed_vlans}"
-                }
+        if DRY_RUN:
+            results["configured"] = True
+            results["validated"] = True
+            results["status"] = OpStatus.SUCCESS.value
+            results["summary_config"] = (f"[DRY-RUN] Would Configure Trunk Port | "
+                                         f"Interface: {trunk_interface} | Allowed VLANs: "
+                                         f"{allowed_vlans}")
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="trunk_port_automation",
+                    event_type="trunk_port_config",
+                    outcome="DRY_RUN",
+                    interface=trunk_interface,
+                    allowed_vlans=allowed_vlans,
+                    timestamp=timestamp,
+                    reason=f"[DRY-RUN] Would Configure Trunk Port | "
+                            f"Interface: {trunk_interface} | Allowed VLANs: "
+                            f"{allowed_vlans}"
+                )
             )
-            results["status"] = "SUCCESS"
         else:
-            logger.info(
-                "trunk_port_check",
-                extra={
-                    "device_ip": device_ip,
-                    "check_name": "trunk_port_validation",
-                    "status": "FAIL",
-                    "severity": "CRITICAL",
-                    "component": "trunk_port_automation",
-                    "message": f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
-                               f"Expected Allowed VLANs: {allowed_vlans}"
-                }
+            template = template_env.get_template("trunk.j2")
+            commands = template.render(
+                trunk_interface=trunk_interface,
+                allowed_vlans=allowed_vlans
             )
-            results["status"] = "FAILED_VALIDATION"
+
+            configured, error = safe_send_config(conn, commands)
+
+            results["configured"] = configured
+
+            if not configured:
+                results["status"] = OpStatus.CONFIG_FAILED.value
+                results["error"] = error
+                results["summary_config"] = (f"Trunk Port Configuration Failed | Interface: "
+                                             f"{trunk_interface} | Allowed VLANs: {allowed_vlans}")
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="trunk_port_automation",
+                        event_type="trunk_port_config",
+                        outcome="FAIL",
+                        interface=trunk_interface,
+                        allowed_vlans=allowed_vlans,
+                        timestamp=timestamp,
+                        error=error
+                    )
+                )
+            else:
+                log.info(
+                    "trunk_port_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "event_type": "trunk_port_config",
+                        "status": StepStatus.SUCCESS.value,
+                        "severity": "INFO",
+                        "component": "trunk_port_automation",
+                        "message": f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                                   f"Allowed VLANs: {allowed_vlans}"
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="trunk_port_automation",
+                        event_type="trunk_port_config",
+                        outcome="SUCCESS",
+                        interface=trunk_interface,
+                        allowed_vlans=allowed_vlans,
+                        timestamp=timestamp,
+                        reason=f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                                   f"Allowed VLANs: {allowed_vlans}"
+                    )
+                )
+                results["summary_config"] =( f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                                            f"Allowed VLANs: {allowed_vlans}")
+
+                device_state = collect_device_state(conn)
+
+                trunk_ok = check_switch_mode(
+                    device_state,
+                    trunk_interface,
+                    "trunk",
+                    allowed_vlans
+                )
+
+                results["validated"] = trunk_ok
+
+                if trunk_ok:
+                    log.info(
+                        "trunk_port_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "event_type": "trunk_port_validation",
+                            "status": StepStatus.SUCCESS.value,
+                            "severity": "INFO",
+                            "component": "trunk_port_automation",
+                            "message": f"Trunk Port Validation Passed | Interface: {trunk_interface} | "
+                                       f"Allowed VLANs: {allowed_vlans}"
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="trunk_port_automation",
+                            event_type="trunk_port_validation",
+                            outcome="SUCCESS",
+                            interface=trunk_interface,
+                            allowed_vlans=allowed_vlans,
+                            timestamp=timestamp,
+                            reason=f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                                   f"Allowed VLANs: {allowed_vlans}"
+                        )
+                    )
+                    results["status"] = OpStatus.SUCCESS.value
+                    results["summary_validation"] = (f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                                                    f"Allowed VLANs: {allowed_vlans}")
+                else:
+                    log.info(
+                        "trunk_port_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "event_type": "trunk_port_validation",
+                            "status": StepStatus.FAILED.value,
+                            "severity": "CRITICAL",
+                            "component": "trunk_port_automation",
+                            "message": f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
+                                       f"Expected Allowed VLANs: {allowed_vlans}"
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="trunk_port_automation",
+                            event_type="trunk_port_validation",
+                            outcome="FAIL",
+                            interface=trunk_interface,
+                            allowed_vlans=allowed_vlans,
+                            timestamp=timestamp,
+                            reason=f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
+                                    f"Expected Allowed VLANs: {allowed_vlans}"
+                        )
+                    )
+                    results["status"] = OpStatus.VALIDATION_FAILED.value
+                    results["summary_validation"] = (f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
+                                                    f"Expected Allowed VLANs: {allowed_vlans}")
 
     except Exception as e:
-        logger.info(
+        log.exception(
             "trunk_port_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "trunk_port_config",
-                "status": "ERROR",
+                "event_type": "trunk_port_config",
+                "status": StepStatus.ERROR.value,
                 "severity": "CRITICAL",
                 "component": "trunk_port_automation",
                 "error": str(e),
@@ -2300,11 +2649,41 @@ def configure_trunk_ports(conn, device_ip, trunk_data):
                            "Function: def configure_trunk_ports"
             }
         )
-        results["configured"] = False
-        results["validated"] = False
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="trunk_port_automation",
+                event_type="trunk_port_config",
+                outcome="ERROR",
+                interface=trunk_interface,
+                allowed_vlans=allowed_vlans,
+                timestamp=timestamp,
+                reason="Try Exception Error | def configure_trunk_ports"
+            )
+        )
         results["error"] = str(e)
-        results["status"] = "ERROR"
-        return results
+        results["status"] = OpStatus.ERROR.value
+
+    results["summary"] = (
+        results["summary_validation"]
+        or results["summary_config"]
+    )
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="trunk_port_automation",
+            event_type="trunk_port_overall",
+            outcome=("DRY_RUN"
+                    if DRY_RUN
+                    else "SUCCESS"
+                    if results["status"] == OpStatus.SUCCESS.value
+                    else "FAIL"),
+            interface=trunk_interface,
+            allowed_vlans=allowed_vlans,
+            timestamp=timestamp,
+            reason="Trunk Port Automation Complete"
+        )
+    )
     return results
 def configure_interface(conn, device_ip, interface_data):
     interface = interface_data["interface"]
@@ -2424,7 +2803,7 @@ def configure_roas(device_ip, roas_data, session, log):
         "summary_config": None,
         "summary_validation": None,
         "summary": None,
-        "event": {},
+        "events": [],
         "component": "roas_automation"
 
     }
@@ -2458,6 +2837,21 @@ def configure_roas(device_ip, roas_data, session, log):
             results["status"] = "FAILED_CONFIG"
             results["error"] = error
 
+            results["events"].append(
+                build_event(
+                    device_ip=device_ip,
+                    component="roas_automation",
+                    check_name="roas_config",
+                    status="FAIL",
+                    severity="CRITICAL",
+                    interface=router_interface,
+                    vlan=router_vlan,
+                    ip=f"{ip}/{mask}",
+                    error=error,
+                    reason="ROAS configuration failed"
+                )
+            )
+
         if configured:
             log.info(
                 "roas_check",
@@ -2470,6 +2864,18 @@ def configure_roas(device_ip, roas_data, session, log):
                     "message": f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
                                f"VLAN: {router_vlan} | IP: {ip}/{mask}"
                 }
+            )
+            results["events"].append(
+                build_event(
+                    device_ip=device_ip,
+                    component="roas_automation",
+                    check_name="roas_config",
+                    status="CONFIGURED",
+                    severity="INFO",
+                    interface=router_interface,
+                    vlan=router_vlan,
+                    ip=f"{ip}/{mask}"
+                )
             )
             results["summary_config"] = (f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
                                   f"VLAN: {router_vlan} | IP: {ip}/{mask}")
@@ -2491,6 +2897,18 @@ def configure_roas(device_ip, roas_data, session, log):
                                    f"IP: {ip}/{mask}"
                     }
                 )
+                results["events"].append(
+                    build_event(
+                        device_ip=device_ip,
+                        component="roas_automation",
+                        check_name="roas_validation",
+                        status="PASS",
+                        severity="INFO",
+                        interface=router_interface,
+                        vlan=router_vlan,
+                        ip=f"{ip}/{mask}"
+                    )
+                )
                 results["summary_validation"] = (f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
                                       f"IP: {ip}/{mask}")
             else:
@@ -2507,6 +2925,19 @@ def configure_roas(device_ip, roas_data, session, log):
                                    f"IP: {ip}/{mask}"
                     }
                 )
+                results["events"].append(
+                    build_event(
+                        device_ip=device_ip,
+                        component="roas_automation",
+                        check_name="roas_validation",
+                        status="FAIL",
+                        severity="CRITICAL",
+                        interface=router_interface,
+                        vlan=router_vlan,
+                        ip=f"{ip}/{mask}",
+                        reason="ROAS Validation Failed"
+                    )
+                )
                 results["summary_validation"] = (f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
                                       f"IP: {ip}/{mask}")
     except Exception as e:
@@ -2522,20 +2953,24 @@ def configure_roas(device_ip, roas_data, session, log):
                 "message": "Try/Exception Error | ROAS Config | Function: def configured_roas"
             },
         )
+        results["events"].append(
+            build_event(
+                device_ip=device_ip,
+                component="roas_automation",
+                check_name="roas_config",
+                status="ERROR",
+                severity="CRITICAL",
+                interface=router_interface,
+                vlan=router_vlan,
+                error=str(e)
+            )
+        )
         results["configured"] = False
         results["validated"] = False
         results["status"] = "ERROR"
         results["error"] = str(e)
         return results
 
-    results["event"] = {
-        "component": "roas_automation",
-        "device": device_ip,
-        "interface": router_interface,
-        "vlan": router_vlan,
-        "status": results["status"],
-        "timestamp": datetime.utcnow().isoformat(),
-    }
     results["summary"] = (
         results["summary_validation"]
         if results["validated"] else results["summary_config"]
@@ -2566,7 +3001,7 @@ def configure_ospf(device_ip, ospf_data, session, log):
         "summary_config": None,
         "summary_validation": None,
         "summary": None,
-        "event": {},
+        "event": [],
         "component": "ospf_automation"
     }
     try:
@@ -2600,6 +3035,21 @@ def configure_ospf(device_ip, ospf_data, session, log):
                 f"OSPF Configuration Failed | Process ID: {process_id} | "
                            f"RID: {router_id} | Networks: {network}"
             )
+            results["events"].append(
+                build_event(
+                    device_ip=device_ip,
+                    component="ospf_automation",
+                    check_name="ospf_config",
+                    status="FAIL",
+                    severity="CRITICAL",
+                    process_id=process_id,
+                    router_id=router_id,
+                    network_count=len(network_list),
+                    networks=[n["subnet"] for n in network_list],
+                    error=error,
+                    reason="OSPF configuration failed"
+                )
+            )
         else:
             logger.info(
                 "ospf_check",
@@ -2618,8 +3068,21 @@ def configure_ospf(device_ip, ospf_data, session, log):
                 f"OSPF Successfully Configured | Process ID: {process_id} | "
                 f"RID: {router_id} | Networks: {network}"
             )
+            results["events"].append(
+                build_event(
+                    device_ip=device_ip,
+                    component="ospf_automation",
+                    check_name="ospf_config",
+                    status="CONFIGURED",
+                    severity="INFO",
+                    process_id=process_id,
+                    router_id=router_id,
+                    network_count=len(network_list),
+                    networks=[n["subnet"] for n in network_list]
+                )
+            )
     except Exception as e:
-        logger.info(
+        log.exception(
             "ospf_check",
             extra={
                 "device_ip": device_ip,
@@ -2630,22 +3093,25 @@ def configure_ospf(device_ip, ospf_data, session, log):
                 "error": str(e),
                 "message": f"Try/Exception Error | OSPF Config Failed | Function: "
                            f"def configure_ospf"
-            }, exc_info=True
+            },)
+        results["events"].append(
+            build_event(
+                device_ip=device_ip,
+                component="ospf_automation",
+                check_name="ospf_config",
+                status="ERROR",
+                severity="CRITICAL",
+                process_id=process_id,
+                router_id=router_id,
+                networks=[n["subnet"] for n in network_list],
+                error=str(e)
+            )
         )
         results["configured"] = False
         results["validated"] = False
         results["error"] = str(e)
         results["status"] = "ERROR"
         return results
-    results["event"] = {
-        "component": "ospf",
-        "device": device_ip,
-        "process_id": process_id,
-        "router_id": router_id,
-        "network_count": len(network_list),
-        "status": results["status"],
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
     results["summary"] = {
         "sum_config": results["summary_config"],
     }
@@ -2733,8 +3199,27 @@ def main_process(task):
                 state = collect_device_state(conn)
                 changed = False
 
-                for vlan_data in context.get("vlan", [])
+                for vlan_data in context.get("vlan", []):
+                    vlan_id = vlan_data.get("vlan_id")
+                    name = vlan_data.get("name")
+                    exists = check_vlan(state, vlan_id, name)
+                    if exists:
+                        log.info(
+                            "vlan_check",
+                            extra={
+                                "device_ip": host_ip,
+                                "check_name": "vlan_precheck",
+                                "status": "SKIPPED",
+                                "message": f"VLAN already exists | VLAN: {vlan_id} | "
+                                           f"Name: {name}"
+                            }
+                        )
+                        device_result["actions_taken"].append(
+                            f"VLAN already exists | VLAN: {vlan_id} | "
+                            f"Name: {name}"
+                        )
+                        continue
                     config_vlan = configure_vlan(conn, host_ip, vlan_data, log)
-                    if config_vlan.get("status") == "SUCCESS":
+                    if config_vlan.get("status") == OpStatus.SUCCESS.value:
                         changed = True
-                        device_result["actions_taken"].append("summary")
+                        device_result["actions_taken"].append(config_vlan["summary"])
