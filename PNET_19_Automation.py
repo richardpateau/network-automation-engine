@@ -49,6 +49,7 @@ class StepStatus(Enum):
     FAILED = "FAILED"
     ERROR = "ERROR"
     DRY_RUN= "DRY_RUN"
+    SKIPPED = "SKIPPED"
 def get_severity(status):
     if status in {
         OpStatus.ERROR.value,
@@ -455,7 +456,6 @@ class OSPF_Checker:
         results = {
             "device": device_ip,
             "status": "HEALTHY",
-            "status_raw": "HEALTHY",
 
             "checks":{
                 "ospf_config_check": False,
@@ -507,12 +507,13 @@ class OSPF_Checker:
 
 
         }
+        timestamp = datetime.utcnow().isoformat()
         try:
             log.info(
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_config_check",
+                    "event_type": "ospf_config_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -526,48 +527,46 @@ class OSPF_Checker:
 
                 if config_ok:
                     results["metrics"]["config_checks_passed"] +=1
-                    results["status_raw"] = "PASS"
                     log.info(
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_config_check",
-                            "status": "PASS",
+                            "event_type": "ospf_config_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
-                            "message": "OSPF config Expected matches actual"
+                            "message": "OSPF config Expected matches actual config"
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_config_check",
-                            status="PASS",
-                            severity="INFO"
+                            event_type="ospf_config_check",
+                            outcome="SUCCESS",
+                            timestamp=timestamp,
+                            reason="OSPF config Expected matches actual config"
                         )
                     )
                 else:
                     results["metrics"]["config_checks_failed"] +=1
-                    results["status_raw"] = "FAIL"
                     log.info(
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_config_check",
-                            "status": "FAIL",
+                            "event_type": "ospf_config_check",
+                            "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "OSPF Config mismatch"
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_config_check",
-                            status="FAIL",
-                            severity="CRITICAL",
+                            event_type="ospf_config_check",
+                            outcome="FAIL",
                             reason="Operational state does not match intended NetBox config"
                         )
                     )
@@ -580,8 +579,8 @@ class OSPF_Checker:
                     "ospf_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "ospf_config_check",
-                        "status": "ERROR",
+                        "event_type": "ospf_config_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "component": "ospf_validator",
                         "error": str(e),
@@ -592,27 +591,24 @@ class OSPF_Checker:
                 results["checks"]["ospf_config_check"] = False
                 results["critical_issues"].append({
                     "check": "ospf_config_check",
-                    "reason": "Python Try/Exception",
+                    "reason": "Python Try/Exception Error",
                     "details": str(e)
                 })
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="ospf_config_check",
-                        status="ERROR",
+                        event_type="ospf_config_check",
+                        outcome="ERROR",
                         error= str(e),
-                        severity="CRITICAL",
 
                     )
                 )
-                results["status_raw"] = "ERROR"
-
-            logger.info(
+            log.info(
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_lsdb_check",
+                    "event_type": "ospf_lsdb_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -630,20 +626,21 @@ class OSPF_Checker:
                         "ospf_check",
                         extra= {
                             "device_ip": device_ip,
-                            "check_name": "ospf_lsdb_check",
-                            "status": "PASS",
+                            "event_type": "ospf_lsdb_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
                             "message": "OSPF LSDB is not empty. LSAs Found."
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_lsdb_check",
+                            event_type="ospf_lsdb_check",
                             status="PASS",
-                            severity="INFO"
+                            timestamp=timestamp,
+                            reason="OSPF LSDB is not empty. LSAs Found."
                         )
                     )
                 else:
@@ -652,24 +649,23 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_lsdb_check",
-                            "status": "FAIL",
+                            "event_type": "ospf_lsdb_check",
+                            "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "OSPF LSDB is empty (no LSAs found)"
                         }
                     )
                     results["critical_issues"].append({
-                        "check_name": "ospf_lsdb_check",
+                        "event_type": "ospf_lsdb_check",
                         "reason": "OSPF LSDB is empty (no LSAs found)"
                     })
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_lsdb_check",
-                            status="FAIL",
-                            severity="CRITICAL",
+                            event_type="ospf_lsdb_check",
+                            outcome="FAIL",
                             reason="OSPF LSDB is empty (no LSAs found)"
                         )
                     )
@@ -678,35 +674,36 @@ class OSPF_Checker:
                     "ospf_check",
                     extra = {
                         "device_ip": device_ip,
-                        "check_name": "ospf_lsdb_check",
-                        "status": "ERROR",
+                        "event_type": "ospf_lsdb_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "error": str(e),
                         "component": "ospf_validator",
-                        "message": "Try/Exception Error| LSDB Check | ospf_oper_ok "
+                        "message": "Try/Exception Error | LSDB Check | ospf_oper_ok "
                     },
                 )
                 results["checks"]["ospf_lsdb_check"] = False
                 results["critical_issues"].append({
-                    "check_name": "lsbd_check_exception",
+                    "event_type": "lsbd_check_exception",
                     "reason": "Try/Exception Error| LSDB Check | ospf_oper_ok",
                     "details": str(e)
                 })
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="ospf_lsdb_check",
-                        status="ERROR",
-                        severity="CRITICAL",
-                        error= str(e)
+                        event_type="ospf_lsdb_check",
+                        outcome="ERROR",
+                        error= str(e),
+                        timestamp=timestamp,
+                        reason="Try/Exception Error| LSDB Check | ospf_oper_ok"
                     )
                 )
             log.info(
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_neighbor_check",
+                    "event_type": "ospf_neighbor_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -719,24 +716,25 @@ class OSPF_Checker:
                 results["metrics"]["checks_run"] += 1
                 if nbr_ok:
                     results["metrics"]["neighbor_check_passed"] += 1
-                    logger.info(
+                    log.info(
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_neighbor_check",
-                            "status": "PASS",
+                            "event_type": "ospf_neighbor_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
                             "message": "OSPF Neighbors are in a valid (expected) state."
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_neighbor_check",
+                            event_type="ospf_neighbor_check",
                             status="PASS",
-                            severity="INFO"
+                            timestamp=timestamp,
+                            reason="OSPF Neighbors are in a valid (expected) state."
                         )
                     )
                 else:
@@ -745,24 +743,24 @@ class OSPF_Checker:
                         "ospf_check",
                         extra = {
                             "device_ip": device_ip,
-                            "check_name": "ospf_neighbor_check",
-                            "status": "FAIL",
+                            "event_type": "ospf_neighbor_check",
+                            "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "OSPF Neighbor not in the correct (expected) state"
                         }
                     )
                     results["critical_issues"].append({
-                        "check_name": "ospf_neighbor_check",
+                        "event_type": "ospf_neighbor_check",
                         "reason": "OSPF Neighbor not in the correct (expected) state"
                     })
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_neighbor_check",
-                            status="FAIL",
-                            severity="CRITICAL",
+                            event_type="ospf_neighbor_check",
+                            outcome="FAIL",
+                            timestamp=timestamp,
                             reason="OSPF Neighbor not in the correct (expected) state"
                         )
                     )
@@ -771,8 +769,8 @@ class OSPF_Checker:
                     "ospf_check",
                     extra= {
                         "device_ip": device_ip,
-                        "check_name": "ospf_neighbor_check",
-                        "status": "ERROR",
+                        "event_type": "ospf_neighbor_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "error": str(e),
                         "component": "ospf_validator",
@@ -781,25 +779,26 @@ class OSPF_Checker:
                 )
                 results["checks"]["ospf_neighbor_check"] = False
                 results["critical_issues"].append({
-                    "check_name": "ospf_neighbor_check",
+                    "event_type": "ospf_neighbor_check",
                     "reason": "Try/Exception Error | OSPF Neighbor Check | nbr_ok ",
                     "details": str(e)
                 })
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="ospf_neighbor_check",
+                        event_type="ospf_neighbor_check",
                         status="ERROR",
-                        severity="CRITICAL",
-                        error= str(e)
+                        error= str(e),
+                        timestamp=timestamp,
+                        reason="Try/Exception Error | OSPF Neighbor Check | nbr_ok "
                     )
                 )
             log.info(
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_timer_check",
+                    "event_type": "ospf_timer_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -816,8 +815,8 @@ class OSPF_Checker:
                         "ospf_check",
                         extra= {
                             "device_ip": device_ip,
-                            "check_name": "ospf_timer_check",
-                            "status": "PASS",
+                            "event_type": "ospf_timer_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
                             "message": "OSPF Timers (hello/dead) are valid. No mismatches."
@@ -825,38 +824,39 @@ class OSPF_Checker:
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_timer_check",
+                            event_type="ospf_timer_check",
                             status="PASS",
-                            severity="INFO"
+                            timestamp=timestamp,
+                            reason="OSPF Timers (hello/dead) are valid. No mismatches."
                         )
                     )
                 else:
                     results["metrics"]["ospf_timers_failed"] += 1
-                    logger.info(
+                    log.info(
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_timer_check",
-                            "status": "FAIL",
+                            "event_type": "ospf_timer_check",
+                            "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "OSPF Timers (hello/dead) Validation Failed"
                          }
                     )
                     results["critical_issues"].append({
-                        "check_name": "ospf_timer_check",
+                        "event_type": "ospf_timer_check",
                         "reason": "OSPF Timers (hello/dead) Validation Failed"
                     })
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_timer_check",
+                            event_type="ospf_timer_check",
                             status="FAIL",
-                            severity="CRITICAL",
+                            timestamp=timestamp,
                             reason="OSPF Timers (hello/dead) Validation Failed"
                         )
                     )
@@ -866,8 +866,8 @@ class OSPF_Checker:
                     "ospf_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "ospf_timer_check",
-                        "status": "ERROR",
+                        "event_type": "ospf_timer_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "error": str(e),
                         "component": "ospf_validator",
@@ -877,18 +877,19 @@ class OSPF_Checker:
                 )
                 results["checks"]["ospf_timer_check"] = False
                 results["critical_issues"].append({
-                    "check_name": "ospf_timer_check",
+                    "event_type": "ospf_timer_check",
                     "reason": "Try/Exception Error | OSPF Timer Validation | timer_ok ",
                     "details": str(e)
                 })
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="ospf_timer_check",
+                        event_type="ospf_timer_check",
                         status="ERROR",
-                        severity="CRITICAL",
-                        error=str(e)
+                        timestamp=timestamp,
+                        error=str(e),
+                        reason="Try/Exception Error | OSPF Timer Validation | timer_ok "
                     )
                 )
 
@@ -896,7 +897,7 @@ class OSPF_Checker:
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_auth_check",
+                    "event_type": "ospf_auth_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -914,20 +915,21 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_auth_check",
-                            "status": "PASS",
+                            "event_type": "ospf_auth_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
                             "message": "OSPF Authentication Validation Passed."
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_auth_check",
+                            event_type="ospf_auth_check",
                             status="PASS",
-                            severity="INFO"
+                            timestamp=timestamp,
+                            reason="OSPF Authentication Validation Passed."
                         )
                     )
                 else:
@@ -936,24 +938,24 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_auth_check",
-                            "status": "FAIL",
+                            "event_type": "ospf_auth_check",
+                            "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "OSPF Authentication Validation Failed"
                         }
                     )
                     results["critical_issues"].append({
-                        "check_name": "ospf_auth_check",
+                        "event_type": "ospf_auth_check",
                         "reason": "OSPF Authentication Validation Failed"
                     })
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_auth_check",
+                            event_type="ospf_auth_check",
                             status="FAIL",
-                            severity="CRITICAL",
+                            timestamp=timestamp,
                             reason="OSPF Authentication Validation Failed"
                         )
                     )
@@ -962,8 +964,8 @@ class OSPF_Checker:
                     "ospf_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "ospf_auth_check",
-                        "status": "ERROR",
+                        "event_type": "ospf_auth_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "error": str(e),
                         "component": "ospf_validator",
@@ -973,26 +975,27 @@ class OSPF_Checker:
                 )
                 results["checks"]["ospf_auth_check"] = False
                 results["critical_issues"].append({
-                    "check_name": "ospf_auth_check",
+                    "event_type": "ospf_auth_check",
                     "reason": "Try/Exception Error | OSPF Authentication Validation |"
                                    " authentication_ok",
                     "details": str(e)
                 })
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="ospf_auth_check",
+                        event_type="ospf_auth_check",
                         status="ERROR",
-                        severity="CRITICAL",
-                        error=str(e)
+                        error=str(e),
+                        reason="Try/Exception Error | OSPF Authentication Validation |"
+                                   " authentication_ok"
                     )
                 )
             log.info(
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_mtu_check",
+                    "event_type": "ospf_mtu_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -1009,20 +1012,21 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_mtu_check",
-                            "status": "PASS",
+                            "event_type": "ospf_mtu_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
                             "message": "OSPF MTU Validation Passed."
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_mtu_check",
+                            event_type="ospf_mtu_check",
                             status="PASS",
-                            severity="INFO"
+                            timestamp=timestamp,
+                            reason="OSPF MTU Validation Passed."
                         )
                     )
                 else:
@@ -1031,24 +1035,24 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "ospf_mtu_check",
-                            "status": "FAIL",
+                            "event_type": "ospf_mtu_check",
+                            "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "OSPF MTU Validation Failed"
                         }
                     )
                     results["critical_issues"].append({
-                        "check_name": "ospf_mtu_check",
+                        "event_type": "ospf_mtu_check",
                         "reason": "OSPF MTU Validation Failed"
                     })
                     results["events"].append(
                         build_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="ospf_mtu_check",
+                            event_type="ospf_mtu_check",
                             status="FAIL",
-                            severity="CRITICAL",
+                            timestamp=timestamp,
                             reason= "OSPF MTU Validation Failed"
                         )
                     )
@@ -1057,8 +1061,8 @@ class OSPF_Checker:
                     "ospf_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "ospf_mtu_check",
-                        "status": "ERROR",
+                        "event_type": "ospf_mtu_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "component": "ospf_validator",
                         "error": str(e),
@@ -1068,19 +1072,22 @@ class OSPF_Checker:
                 )
                 results["checks"]["ospf_mtu_check"] = False
                 results["critical_issues"].append({
-                    "check_name": "ospf_mtu_check",
-                    "reason": "OSPF MTU Validation Failed",
+                    "event_type": "ospf_mtu_check",
+                    "reason": "Try/Exception Error | OSPF MTU Validation  | "
+                                   "mtu_ok",
                     "detail": str(e)
                 })
 
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="ospf_mtu_check",
+                        event_type="ospf_mtu_check",
                         status="ERROR",
-                        severity="CRITICAL",
-                        error=str(e)
+                        timestamp=timestamp,
+                        error=str(e),
+                        reason="Try/Exception Error | OSPF MTU Validation  | "
+                                   "mtu_ok"
                     )
                 )
 
@@ -1088,7 +1095,7 @@ class OSPF_Checker:
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "lsa_age_check",
+                    "event_type": "lsa_age_check",
                     "status": "CHECKING",
                     "severity": "INFO",
                     "component": "ospf_validator",
@@ -1106,26 +1113,27 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "lsa_age_check",
-                            "status": "PASS",
+                            "event_type": "lsa_age_check",
+                            "status": StepStatus.SUCCESS.value,
                             "severity": "INFO",
                             "component": "ospf_validator",
                             "message": "OSPF LSA Age Validation Passed."
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="lsa_age_check",
+                            event_type="lsa_age_check",
                             status="PASS",
-                            severity="INFO"
+                            timestamp=timestamp,
+                            reason= "OSPF LSA Age Validation Passed."
                         )
                     )
                 elif lsa_status == "degraded":
                     results["checks"]["lsa_age_check"] = True
                     results["warnings"].append({
-                        "check_name": "las_age_check",
+                        "event_type": "las_age_check",
                         "reason": f"OSPF LSA Age Degraded | Max Age: {lsa_age}"
                     })
 
@@ -1133,7 +1141,7 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "lsa_age_check",
+                            "event_type": "lsa_age_check",
                             "status": "DEGRADED",
                             "severity": "WARNING",
                             "component": "ospf_validator",
@@ -1141,10 +1149,10 @@ class OSPF_Checker:
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="lsa_age_check",
+                            event_type="lsa_age_check",
                             status="DEGRADED",
                             severity="WARNING",
                             lsa_age=lsa_age
@@ -1157,7 +1165,7 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "lsa_age_check",
+                            "event_type": "lsa_age_check",
                             "status": "FAIL",
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
@@ -1166,17 +1174,17 @@ class OSPF_Checker:
                     )
                     results["checks"]["lsa_age_check"] = False
                     results["critical_issues"].append({
-                        "check_name": "lsa_age_check",
+                        "event_type": "lsa_age_check",
                         "reason": f"OSPF LSA Age Validation Failed. Max Age: {lsa_age}"
                     })
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="lsa_age_check",
+                            event_type="lsa_age_check",
                             status="FAIL",
-                            severity="CRITICAL",
                             reason="OSPF LSA Age Validation Failed",
+                            timestamp=timestamp,
                             lsa_age=lsa_age
                         )
                     )
@@ -1187,20 +1195,21 @@ class OSPF_Checker:
                         "ospf_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "lsa_age_check",
-                            "status": "ERROR",
+                            "event_type": "lsa_age_check",
+                            "status": StepStatus.ERROR.value,
                             "severity": "CRITICAL",
                             "component": "ospf_validator",
                             "message": "Unable to determine OSPF LSA state"
                         }
                     )
                     results["events"].append(
-                        build_event(
+                        emit_event(
                             device_ip=device_ip,
                             component="ospf_validator",
-                            check_name="lsa_age_check",
+                            event_type="lsa_age_check",
                             status="ERROR",
-                            severity="CRITICAL",
+                            timestamp=timestamp,
+                            reason="Unable to determine OSPF LSA state"
 
                         )
                     )
@@ -1209,8 +1218,8 @@ class OSPF_Checker:
                     "ospf_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "lsa_age_check",
-                        "status": "ERROR",
+                        "event_type": "lsa_age_check",
+                        "status": StepStatus.ERROR.value,
                         "severity": "CRITICAL",
                         "component": "ospf_validator",
                         "error": str(e),
@@ -1220,19 +1229,21 @@ class OSPF_Checker:
                 )
                 results["checks"]["lsa_age_check"] = False
                 results["critical_issues"].append({
-                    "check_name": "lsa_age_check",
+                    "event_type": "lsa_age_check",
                     "reason": "Try/Exception Error | OSPF LSA Age Validation | "
                                    "lsa_age_check",
                     "details": str(e)
                 })
                 results["events"].append(
-                    build_event(
+                    emit_event(
                         device_ip=device_ip,
                         component="ospf_validator",
-                        check_name="lsa_age_check",
+                        event_type="lsa_age_check",
                         status="ERROR",
-                        severity="CRITICAL",
-                        error=str(e)
+                        timestamp=timestamp,
+                        error=str(e),
+                        reason=("Try/Exception Error | OSPF LSA Age Validation | "
+                                   "lsa_age_check")
                     )
                 )
 
@@ -1257,7 +1268,7 @@ class OSPF_Checker:
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "ospf_overall_validation",
+                    "event_type": "ospf_overall_validation",
                     "status": results["status"],
                     "severity": severity,
                     "component": "ospf_validator",
@@ -1270,10 +1281,10 @@ class OSPF_Checker:
                 }
             )
             results["events"].append(
-                build_event(
+                emit_event(
                     device_ip=device_ip,
                     component="ospf_validator",
-                    check_name="ospf_overall_validation",
+                    event_type="ospf_overall_validation",
                     status=results["status"],
                     severity=severity,
                     checks_passed=checks_passed,
@@ -1289,7 +1300,7 @@ class OSPF_Checker:
             )
             results["status"] = "ERROR"
             results["critical_issues"].append({
-                "check_name": "overall_validation",
+                "event_type": "overall_validation",
                 "reason": f"[{device_ip}] Try/Exception Error | OSPF Validation |"
                 f" Function: def validate_device_ospf,",
                 "details": str(e)
@@ -1299,7 +1310,7 @@ class OSPF_Checker:
                 "ospf_check",
                 extra={
                     "device_ip": device_ip,
-                    "check_name": "overall",
+                    "event_type": "overall",
                     "status": "ERROR",
                     "severity": "CRITICAL",
                     "component": "ospf_validator",
@@ -2110,6 +2121,7 @@ def configure_vlan(conn, device_ip, vlan_data, log):
                 )
             else:
                 results["summary_config"] = f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}"
+                results["status"] = OpStatus.CONFIGURED.value
                 log.info(
                     "vlan_check",
                     extra = {
@@ -2325,6 +2337,9 @@ def configure_access_ports(conn, device_ip, access_data, log):
                     )
                 )
             else:
+                results["summary_config"] = (f"Access Port Successfully Configured | "
+                                             f"Interface: {access_interface} | VLAN: {access_vlan} ")
+                results["status"] = OpStatus.CONFIGURED.value
                 log.info(
                     "access_port_check",
                     extra = {
@@ -2352,9 +2367,6 @@ def configure_access_ports(conn, device_ip, access_data, log):
 
                     )
                 )
-
-                results["summary_config"] = (f"Access Port Successfully Configured | "
-                                             f"Interface: {access_interface} | VLAN: {access_vlan} ")
 
                 device_state = collect_device_state(conn)
 
@@ -2557,6 +2569,9 @@ def configure_trunk_ports(conn, device_ip, trunk_data, log):
                     )
                 )
             else:
+                results["summary_config"] =( f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
+                                             f"Allowed VLANs: {allowed_vlans}")
+                results["status"] = OpStatus.CONFIGURED.value
                 log.info(
                     "trunk_port_check",
                     extra={
@@ -2582,8 +2597,6 @@ def configure_trunk_ports(conn, device_ip, trunk_data, log):
                                    f"Allowed VLANs: {allowed_vlans}"
                     )
                 )
-                results["summary_config"] =( f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
-                                            f"Allowed VLANs: {allowed_vlans}")
 
                 device_state = collect_device_state(conn)
 
@@ -2804,11 +2817,12 @@ def configure_interface(conn, device_ip, interface_data, log):
                 )
             else:
                 results["summary_config"] = f"Interface Successfully Configured | Interface: {interface}"
+                results["status"] = OpStatus.CONFIGURED.value
                 log.info(
                     "interface_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "interface_config",
+                        "event_type": "interface_config",
                         "status": StepStatus.SUCCESS.value,
                         "severity": "INFO",
                         "component": "interface_automation",
@@ -2842,7 +2856,7 @@ def configure_interface(conn, device_ip, interface_data, log):
                         "interface_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "interface_validation",
+                            "event_type": "interface_validation",
                             "status": "PASS",
                             "severity": "INFO",
                             "component": "interface_automation",
@@ -2870,7 +2884,7 @@ def configure_interface(conn, device_ip, interface_data, log):
                         "interface_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "interface_validation",
+                            "event_type": "interface_validation",
                             "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "interface_automation",
@@ -2897,7 +2911,7 @@ def configure_interface(conn, device_ip, interface_data, log):
             "interface_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "interface_config",
+                "event_type": "interface_config",
                 "status": StepStatus.ERROR.value,
                 "error": str(e),
                 "component": "interface_automation",
@@ -3059,11 +3073,12 @@ def configure_roas(device_ip, roas_data, session, log):
             else:
                 results["summary_config"] = (f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
                                              f"VLAN: {router_vlan} | IP: {ip}/{mask}")
+                results["status"] = OpStatus.CONFIGURED.value
                 log.info(
                     "roas_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "roas_config",
+                        "event_type": "roas_config",
                         "status": StepStatus.SUCCESS.value,
                         "severity": "INFO",
                         "component": "roas_automation",
@@ -3075,7 +3090,7 @@ def configure_roas(device_ip, roas_data, session, log):
                     emit_event(
                         device_ip=device_ip,
                         component="roas_automation",
-                        check_name="roas_config",
+                        event_type="roas_config",
                         outcome="SUCCESS",
                         severity="INFO",
                         interface=router_interface,
@@ -3099,7 +3114,7 @@ def configure_roas(device_ip, roas_data, session, log):
                         "roas_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "roas_validation",
+                            "event_type": "roas_validation",
                             "status": "PASS",
                             "severity": "INFO",
                             "component": "roas_automation",
@@ -3129,7 +3144,7 @@ def configure_roas(device_ip, roas_data, session, log):
                         "roas_check",
                         extra={
                             "device_ip": device_ip,
-                            "check_name": "roas_validation",
+                            "event_type": "roas_validation",
                             "status": StepStatus.FAILED.value,
                             "severity": "CRITICAL",
                             "component": "roas_automation",
@@ -3141,7 +3156,7 @@ def configure_roas(device_ip, roas_data, session, log):
                         emit_event(
                             device_ip=device_ip,
                             component="roas_automation",
-                            check_name="roas_validation",
+                            event_type="roas_validation",
                             status="FAIL",
                             interface=router_interface,
                             vlan=router_vlan,
@@ -3158,7 +3173,7 @@ def configure_roas(device_ip, roas_data, session, log):
             "roas_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "roas_config",
+                "event_type": "roas_config",
                 "status": "ERROR",
                 "severity": "CRITICAL",
                 "component": "roas_automation",
@@ -3170,7 +3185,7 @@ def configure_roas(device_ip, roas_data, session, log):
             build_event(
                 device_ip=device_ip,
                 component="roas_automation",
-                check_name="roas_config",
+                event_type="roas_config",
                 status=StepStatus.ERROR.value,
                 interface=router_interface,
                 vlan=router_vlan,
@@ -3225,6 +3240,8 @@ def configure_ospf(device_ip, ospf_data, session, log):
         "configured": False,
         "validated": "PENDING",
         "status": "PENDING",
+
+        "timestamp": timestamp,
         "summary_config": None,
         "summary_validation": None,
         "summary": None,
@@ -3239,6 +3256,7 @@ def configure_ospf(device_ip, ospf_data, session, log):
                 "event_type": "ospf_config",
                 "severity": "INFO",
                 "component": "ospf_automation",
+                "timestamp": timestamp,
                 "message": f"Configuring OSPF | Process ID: {process_id} | "
                            f"RID: {router_id} | Networks: {network}"
             }
@@ -3246,7 +3264,7 @@ def configure_ospf(device_ip, ospf_data, session, log):
         if DRY_RUN:
             results["configured"] = False
             results["validated"] = False
-            results["status"] = OpStatus.SUCCESS.value
+            results["status"] = OpStatus.DRY_RUN.value
             results["summary_config"] = (f"[DRY_RUN] Would Configure OSPF | Process ID: {process_id} | "
                                         f"RID: {router_id} | Networks: {network}")
             log.info(
@@ -3257,6 +3275,7 @@ def configure_ospf(device_ip, ospf_data, session, log):
                     "event_type": "ospf_config",
                     "status": StepStatus.DRY_RUN.value,
                     "severity": "INFO",
+                    "timestamp": timestamp,
                     "message": (f"[DRY_RUN] Would Configure OSPF | Process ID: {process_id} | "
                                 f"RID: {router_id} | Networks: {network}")
                 }
@@ -3300,7 +3319,7 @@ def configure_ospf(device_ip, ospf_data, session, log):
                         "device_ip": device_ip,
                         "component": "ospf_automation",
                         "event_type": "ospf_config",
-                        "status": OpStatus.CONFIG_FAILED.value,
+                        "status": StepStatus.FAILED.value,
                         "severity": "CRITICAL",
                         "timestamps": timestamp,
                         "message": (
@@ -3313,13 +3332,14 @@ def configure_ospf(device_ip, ospf_data, session, log):
                     emit_event(
                         device_ip=device_ip,
                         component="ospf_automation",
-                        check_name="ospf_config",
-                        status="FAIL",
+                        event_type="ospf_config",
+                        outcome="FAIL",
                         process_id=process_id,
                         router_id=router_id,
                         network_count=len(network_list),
                         networks=[n["subnet"] for n in network_list],
                         error=error,
+                        timestamp=timestamp,
                         reason="OSPF configuration failed"
                     )
                 )
@@ -3329,14 +3349,15 @@ def configure_ospf(device_ip, ospf_data, session, log):
                     f"OSPF Successfully Configured | Process ID: {process_id} | "
                     f"RID: {router_id} | Networks: {network}"
                 )
-                logger.info(
+                log.info(
                     "ospf_check",
                     extra={
                         "device_ip": device_ip,
-                        "check_name": "ospf_config",
-                        "status": "CONFIGURED",
+                        "event_type": "ospf_config",
+                        "status": StepStatus.SUCCESS.value,
                         "severity": "INFO",
                         "component": "ospf_automation",
+                        "timestamp": timestamp,
                         "message": f"OSPF Successfully Configured | Process ID: {process_id} | "
                                f"RID: {router_id} | Networks: {network}"
                     }
@@ -3345,13 +3366,14 @@ def configure_ospf(device_ip, ospf_data, session, log):
                     build_event(
                         device_ip=device_ip,
                         component="ospf_automation",
-                        check_name="ospf_config",
-                        status="CONFIGURED",
-                        severity="INFO",
+                        event_type="ospf_config",
+                        outcome=StepStatus.SUCCESS.value,
                         process_id=process_id,
                         router_id=router_id,
                         network_count=len(network_list),
-                        networks=[n["subnet"] for n in network_list]
+                        networks=[n["subnet"] for n in network_list],
+                        timestamp=timestamp,
+                        reason=(f"OSPF Successfully Configured")
                     )
                 )
     except Exception as e:
@@ -3359,11 +3381,12 @@ def configure_ospf(device_ip, ospf_data, session, log):
             "ospf_check",
             extra={
                 "device_ip": device_ip,
-                "check_name": "ospf_config",
+                "event_type": "ospf_config",
                 "status": "ERROR",
                 "severity": "CRITICAL",
                 "component": "ospf_automation",
                 "error": str(e),
+                "timestamp": timestamp,
                 "message": f"Try/Exception Error | OSPF Config Failed | Function: "
                            f"def configure_ospf"
             },)
@@ -3371,23 +3394,42 @@ def configure_ospf(device_ip, ospf_data, session, log):
             build_event(
                 device_ip=device_ip,
                 component="ospf_automation",
-                check_name="ospf_config",
-                status="ERROR",
-                severity="CRITICAL",
+                event_type="ospf_config",
+                outcome=StepStatus.ERROR.value,
                 process_id=process_id,
                 router_id=router_id,
+                network_count=len(network_list),
                 networks=[n["subnet"] for n in network_list],
-                error=str(e)
+                error=str(e),
+                timestamp=timestamp,
+                reason="Try/Exception Error | def configure_ospf"
             )
         )
         results["configured"] = False
         results["validated"] = False
         results["error"] = str(e)
-        results["status"] = "ERROR"
+        results["status"] = OpStatus.ERROR.value
         return results
-    results["summary"] = {
-        "sum_config": results["summary_config"],
-    }
+    results["summary"] = (
+        results["summary_config"]
+    )
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="ospf_automation",
+            event_type="ospf_overall",
+            outcome=(
+                "DRY_RUN" if DRY_RUN else "SUCCESS"
+                if results["status"] == OpStatus.SUCCESS.value else "FAIL"
+            ),
+            process_id=process_id,
+            router_id=router_id,
+            network_count=len(network_list),
+            networks=[n["subnet"] for n in network_list],
+            timestamp=timestamp,
+            reason="OSPF Automation Complete"
+        )
+    )
     return results
 def main_process(task):
     device = task["device"]
@@ -3481,8 +3523,9 @@ def main_process(task):
                             "vlan_check",
                             extra={
                                 "device_ip": host_ip,
-                                "check_name": "vlan_precheck",
-                                "status": "SKIPPED",
+                                "component": "main_process"
+                                "event_type": "vlan_precheck",
+                                "status": StepStatus.SKIPPED.value,
                                 "message": f"VLAN already exists | VLAN: {vlan_id} | "
                                            f"Name: {name}"
                             }
@@ -3496,3 +3539,32 @@ def main_process(task):
                     if config_vlan.get("status") == OpStatus.SUCCESS.value:
                         changed = True
                         device_result["actions_taken"].append(config_vlan["summary"])
+
+                for access_data in context.get("access_ports", []):
+                    access_interface = access_data.get("access_interface", "")
+                    access_vlan = access_data.get("access_vlan", "")
+                    exists = check_switch_mode(state, access_interface, "access", access_vlan)
+                    if exists:
+                        log.info(
+                            "access_port_check",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "access_port_precheck",
+                                "status": StepStatus.SKIPPED.value,
+                                "message": f"Access Port Already Exists | Interface: "
+                                           f"{access_interface} | VLAN: {access_vlan}"
+                            }
+                        )
+                        device_result["actions_taken"].append(
+                            f"Access Port Already Exists | Interface: "
+                            f"{access_interface} | VLAN: {access_vlan}"
+                        )
+                        continue
+                        config_access = configure_access_ports(conn, host_ip, access_data, log)
+                        if config_access:
+                            changed = True
+                            device_result["actions_taken"].append(
+                                config_access["summary"]
+                            )
+                
