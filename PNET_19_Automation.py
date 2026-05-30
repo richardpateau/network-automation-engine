@@ -12,9 +12,7 @@ from numpy.array_api import arange
 from dataclasses import dataclass
 from typing import Literal
 from jinja2 import Environment, FileSystemLoader
-from ruamel.yaml.util import timestamp_regexp
-
-from Python.learning_archive.CLAUDE import results
+from ncclient import manager
 
 template_env = Environment(
     loader=FileSystemLoader("/run/media/rich/HDD/Templates/"),
@@ -118,6 +116,37 @@ def emit_event(
         reason=reason or default_reason,
         **kwargs
     )
+def safe_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+def normalize_acl(device_ip, acl_context):
+    acl_list = []
+
+    for acl_name, rules in acl_context.items():
+        normalized_rules = []
+        for rule in rules:
+            normalized_rules.append({
+                "sequence": safe_int(rule["sequence"]),
+                "action": rule["action"].lower(),
+                "protocol": rule["protocol"].lower(),
+
+                "source": {
+                    "source_ip": rule.get("source_ip", ""),
+                    "source_mask": rule.get("source_mask", "")
+                },
+                "destination": {
+                    "dest_ip": rule.get("dest_ip", ""),
+                    "dest_mask": rule.get("dest_mask")
+                },
+                "port": rule.get("port", "")
+            })
+            acl_list.append({
+                "device_ip": device_ip,
+                "acl_name": acl_name,
+                "rules": sorted(normalized_rules, key=lambda x:x["sequence"])
+            })
 def build_index(interfaces, ip_addresses, vlans):
     interfaces_on_device = defaultdict(list)
     ip_on_interface = defaultdict(list)
@@ -158,7 +187,8 @@ def get_netbox():
         "trunk_ports":[],
         "interface":[],
         "roass":[],
-        "ospf":[]
+        "ospf":[],
+        "ACL": set()
     }
     all_devices = list(nb.dcim.devices.filter(status="active"))
     all_interfaces = list(nb.dcim.interfaces.all())
@@ -184,6 +214,8 @@ def get_netbox():
         is_router = device_name.role.slug == "router"
         ospf_process = {}
         device_vlans = {}
+        acl_context = device_name.config_context.get("acl", {}
+                                                     )
         for device_interface in interface_on_device(device_name.id, []):
             tags = [t.slug for t in device_interface.tags]
 
@@ -304,16 +336,16 @@ def get_netbox():
         #             'name': vlan_id.name
         #         })
 
+        if acl_context:
+            config_data["ACL"].extend(
+                normalize_acl(host_ip, acl_context)
+            )
+
 
 
 
 
     return inventory, config_data
-def safe_int(value):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 def safe_send_config(conn, commands):
     try:
         conn.send_config_set(commands.splitlines())
@@ -361,6 +393,101 @@ def collect_device_state(conn):
     except Exception:
         device_state["interfaces"] = {}
     return device_state
+def fetch_netconf_raw(device_ip, auth, log):
+    username, password = auth
+
+    filter_xml = """
+      <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
+    """
+
+    with manager.connect(
+        host=device_ip,
+        port=830,
+        username=username,
+        password=password,
+        hostkey_verify=False,
+        timeout=30
+    ) as m:
+
+        response = m.get_config(source="running", filter=("subtree", filter_xml))
+        return response.data_xml
+def parse_netconf_state(xml_data):
+    import xmltodict
+
+    full_dict = xmltodict.parse(xml_data)
+
+    return full_dict.get("rpc-reply", {}).get("data", {}).get("native", {})
+def netconf_state(device_ip, auth, log):
+    xml_data = fetch_netconf_raw(device_ip, auth, log)
+    return parse_netconf_state(xml_data)
+def build_acl_state(native):
+    actual_acls = []
+
+    ip = native.get("ip", {})
+    access_list = ip.get("access-list", {})
+
+    extended = access_list.get("extended", [])
+
+    if isinstance(extended, dict):
+        extended = [extended]
+
+    for acl_obj in extended:
+
+        seq_rules = acl_obj.get("access-list-seq-rule", [])
+
+        if isinstance(seq_rules, dict):
+            seq_rules = [seq_rules]
+
+        rules = []
+
+        for r in seq_rules:
+            ace = r.get("ace-rule", {})
+
+            rules.append({
+                "seq": int(r.get("sequence", 0)),
+                "action": ace.get("action"),
+                "protocol": ace.get("protocol"),
+
+                "source_ip": ace.get("ipv4-address", "any"),
+                "source_mask": ace.get("mask"),
+
+                "dest_ip": ace.get("dest-ipv4-address", "any"),
+                "dest_mask": ace.get("dest-mask"),
+
+                "port": ace.get("dst-eq")
+            })
+
+        actual_acls.append({
+            "acl_name": acl_obj.get("name"),
+            "rules": sorted(rules, key=lambda x: x["seq"])
+        })
+
+    return actual_acls
+def check_acl(expected_acls, actual_acls):
+
+    actual_lookup = {
+        acl["acl_name"]: acl["rules"]
+        for acl in actual_acls
+    }
+
+    failures = []
+
+    for expected_acl in expected_acls:
+
+        acl_name = expected_acl["acl_name"]
+
+        if acl_name not in actual_lookup:
+            failures.append(
+                f"ACL {acl_name} missing from device"
+            )
+            continue
+
+        if expected_acl["rules"] != actual_lookup[acl_name]:
+            failures.append(
+                f"ACL {acl_name} rules mismatch"
+            )
+
+    return len(failures) == 0, failures
 def check_vlan(device_state, vlan_id, name):
     vlan_string = str(vlan_id)
     vlans_device_state = device_state.get("vlans", {}).get("vlans", {})
@@ -3431,6 +3558,40 @@ def configure_ospf(device_ip, ospf_data, session, log):
         )
     )
     return results
+def configure_acl(conn, device_ip, acl_data, log):
+    acl_name = acl_data.get("acl_name")
+    rules = acl_data.get("rules")
+    timestamp = datetime.utcnow().isoformat()
+
+    acl_rules = []
+    for rule in rules:
+        acl_rules.append(rule)
+    acl_rule = " | ".join(acl_rules)
+
+    results = {
+        "device_ip": device_ip,
+        "acl_name": acl_name,
+        "configured": False,
+        "validated": False,
+        "status": OpStatus.PENDING.value,
+        "component": "acl_automation",
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "events": []
+    }
+    try:
+        log.info(
+            "acl_check",
+            extra={
+                "device_ip": device_ip,
+                "event_type": "acl_config",
+                "component": "acl_automation",
+                "message": f"Configuring ACLs via NETCONF | Name: {acl_name} | "
+                           f"Rules: "
+            }
+        )
 def main_process(task):
     device = task["device"]
     context = task["context"]
