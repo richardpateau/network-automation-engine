@@ -188,7 +188,8 @@ def get_netbox():
         "interface":[],
         "roass":[],
         "ospf":[],
-        "ACL": set()
+        "ACL": set(),
+        "acl_bindings": []
     }
     all_devices = list(nb.dcim.devices.filter(status="active"))
     all_interfaces = list(nb.dcim.interfaces.all())
@@ -214,8 +215,9 @@ def get_netbox():
         is_router = device_name.role.slug == "router"
         ospf_process = {}
         device_vlans = {}
-        acl_context = device_name.config_context.get("acl", {}
-                                                     )
+        context = device_name.config_context
+        acl_bindings = context.get("acl_bindings", [])
+        acl_context = device_name.config_context.get("acl", {})
         for device_interface in interface_on_device(device_name.id, []):
             tags = [t.slug for t in device_interface.tags]
 
@@ -340,6 +342,13 @@ def get_netbox():
             config_data["ACL"].extend(
                 normalize_acl(host_ip, acl_context)
             )
+        for binding in acl_bindings:
+            config_data["acl_bindings"].append({
+                "device": host_ip,
+                "interface": binding.get("interface", ""),
+                "acl_name": binding.get("acl_name", ""),
+                "direction": binding.get("direction", "")
+            })
 
 
 
@@ -350,6 +359,16 @@ def safe_send_config(conn, commands):
     try:
         conn.send_config_set(commands.splitlines())
         return True, None
+    except Exception as e:
+        return False, str(e)
+def safe_netconf_edit(m, payload):
+    try:
+        m.edit_config(
+            target="running",
+            config=payload
+        )
+        return True, None
+
     except Exception as e:
         return False, str(e)
 def create_restconf_session(auth):
@@ -411,6 +430,17 @@ def fetch_netconf_raw(device_ip, auth, log):
 
         response = m.get_config(source="running", filter=("subtree", filter_xml))
         return response.data_xml
+def collect_netconf_state(session):
+    filter_xml = """
+    <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
+    """
+
+    response = session.get_config(
+        source="running",
+        filter=("subtree", filter_xml)
+    )
+
+    return parse_netconf_state(response.data_xml)
 def parse_netconf_state(xml_data):
     import xmltodict
 
@@ -443,19 +473,19 @@ def build_acl_state(native):
         for r in seq_rules:
             ace = r.get("ace-rule", {})
 
-            rules.append({
+        rules = [
+            {
                 "seq": int(r.get("sequence", 0)),
                 "action": ace.get("action"),
                 "protocol": ace.get("protocol"),
-
                 "source_ip": ace.get("ipv4-address", "any"),
                 "source_mask": ace.get("mask"),
-
                 "dest_ip": ace.get("dest-ipv4-address", "any"),
                 "dest_mask": ace.get("dest-mask"),
-
                 "port": ace.get("dst-eq")
-            })
+            }
+            for r in seq_rules
+        ]
 
         actual_acls.append({
             "acl_name": acl_obj.get("name"),
@@ -463,6 +493,35 @@ def build_acl_state(native):
         })
 
     return actual_acls
+def build_acl_bindings_state(native):
+    actual = []
+
+    interfaces = native.get("interface", {}).get("GigabitEthernet", [])
+
+    if isinstance(interfaces, dict):
+        interfaces = [interfaces]
+
+    for intf in interfaces:
+        name = intf.get("name")
+
+        ip = intf.get("ip", {})
+        access_group = ip.get("access-group", {})
+
+        if not access_group:
+            continue
+
+        # can be list or dict depending on device
+        if isinstance(access_group, dict):
+            access_group = [access_group]
+
+        for ag in access_group:
+            actual.append({
+                "interface": name,
+                "acl_name": ag.get("acl-name"),
+                "direction": ag.get("direction")  # "in" / "out"
+            })
+
+    return actual
 def check_acl(expected_acls, actual_acls):
 
     actual_lookup = {
@@ -485,6 +544,24 @@ def check_acl(expected_acls, actual_acls):
         if expected_acl["rules"] != actual_lookup[acl_name]:
             failures.append(
                 f"ACL {acl_name} rules mismatch"
+            )
+
+    return len(failures) == 0, failures
+def check_acl_binding(expected_bindings, actual_bindings):
+    failures = []
+
+    # build lookup from actual device state
+    actual_lookup = {
+        (b["interface"], b["acl_name"], b["direction"])
+        for b in actual_bindings
+    }
+
+    for exp in expected_bindings:
+        key = (exp["interface"], exp["acl_name"], exp["direction"])
+
+        if key not in actual_lookup:
+            failures.append(
+                f"Missing ACL binding: {exp['acl_name']} on {exp['interface']} {exp['direction']}"
             )
 
     return len(failures) == 0, failures
@@ -3558,15 +3635,15 @@ def configure_ospf(device_ip, ospf_data, session, log):
         )
     )
     return results
-def configure_acl(conn, device_ip, acl_data, log):
+def configure_acl(session, device_ip, acl_data, log):
     acl_name = acl_data.get("acl_name")
     rules = acl_data.get("rules")
     timestamp = datetime.utcnow().isoformat()
 
-    acl_rules = []
-    for rule in rules:
-        acl_rules.append(rule)
-    acl_rule = " | ".join(acl_rules)
+    rules_summary = [
+        f"{r['sequence']} {r['action']} {r['protocol']}"
+        for r in rules
+    ]
 
     results = {
         "device_ip": device_ip,
@@ -3588,10 +3665,294 @@ def configure_acl(conn, device_ip, acl_data, log):
                 "device_ip": device_ip,
                 "event_type": "acl_config",
                 "component": "acl_automation",
+                "acl_name": acl_name,
+                "rule_count": len(rules),
+                "rule_list": rules_summary,
                 "message": f"Configuring ACLs via NETCONF | Name: {acl_name} | "
-                           f"Rules: "
+                           f"Rules: {len(rules)}"
             }
         )
+        if DRY_RUN:
+            results["configured"] = False
+            results["validated"] = False
+            results["status"] = OpStatus.DRY_RUN.value
+            results["summary_config"] = (
+                f"[DRY-RUN] Would Configure Extended ACL via NETCONF | Name: {acl_name} "
+                f"Rules: {len(rules)}"
+            )
+            log.info(
+                "acl_check",
+                extra= {
+                    "device_ip": device_ip,
+                    "component": "acl_automation",
+                    "event_type": "acl_config",
+                    "status": StepStatus.DRY_RUN.value,
+                    "acl_name": acl_name,
+                    "rule_count": len(rules),
+                    "rule_list": rules_summary,
+                    "message": (
+                        f"[DRY-RUN] Would Configure Extended ACL via NETCONF | Name: {acl_name} "
+                        f"Rules: {len(rules)}"
+                    )
+                }
+            )
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="acl_automation",
+                    event_type="acl_config",
+                    outcome=StepStatus.DRY_RUN.value,
+                    acl_name=acl_name,
+                    rule_count=len(rules),
+                    rule_summary=rules_summary,
+                    timestamp=timestamp,
+                    reason=(
+                        f"[DRY-RUN] Would Configure Extended ACL via NETCONF | Name: {acl_name} "
+                        f"Rules: {len(rules)}"
+                    )
+                )
+            )
+        else:
+            template = template_env.get("ACL.j2")
+            commands = template.render(
+                acl_name=acl_name,
+                rules=rules
+            )
+
+            configured, error = safe_netconf_edit(
+                session, commands
+            )
+            results["configured"] = configured
+
+            if not configured:
+                results["status"] = OpStatus.CONFIG_FAILED.value
+                results["error"] = error
+                results["summary_config"] = (
+                    f"Failed to Configure Extended ACL via NETCONF | Name: {acl_name} "
+                    f"Rules: {len(rules)}"
+                )
+                log.info(
+                    "acl_check",
+                    extra= {
+                        "device_ip": device_ip,
+                        "component": "acl_automation",
+                        "event_type": "acl_config",
+                        "status": StepStatus.FAILED.value,
+                        "acl_name": acl_name,
+                        "rule_count": len(rules),
+                        "rule_list": rules_summary,
+                        "message": (
+                            f"Failed to Configure Extended ACL via NETCONF | Name: {acl_name} "
+                            f"Rules: {len(rules)}"
+                        )
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="acl_automation",
+                        event_type="acl_config",
+                        outcome=StepStatus.FAILED.value,
+                        acl_name=acl_name,
+                        rule_count=len(rules),
+                        rule_summary=rules_summary,
+                        timestamp=timestamp,
+                        reason=(
+                            f"Failed to Configure Extended ACL via NETCONF | Name: {acl_name} "
+                            f"Rules: {len(rules)}"
+                        )
+                    )
+                )
+            else:
+                results["status"] = OpStatus.CONFIGURED.value
+                results["summary_config"] = (
+                    f"Successfully Configured Extended ACL via NETCONF | Name: {acl_name} "
+                    f"Rules: {len(rules)}"
+                )
+                log.info(
+                    "acl_check",
+                    extra= {
+                        "device_ip": device_ip,
+                        "component": "acl_automation",
+                        "event_type": "acl_config",
+                        "status": StepStatus.SUCCESS.value,
+                        "acl_name": acl_name,
+                        "rule_count": len(rules),
+                        "rule_list": rules_summary,
+                        "message": (
+                            f"Successfully Configured Extended ACL via NETCONF | Name: {acl_name} "
+                            f"Rules: {len(rules)}"
+                        )
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="acl_automation",
+                        event_type="acl_config",
+                        outcome=StepStatus.SUCCESS.value,
+                        acl_name=acl_name,
+                        rule_count=len(rules),
+                        rule_summary=rules_summary,
+                        timestamp=timestamp,
+                        reason=(
+                            f"Successfully Configured Extended ACL Name: {acl_name} "
+                            f"Rules: {len(rules)} | API: NETCONF"
+                        )
+                    )
+                )
+                actual_native = collect_netconf_state(session)
+
+                actual_acls = build_acl_state(actual_native)
+
+                acl_ok, failures = check_acl(
+                    actual_acls,
+                    [acl_data]
+                )
+
+                results["validated"] = acl_ok
+                results["failures"] = failures
+
+
+                if acl_ok:
+                    results["status"] = OpStatus.SUCCESS.value
+                    results["summary_validation"] = (
+                        f"Extended ACL Validation Successful | Name: {acl_name} "
+                        f"Rules: {len(rules)} | API: NETCONF"
+                    )
+                    log.info(
+                        "acl_check",
+                        extra= {
+                            "device_ip": device_ip,
+                            "component": "acl_automation",
+                            "event_type": "acl_validation",
+                            "status": StepStatus.SUCCESS.value,
+                            "acl_name": acl_name,
+                            "rule_count": len(rules),
+                            "rule_list": rules_summary,
+                            "message": (
+                                 f"Extended ACL Validation Successful | Name: {acl_name} "
+                                 f"Rules: {len(rules)} | API: NETCONF"
+                            )
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="acl_automation",
+                            event_type="acl_validation",
+                            outcome=StepStatus.SUCCESS.value,
+                            acl_name=acl_name,
+                            rule_count=len(rules),
+                            rule_summary=rules_summary,
+                            timestamp=timestamp,
+                            reason=(
+                                f"Extended ACL Validation Successful | Name: {acl_name} "
+                                f"Rules: {len(rules)} | API: NETCONF"
+                            )
+                        )
+                    )
+                else:
+                    results["status"] = OpStatus.VALIDATION_FAILED.value
+                    results["summary_validation"] = (
+                        f"Extended ACL Validation Failed | Name: {acl_name} "
+                        f"Rules: {len(rules)} | Failures: {failures} | "
+                        f"API: NETCONF"
+                    )
+                    log.info(
+                        "acl_check",
+                        extra= {
+                            "device_ip": device_ip,
+                            "component": "acl_automation",
+                            "event_type": "acl_validation",
+                            "status": StepStatus.FAILED.value,
+                            "acl_name": acl_name,
+                            "rule_count": len(rules),
+                            "rule_list": rules_summary,
+                            "failures": failures,
+                            "message": (
+                                f"Extended ACL Validation Failed | Name: {acl_name} "
+                                f"Rules: {len(rules)} | Failures: {failures} | "
+                                f"API: NETCONF"
+                            )
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="acl_automation",
+                            event_type="acl_validation",
+                            outcome=StepStatus.FAILED.value,
+                            acl_name=acl_name,
+                            rule_count=len(rules),
+                            rule_summary=rules_summary,
+                            timestamp=timestamp,
+                            reason=(
+                                f"Extended ACL Validation Failed | Name: {acl_name} "
+                                f"Rules: {len(rules)} | Failures: {failures} | "
+                                f"API: NETCONF"
+                            )
+                        )
+                    )
+    except Exception as e:
+        results["status"] = OpStatus.ERROR.value
+        results["error"] = str(e)
+        log.exception(
+            "acl_check",
+            extra= {
+                "device_ip": device_ip,
+                "component": "acl_automation",
+                "event_type": "acl_config",
+                "status": StepStatus.ERROR.value,
+                "acl_name": acl_name,
+                "rule_count": len(rules),
+                "rule_list": rules_summary,
+                "error": str(e),
+                "message": (
+                    f"Try/Exception Error | Name: {acl_name} "
+                    f"Rules: {len(rules)} | API: NETCONF"
+                )
+            }
+        )
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="acl_automation",
+                event_type="acl_config",
+                outcome=StepStatus.ERROR.value,
+                acl_name=acl_name,
+                rule_count=len(rules),
+                rule_summary=rules_summary,
+                timestamp=timestamp,
+                reason=(
+                    f"Try/Exception Error | Name: {acl_name} "
+                    f"Rules: {len(rules)} | API: NETCONF"
+                )
+            )
+        )
+        return results
+    results["summary"] = (
+        results["summary_validation"]
+        or results["summary_config"]
+    )
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="acl_automation",
+            event_type="acl_overall",
+            outcome=(
+                "DRY_RUN" if DRY_RUN else "SUCCESS"
+                if results["status"] == OpStatus.SUCCESS.value
+                else "FAIL"
+            ),
+            acl_name=acl_name,
+            rule_count=len(rules),
+            rule_summary=rules_summary,
+            timestamp=timestamp,
+            reason=f"ACL Automation Complete"
+        )
+    )
+    return results
 def main_process(task):
     device = task["device"]
     context = task["context"]
