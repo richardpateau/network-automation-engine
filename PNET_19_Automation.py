@@ -34,6 +34,7 @@ logger.addHandler(console)
 netbox_url = "http://localhost:8000"
 netbox_token = "*****"
 DRY_RUN = True
+timestamp = datetime.utcnow().isoformat()
 class OpStatus(Enum):
     SUCCESS="SUCCESS"
     CONFIG_FAILED= "FAILED_CONFIG"
@@ -188,8 +189,12 @@ def get_netbox():
         "interface":[],
         "roass":[],
         "ospf":[],
-        "ACL": set(),
-        "acl_bindings": []
+        "ACL": [],
+        "acl_bindings": [],
+        "ntp": {
+            "keys": [],
+            "servers": []
+        }
     }
     all_devices = list(nb.dcim.devices.filter(status="active"))
     all_interfaces = list(nb.dcim.interfaces.all())
@@ -215,9 +220,10 @@ def get_netbox():
         is_router = device_name.role.slug == "router"
         ospf_process = {}
         device_vlans = {}
-        context = device_name.config_context
+        context = device_name.config_context or {}
         acl_bindings = context.get("acl_bindings", [])
         acl_context = device_name.config_context.get("acl", {})
+        ntp_context = context.get("ntp", {})
         for device_interface in interface_on_device(device_name.id, []):
             tags = [t.slug for t in device_interface.tags]
 
@@ -349,10 +355,17 @@ def get_netbox():
                 "acl_name": binding.get("acl_name", ""),
                 "direction": binding.get("direction", "")
             })
+        #ntp
+        ntp_keys = ntp_context.get("keys", [])
+        ntp_servers = ntp_context.get("servers", [])
 
+        if isinstance(ntp_keys, dict):
+            ntp_keys = [ntp_keys]
+        if isinstance(ntp_servers, dict):
+            ntp_servers = [ntp_servers]
 
-
-
+        config_data["ntp"]["keys"].extend(ntp_keys)
+        config_data["ntp"]["servers"].extend(ntp_servers)
 
     return inventory, config_data
 def safe_send_config(conn, commands):
@@ -518,10 +531,76 @@ def build_acl_bindings_state(native):
             actual.append({
                 "interface": name,
                 "acl_name": ag.get("acl-name"),
-                "direction": ag.get("direction")  # "in" / "out"
+                "direction": ag.get("direction")
             })
 
     return actual
+def build_ntp_state(native):
+    ntp = native.get("ntp", {})
+
+    # -------- KEYS --------
+    keys = ntp.get("authentication-key", [])
+    if isinstance(keys, dict):
+        keys = [keys]
+
+    actual_keys = [
+        {
+            "id": int(k.get("number", 0)),
+            "md5": k.get("md5")   # keep for debugging ONLY
+        }
+        for k in keys
+    ]
+
+    # -------- SERVERS --------
+    servers = ntp.get("server", {}).get("server-list", [])
+    if isinstance(servers, dict):
+        servers = [servers]
+
+    actual_servers = [
+        {
+            "ip": s.get("ip-address"),
+            "key": int(s.get("key", 0))
+        }
+        for s in servers
+    ]
+
+    return {
+        "keys": sorted(actual_keys, key=lambda x: x["id"]),
+        "servers": sorted(actual_servers, key=lambda x: x["ip"])
+    }
+def check_ntp(expected_ntp, actual_ntp):
+
+    failures = []
+
+    # ---------------- KEYS (ONLY ID) ----------------
+    expected_keys = sorted(
+        [{"id": k["id"]} for k in expected_ntp.get("keys", [])],
+        key=lambda x: x["id"]
+    )
+
+    actual_keys = sorted(
+        [{"id": k["id"]} for k in actual_ntp.get("keys", [])],
+        key=lambda x: x["id"]
+    )
+
+    if expected_keys != actual_keys:
+        failures.append("NTP authentication keys mismatch (id only)")
+
+    # ---------------- SERVERS (IP + KEY ID) ----------------
+    expected_servers = sorted(
+        [(s["ip"], s["key"]) for s in expected_ntp.get("servers", [])],
+        key=lambda x: x[0]
+    )
+
+    actual_servers = sorted(
+        [(s["ip"], s["key"]) for s in actual_ntp.get("servers", [])],
+        key=lambda x: x[0]
+    )
+
+    if expected_servers != actual_servers:
+        failures.append("NTP servers mismatch (ip + key)")
+
+    return len(failures) == 0, failures
 def check_acl(expected_acls, actual_acls):
 
     actual_lookup = {
@@ -3953,6 +4032,347 @@ def configure_acl(session, device_ip, acl_data, log):
         )
     )
     return results
+def configure_acl_bindings(session, device_ip, acl_binding_data, log):
+    interface = acl_binding_data.get("interface", "")
+    acl_name = acl_binding_data.get("acl_name", "")
+    direction = acl_binding_data.get("direction", "")
+
+    results = {
+        "device_ip": device_ip,
+        "interface": interface,
+        "acl_name": acl_name,
+        "direction": direction,
+
+        "configured": False,
+        "validated": False,
+        "status": OpStatus.PENDING.value,
+        "component": "acl_binding_automation",
+
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "events": []
+    }
+    try:
+        log.info(
+            "acl_binding_check",
+            extra={
+                "device_ip": device_ip,
+                "event_type": "acl_binding_config",
+                "severity": "INFO",
+                "component": "acl_binding_automation",
+                "transport": "NETCONF",
+                "message": f"Starting ACL Binding Configuration | Interface: {interface}"
+                           f" | Name: {acl_name} | Direction: {direction}"
+            }
+        )
+        if DRY_RUN:
+            results["configured"] = False
+            results["validated"] = False
+            results["status"] = OpStatus.DRY_RUN.value
+            results["summary_config"] = (
+                               f"[DRY_RUN] Would Configure ACL Binding Configuration "
+                               f"| Interface: {interface}"
+                               f" | Name: {acl_name} | Direction: {direction}"
+            )
+            log.info(
+                "acl_binding_check",
+                extra={
+                    "device_ip": device_ip,
+                    "event_type": "acl_binding_config",
+                    "status": StepStatus.DRY_RUN.value,
+                    "severity": "INFO",
+                    "component": "acl_binding_automation",
+                    "transport": "NETCONF",
+                    "message": f"[DRY_RUN] Would Configure ACL Binding Configuration "
+                               f"| Interface: {interface}"
+                               f" | Name: {acl_name} | Direction: {direction}"
+                }
+            )
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="acl_binding_automation",
+                    event_type="acl_binding_config",
+                    outcome="DRY_RUN",
+                    interface=interface,
+                    acl_name=acl_name,
+                    direction=direction,
+                    transport="NETCONF",
+                    timestamp=timestamp,
+                    reason=(
+                        f"[DRY_RUN] Would Configure ACL Binding Configuration "
+                        f"| Interface: {interface}"
+                        f" | Name: {acl_name} | Direction: {direction}"
+                    )
+                )
+            )
+        else:
+            template = template_env.get_template("ACL_BINDING.j2")
+            commands = template.render(
+                interface=interface,
+                acl_name=acl_name,
+                direction=direction
+            )
+
+            configured, error = safe_netconf_edit(session, commands)
+
+            results["configured"] = configured
+
+            if not configured:
+                results["status"] = OpStatus.CONFIG_FAILED.value
+                results["error"] = error
+                results["summary_config"] = (
+                    f"ACL Binding Configuration Failed | Interface: {interface}"
+                    f" | Name: {acl_name} | Direction: {direction}"
+                )
+                log.info(
+                    "acl_binding_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "event_type": "acl_binding_config",
+                        "status": StepStatus.FAILED.value,
+                        "severity": "CRITICAL",
+                        "component": "acl_binding_automation",
+                        "transport": "NETCONF",
+                        "error": error,
+                        "message": f"ACL Binding Configuration Failed "
+                                   f"| Interface: {interface}"
+                                   f" | Name: {acl_name} | Direction: {direction}"
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="acl_binding_automation",
+                        event_type="acl_binding_config",
+                        outcome="FAIL",
+                        interface=interface,
+                        acl_name=acl_name,
+                        direction=direction,
+                        transport="NETCONF",
+                        timestamp=timestamp,
+                        reason=(
+                            f"ACL Binding Configuration Failed "
+                            f"| Interface: {interface}"
+                            f" | Name: {acl_name} | Direction: {direction}"
+                        )
+                    )
+                )
+            else:
+                results["status"] = OpStatus.CONFIGURED.value
+                results["summary_config"] = (
+                    f"Successfully Configured ACL Binding Configuration "
+                    f"| Interface: {interface}"
+                    f" | Name: {acl_name} | Direction: {direction}"
+                )
+                log.info(
+                    "acl_binding_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "event_type": "acl_binding_config",
+                        "status": StepStatus.SUCCESS.value,
+                        "severity": "INFO",
+                        "component": "acl_binding_automation",
+                        "transport": "NETCONF",
+                        "message": (
+                            f"Successfully Configured ACL Binding Configuration "
+                            f"| Interface: {interface}"
+                            f" | Name: {acl_name} | Direction: {direction}"
+                        )
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="acl_binding_automation",
+                        event_type="acl_binding_config",
+                        outcome="SUCCESS",
+                        interface=interface,
+                        acl_name=acl_name,
+                        direction=direction,
+                        transport="NETCONF",
+                        timestamp=timestamp,
+                        reason=(
+                            f"Successfully Configured ACL Binding Configuration "
+                            f"| Interface: {interface}"
+                            f" | Name: {acl_name} | Direction: {direction}"
+                        )
+                    )
+                )
+
+                native = collect_netconf_state(session)
+                actual_bindings = build_acl_bindings_state(native)
+
+                binding_ok, failures = check_acl_binding(
+                    acl_binding_data,
+                    actual_bindings
+                )
+
+                results["validated"] = binding_ok
+
+                if binding_ok:
+                    results["status"] = OpStatus.SUCCESS.value
+                    results["summary_validation"] = (
+                        f"ACL Binding Validation Successful "
+                        f"| Interface: {interface}"
+                        f" | Name: {acl_name} | Direction: {direction}"
+                    )
+
+                    log.info(
+                        "acl_binding_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "event_type": "acl_binding_validation",
+                            "status": StepStatus.SUCCESS.value,
+                            "severity": "INFO",
+                            "component": "acl_binding_automation",
+                            "transport": "NETCONF",
+                            "message": (
+                                f"ACL Binding Validation Successful "
+                                f"| Interface: {interface}"
+                                f" | Name: {acl_name} | Direction: {direction}"
+                            )
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="acl_binding_automation",
+                            event_type="acl_binding_validation",
+                            outcome="SUCCESS",
+                            interface=interface,
+                            acl_name=acl_name,
+                            direction=direction,
+                            transport="NETCONF",
+                            timestamp=timestamp,
+                            reason=(
+                                    f"ACL Binding Validation Successful "
+                                    f"| Interface: {interface}"
+                                    f" | Name: {acl_name} | Direction: {direction}"
+                            )
+                        )
+                    )
+                else:
+                    results["status"] = OpStatus.VALIDATION_FAILED.value
+                    results["drift"] = failures
+                    results["summary_validation"] = (
+                        f"ACL Binding Validation Failed "
+                        f"| Interface: {interface}"
+                        f" | Name: {acl_name} | Direction: {direction}"
+                    )
+                    log.info(
+                        "acl_binding_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "event_type": "acl_binding_validation",
+                            "status": StepStatus.FAILED.value,
+                            "severity": "CRITICAL",
+                            "component": "acl_binding_automation",
+                            "transport": "NETCONF",
+                            "results": failures,
+                            "message": (
+                                    f"ACL Binding Validation Failed "
+                                    f"| Interface: {interface}"
+                                    f" | Name: {acl_name} | Direction: {direction}"
+                            )
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="acl_binding_automation",
+                            event_type="acl_binding_validation",
+                            outcome="FAIL",
+                            interface=interface,
+                            acl_name=acl_name,
+                            direction=direction,
+                            transport="NETCONF",
+                            failures="failures",
+                            timestamp=timestamp,
+                            reason=(
+                                f"ACL Binding Validation Failed "
+                                f"| Interface: {interface}"
+                                f" | Name: {acl_name} | Direction: {direction}"
+                        )
+                            )
+                    )
+
+    except Exception as e:
+        results["status"] = OpStatus.ERROR.value
+        results["error"] = str(e)
+        log.info(
+            "acl_binding_check",
+            extra={
+                "device_ip": device_ip,
+                "event_type": "acl_binding_config",
+                "status": StepStatus.ERROR.value,
+                "severity": "CRITICAL",
+                "component": "acl_binding_automation",
+                "transport": "NETCONF",
+                "message": (
+                    f"Try/Exception Error | ACL Binding "
+                    f"| Interface: {interface}"
+                    f" | Name: {acl_name} | Direction: {direction}"
+                )
+            }
+        )
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="acl_binding_automation",
+                event_type="acl_binding_config",
+                outcome="FAIL",
+                interface=interface,
+                acl_name=acl_name,
+                direction=direction,
+                transport="NETCONF",
+                timestamp=timestamp,
+                reason=(
+                    f"Try/Exception Error | ACL Binding "
+                    f"| Interface: {interface}"
+                    f" | Name: {acl_name} | Direction: {direction}"
+                )
+            )
+        )
+        return results
+    results["summary"] = (
+        results["summary_validation"]
+        or results["summary_config"]
+    )
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="acl_binding_automation",
+            event_type="acl_binding_overall",
+            outcome=(
+                "DRY_RUN" if DRY_RUN else "SUCCESS"
+                if results["status"] == OpStatus.SUCCESS.value
+                else "FAIL"
+            ),
+            interface=interface,
+            acl_name=acl_name,
+            direction=direction,
+            transport="NETCONF",
+            timestamp=timestamp,
+            reason=(
+                f"Try/Exception Error | ACL Binding "
+                f"| Interface: {interface}"
+                f" | Name: {acl_name} | Direction: {direction}"
+            )
+        )
+
+    )
+    return results
+
+
+
+
+
+
+
+
 def main_process(task):
     device = task["device"]
     context = task["context"]
