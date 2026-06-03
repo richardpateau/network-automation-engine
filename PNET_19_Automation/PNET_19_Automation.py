@@ -193,8 +193,10 @@ def get_netbox():
         "acl_bindings": [],
         "ntp": {
             "keys": [],
-            "servers": []
-        }
+            "servers": [],
+            "trusted": []
+        },
+        "qos": []
     }
     all_devices = list(nb.dcim.devices.filter(status="active"))
     all_interfaces = list(nb.dcim.interfaces.all())
@@ -224,6 +226,7 @@ def get_netbox():
         acl_bindings = context.get("acl_bindings", [])
         acl_context = device_name.config_context.get("acl", {})
         ntp_context = context.get("ntp", {})
+        qos_context = context.get("qos", {})
         for device_interface in interface_on_device(device_name.id, []):
             tags = [t.slug for t in device_interface.tags]
 
@@ -366,6 +369,15 @@ def get_netbox():
 
         config_data["ntp"]["keys"].extend(ntp_keys)
         config_data["ntp"]["servers"].extend(ntp_servers)
+
+        if qos_context:
+            config_data["qos"].append({
+                "device": host_ip,
+                "policy_name": qos_context.get("policy_name", ""),
+                "class_mapss": qos_context.get("class_mapss", []),
+                "direction": qos_context.get("direction", ""),
+                "interface": qos_context.get("interface", "")
+            })
 
     return inventory, config_data
 def safe_send_config(conn, commands):
@@ -536,9 +548,18 @@ def build_acl_bindings_state(native):
 
     return actual
 def build_ntp_state(native):
+
     ntp = native.get("ntp", {})
 
-    # -------- KEYS --------
+    trusted = ntp.get("trusted-key", [])
+    if isinstance(trusted, dict):
+        trusted = [trusted]
+
+    trusted_ids = {
+        int(t.get("number", 0))
+        for t in trusted
+    }
+
     keys = ntp.get("authentication-key", [])
     if isinstance(keys, dict):
         keys = [keys]
@@ -546,12 +567,11 @@ def build_ntp_state(native):
     actual_keys = [
         {
             "id": int(k.get("number", 0)),
-            "md5": k.get("md5")   # keep for debugging ONLY
+            "trusted": int(k.get("number", 0)) in trusted_ids
         }
         for k in keys
     ]
 
-    # -------- SERVERS --------
     servers = ntp.get("server", {}).get("server-list", [])
     if isinstance(servers, dict):
         servers = [servers]
@@ -568,37 +588,184 @@ def build_ntp_state(native):
         "keys": sorted(actual_keys, key=lambda x: x["id"]),
         "servers": sorted(actual_servers, key=lambda x: x["ip"])
     }
+def build_qos_state(native):
+
+    policy = native.get("policy", {})
+
+    # ---------- CLASS MAPS ----------
+    class_mapss = policy.get("class-map", [])
+
+    if isinstance(class_mapss, dict):
+        class_mapss = [class_mapss]
+
+    actual_class_mapss = []
+
+    for cm in class_mapss:
+
+        protocols = (
+            cm.get("match", {})
+              .get("protocol", {})
+              .get("protocols-list", {})
+              .get("protocols")
+        )
+
+        actual_class_mapss.append({
+            "name": cm.get("name"),
+            "match_type": cm.get("prematch"),
+            "protocol": protocols
+        })
+
+    # ---------- POLICY MAP ----------
+    policy_maps = policy.get("policy-map", [])
+
+    if isinstance(policy_maps, dict):
+        policy_maps = [policy_maps]
+
+    actual_policy_name = None
+
+    for pm in policy_maps:
+
+        actual_policy_name = pm.get("name")
+
+        classes = pm.get("class", [])
+
+        if isinstance(classes, dict):
+            classes = [classes]
+
+        class_lookup = {
+            c["name"]: c
+            for c in actual_class_mapss
+        }
+
+        for cls in classes:
+
+            name = cls.get("name")
+
+            if name == "class-default":
+                continue
+
+            action = cls.get("action-list", {})
+            action_type = action.get("action-type")
+
+            bandwidth = None
+
+            if action_type == "priority":
+                bandwidth = (
+                    action.get("priority", {})
+                          .get("kilo-bits")
+                )
+
+            elif action_type == "bandwidth":
+                bandwidth = (
+                    action.get("bandwidth", {})
+                          .get("kilo-bits")
+                )
+
+            if name in class_lookup:
+
+                class_lookup[name]["action_type"] = action_type
+                class_lookup[name]["bandwidth"] = (
+                    int(bandwidth)
+                    if bandwidth is not None
+                    else None
+                )
+
+    return {
+        "policy_name": actual_policy_name,
+        "class_mapss": sorted(
+            actual_class_mapss,
+            key=lambda x: x["name"]
+        )
+    }
+def check_qos(expected_qos, actual_qos):
+
+    failures = []
+
+    if expected_qos.get("policy_name") != actual_qos.get("policy_name"):
+        failures.append(
+            "QoS policy name mismatch"
+        )
+
+    if expected_qos.get("interface") != actual_qos.get("interface"):
+        failures.append(
+            "QoS interface mismatch"
+        )
+
+    if expected_qos.get("direction") != actual_qos.get("direction"):
+        failures.append(
+            "QoS direction mismatch"
+        )
+
+    expected_classes = sorted(
+        [
+            {
+                "name": c.get("name"),
+                "match_type": c.get("match_type"),
+                "protocol": c.get("protocol"),
+                "action_type": c.get("action_type"),
+                "bandwidth": c.get("bandwidth")
+            }
+            for c in expected_qos.get("class_mapss", [])
+        ],
+        key=lambda x: x["name"]
+    )
+
+    actual_classes = sorted(
+        actual_qos.get("class_mapss", []),
+        key=lambda x: x["name"]
+    )
+
+    if expected_classes != actual_classes:
+        failures.append(
+            "QoS class-map/policy-map mismatch"
+        )
+
+    return len(failures) == 0, failures
 def check_ntp(expected_ntp, actual_ntp):
 
     failures = []
 
-    # ---------------- KEYS (ONLY ID) ----------------
     expected_keys = sorted(
-        [{"id": k["id"]} for k in expected_ntp.get("keys", [])],
+        [
+            {
+                "id": k["id"],
+                "trusted": k.get("trusted", False)
+            }
+            for k in expected_ntp.get("keys", [])
+        ],
         key=lambda x: x["id"]
     )
 
     actual_keys = sorted(
-        [{"id": k["id"]} for k in actual_ntp.get("keys", [])],
+        actual_ntp.get("keys", []),
         key=lambda x: x["id"]
     )
 
     if expected_keys != actual_keys:
-        failures.append("NTP authentication keys mismatch (id only)")
+        failures.append(
+            "NTP authentication/trusted keys mismatch"
+        )
 
-    # ---------------- SERVERS (IP + KEY ID) ----------------
     expected_servers = sorted(
-        [(s["ip"], s["key"]) for s in expected_ntp.get("servers", [])],
-        key=lambda x: x[0]
+        [
+            {
+                "ip": s["ip"],
+                "key": s["key"]
+            }
+            for s in expected_ntp.get("servers", [])
+        ],
+        key=lambda x: x["ip"]
     )
 
     actual_servers = sorted(
-        [(s["ip"], s["key"]) for s in actual_ntp.get("servers", [])],
-        key=lambda x: x[0]
+        actual_ntp.get("servers", []),
+        key=lambda x: x["ip"]
     )
 
     if expected_servers != actual_servers:
-        failures.append("NTP servers mismatch (ip + key)")
+        failures.append(
+            "NTP servers mismatch"
+        )
 
     return len(failures) == 0, failures
 def check_acl(expected_acls, actual_acls):
@@ -4365,12 +4532,691 @@ def configure_acl_bindings(session, device_ip, acl_binding_data, log):
 
     )
     return results
+def configure_ntp(session, device_ip, ntp_data, log):
+    ntp_keys = ntp_data.get("ntp_keys", [])
+    ntp_servers = ntp_data.get("ntp_servers", [])
+    ntp_key_id = []
+    ntp_server_ip = []
+    ntp_key_id = [n["id"] for n in ntp_keys]
+    ntp_server_ip = [n["ip"] for n in ntp_servers]
+    results = {
+        "device_ip": device_ip,
+        "ntp_key_id": ntp_key_id,
+        "ntp_server_ip": ntp_server_ip,
+        "configured": False,
+        "validated": False,
+        "status": OpStatus.PENDING.value,
+        "component": "ntp_automation",
+        "SOT": "NetBox",
 
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "events": []
 
+    }
+    try:
+        log.info(
+            "ntp_check",
+            extra={
+                "device_ip": device_ip,
+                "component": "ntp_automation",
+                "event_type": "ntp_config",
+                "severity": "INFO",
+                "ntp_key_id": ntp_key_id,
+                "ntp_server_ip": ntp_server_ip,
+                "message":  f"Configuring NTP (Authenticated) | Key-ID: {ntp_key_id} | "
+                            f"Server: {ntp_server_ip}"
 
+            }
+        )
+        if DRY_RUN:
+            results["configured"] = False
+            results["validated"] = False
+            results["status"] = OpStatus.DRY_RUN.value
+            results["summary_config"] = (
+                f"[DRY_RUN] Would Configure NTP (Authenticated) | Key-ID: {ntp_key_id} | "
+                f"Server: {ntp_server_ip}"
+            )
+            log.info(
+                "ntp_check",
+                extra={
+                    "device_ip": device_ip,
+                    "component": "ntp_automation",
+                    "event_type": "ntp_config",
+                    "status": "DRY_RUN",
+                    "severity": "INFO",
+                    "ntp_key_id": ntp_key_id,
+                    "ntp_server_ip": ntp_server_ip,
+                    "message": (
+                        f"[DRY_RUN] Would Configure NTP (Authenticated) | Key-ID: {ntp_key_id} | "
+                        f"Server: {ntp_server_ip}"
+                    )
 
+                }
+            )
+            results["events"].append(
+                emit_event(
+                    device_ip=device_ip,
+                    component="ntp_automation",
+                    event_type="ntp_config",
+                    outcome="DRY_RUN",
+                    ntp_key_id=ntp_key_id,
+                    ntp_server=ntp_server_ip,
+                    reason=(
+                        f"[DRY_RUN] Would Configure NTP (Authenticated) | Key-ID: {ntp_key_id} | "
+                        f"Server: {ntp_server_ip}"
+                    )
+                )
+            )
+        else:
+            template = template_env.get_template("NTP.j2")
+            commands = template.render(
+                ntp_keys=ntp_keys,
+                ntp_servers=ntp_servers
+            )
 
+            configured, error = safe_netconf_edit(session, commands)
+            results["configured"] = configured
 
+            if not configured:
+                results["status"] = OpStatus.CONFIG_FAILED.value
+                results["error"] = error
+                results["summary_config"] = (
+                    f"NTP (Authenticated) Configuration Failed | Key-ID: {ntp_key_id} | "
+                    f"Server: {ntp_server_ip}"
+                )
+                log.info(
+                    "ntp_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "component": "ntp_automation",
+                        "event_type": "ntp_config",
+                        "status": StepStatus.FAILED.value,
+                        "severity": "CRITICAL",
+                        "SOT": "NetBox",
+                        "ntp_key_id": ntp_key_id,
+                        "ntp_server_ip": ntp_server_ip,
+                        "error": error,
+                        "message": (
+                            f"NTP (Authenticated) Configuration Failed | Key-ID: {ntp_key_id} | "
+                            f"Server: {ntp_server_ip}"
+                        )
+
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="ntp_automation",
+                        event_type="ntp_config",
+                        outcome="FAIL",
+                        ntp_key_id=ntp_key_id,
+                        ntp_server=ntp_server_ip,
+                        SOT="NetBox",
+                        timestamp=timestamp,
+                        reason=(
+                                f"NTP (Authenticated) Configuration Failed | Key-ID: {ntp_key_id} | "
+                                f"Server: {ntp_server_ip}"
+                        )
+                    )
+                )
+            else:
+                results["status"] = OpStatus.CONFIGURED.value
+                results["summary_config"] = (
+                    f"NTP (Authenticated) Successfully Configured | Key-ID: {ntp_key_id} | "
+                    f"Server: {ntp_server_ip}"
+                )
+                log.info(
+                    "ntp_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "component": "ntp_automation",
+                        "event_type": "ntp_config",
+                        "status": StepStatus.SUCCESS.value,
+                        "severity": "INFO",
+                        "SOT": "NetBox",
+                        "ntp_key_id": ntp_key_id,
+                        "ntp_server_ip": ntp_server_ip,
+                        "message": (
+                                f"NTP (Authenticated) Successfully Configured | Key-ID: {ntp_key_id} | "
+                                f"Server: {ntp_server_ip}"
+                        )
+
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                        device_ip=device_ip,
+                        component="ntp_automation",
+                        event_type="ntp_config",
+                        outcome="SUCCESS",
+                        ntp_key_id=ntp_key_id,
+                        ntp_server=ntp_server_ip,
+                        SOT="NetBox",
+                        timestamp=timestamp,
+                        reason=(
+                            f"NTP (Authenticated) Successfully Configured | Key-ID: {ntp_key_id} | "
+                            f"Server: {ntp_server_ip}"
+                        )
+                    )
+                )
+
+                native = collect_netconf_state(session)
+
+                actual_ntp = build_ntp_state(native)
+
+                ntp_ok, failures = check_ntp(
+                    ntp_data,
+                    actual_ntp
+                )
+
+                results["validated"] = ntp_ok
+                results["failures"] = failures
+
+                if ntp_ok:
+                    results["status"] = OpStatus.SUCCESS.value
+                    results["summary_validation"] = (
+                        f"NTP (Authenticated) Validation Successful | Key-ID: {ntp_key_id} | "
+                        f"Server: {ntp_server_ip}"
+                    )
+                    log.info(
+                        "ntp_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "component": "ntp_automation",
+                            "event_type": "ntp_validation",
+                            "status": StepStatus.SUCCESS.value,
+                            "severity": "INFO",
+                            "SOT": "NetBox",
+                            "ntp_key_id": ntp_key_id,
+                            "ntp_server_ip": ntp_server_ip,
+                            "message": (
+                                f"NTP (Authenticated) Validation Successful | Key-ID: {ntp_key_id} | "
+                                f"Server: {ntp_server_ip}"
+                            )
+
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="ntp_automation",
+                            event_type="ntp_validation",
+                            outcome="SUCCESS",
+                            ntp_key_id=ntp_key_id,
+                            ntp_server=ntp_server_ip,
+                            SOT="NetBox",
+                            timestamp=timestamp,
+                            reason=(
+                                    f"NTP (Authenticated) Validation Successful | Key-ID: {ntp_key_id} | "
+                                    f"Server: {ntp_server_ip}"
+                            )
+                        )
+                    )
+                else:
+                    results["status"] = OpStatus.VALIDATION_FAILED.value
+                    results["summary_validation"] = (
+                        f"NTP (Authenticated) Validation Failed | Key-ID: {ntp_key_id} | "
+                        f"Server: {ntp_server_ip}"
+                    )
+                    log.info(
+                        "ntp_check",
+                        extra={
+                            "device_ip": device_ip,
+                            "component": "ntp_automation",
+                            "event_type": "ntp_validation",
+                            "status": StepStatus.FAILED.value,
+                            "severity": "CRITICAL",
+                            "SOT": "NetBox",
+                            "ntp_key_id": ntp_key_id,
+                            "ntp_server_ip": ntp_server_ip,
+                            "failures": failures,
+                            "message": (
+                                f"NTP (Authenticated) Validation Failed | Key-ID: {ntp_key_id} | "
+                                f"Server: {ntp_server_ip}"
+                            )
+
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                            device_ip=device_ip,
+                            component="ntp_automation",
+                            event_type="ntp_validation",
+                            outcome="FAIL",
+                            ntp_key_id=ntp_key_id,
+                            ntp_server=ntp_server_ip,
+                            SOT="NetBox",
+                            timestamp=timestamp,
+                            reason=(
+                                f"NTP (Authenticated) Validation Failed | Key-ID: {ntp_key_id} | "
+                                f"Server: {ntp_server_ip}"
+                            )
+                        )
+                    )
+    except Exception as e:
+        results["error"] = str(e)
+        results["status"] = OpStatus.ERROR.value
+        log.info(
+            "ntp_check",
+            extra={
+                "device_ip": device_ip,
+                "component": "ntp_automation",
+                "event_type": "ntp_config",
+                "status": StepStatus.ERROR.value,
+                "severity": "CRITICAL",
+                "SOT": "NetBox",
+                "ntp_key_id": ntp_key_id,
+                "ntp_server_ip": ntp_server_ip,
+                "error": str(e),
+                "message": (
+                    f"Try/Exception Error| NTP (Authenticated)| Key-ID: {ntp_key_id} | "
+                    f"Server: {ntp_server_ip}"
+                )
+
+            }
+        )
+        results["events"].append(
+            emit_event(
+                device_ip=device_ip,
+                component="ntp_automation",
+                event_type="ntp_validation",
+                outcome="ERROR",
+                ntp_key_id=ntp_key_id,
+                ntp_server=ntp_server_ip,
+                SOT="NetBox",
+                timestamp=timestamp,
+                error=str(e),
+                reason=(
+                        f"Try/Exception Error| NTP (Authenticated)| Key-ID: {ntp_key_id} | "
+                        f"Server: {ntp_server_ip}"
+                )
+            )
+        )
+        return results
+    results["summary"] = (
+        results["summary_validation"]
+        or results["summary_config"]
+    )
+    results["events"].append(
+        emit_event(
+            device_ip=device_ip,
+            component="ntp_automation",
+            event_type="ntp_overall",
+            outcome=(
+                "DRY_RUN" if DRY_RUN else "SUCCESS"
+                if results["status"] == OpStatus.SUCCESS.value
+                else "FAIL"
+            ),
+            ntp_key_id=ntp_key_id,
+            ntp_server=ntp_server_ip,
+            SOT="NetBox",
+            timestamp=timestamp,
+            reason=(
+                "NTP Automation Complete"
+            )
+        )
+    )
+    return results
+def configure_qos(session, device_ip, qos_data, log):
+    policy_name = qos_data.get("policy_name", "")
+    direction = qos_data.get("direction", "")
+    interface = qos_data.get("interface", "")
+    class_maps = qos_data.get("class_maps", [])
+    class_name_protocol = [
+        {"name": c["name"], "protocol": c.get("protocol")}
+        for c in class_maps
+    ]
+
+    results = {
+        "device_ip": device_ip,
+        "policy_name": policy_name,
+        "interface": interface,
+        "direction": direction,
+        "class_name_protocol": class_name_protocol,
+
+        "configured": False,
+        "validated": False,
+        "status": OpStatus.PENDING.value,
+        "component": "qos_automation",
+
+        "timestamp": timestamp,
+        "summary": None,
+        "summary_config": None,
+        "summary_validation": None,
+        "events": []
+    }
+
+    try:
+        log.info(
+            "qos_check",
+            extra={
+                "device_ip": device_ip,
+                "component": "qos_automation",
+                "event_type": "qos_config",
+                "severity": "INFO",
+                "message": (
+                    f"Configuring QoS | Policy: {policy_name} | "
+                    f"Interface: {interface} | Direction: {direction} "
+                    f"Class Name/Protocol: {class_name_protocol}"
+                )
+            }
+        )
+        if DRY_RUN: 
+            results["configured"] = False 
+            results["validated"] = False 
+            results["status"] = OpStatus.DRY_RUN.value 
+            results["summary_config"] = (
+                    f"[DRY_RUN] Would Configure QOS | Policy: {policy_name}"
+                    f"Interface: {interface} | Direction: {direction} "
+                    f"Class Name/Protocol: {class_name_protocol}"
+                )
+            log.info(
+            "qos_check",
+            extra={
+                "device_ip": device_ip,
+                "component": "qos_automation",
+                "event_type": "qos_config",
+                "status": StepStatus.DRY_RUN.value,
+                "policy_name": policy_name,
+                "interface": interface,
+                "direction": direction,
+                "Class Name/Protocol": class_name_protocol,
+                "severity": "INFO",
+                "message": (
+                    f"[DRY_RUN] Would Configure QOS | Policy: {policy_name}"
+                    f"Interface: {interface} | Direction: {direction} "
+                    f"Class Name/Protocol: {class_name_protocol}"
+                    )
+                }
+            )
+            results["events"].append(
+                emit_event(
+                        device_ip=device_ip,
+                        component="qos_automation",
+                        event_type="qos_config",
+                        outcome="DRY_RUN",
+                        policy_name=policy_name,
+                        interface=interface,
+                        direction=direction,
+                        class_name_Protocol=class_name_protocol,
+                        reason=(
+                            f"[DRY_RUN] Would Configure QOS | Policy: {policy_name}"
+                            f"Interface: {interface} | Direction: {direction} "
+                            f"Class Name/Protocol: {class_name_protocol}"
+                        )
+                    )
+                )
+        else:
+            template = template_env.get_template("QOS.j2")
+            commands = template.render(
+                    class_maps=class_maps,
+                    policy_name=policy_name
+                )
+
+            configured, error = safe_netconf_edit(
+                    session, commands
+                )
+            results["configured"] = configured
+
+            if not configured: 
+                results["status"] = OpStatus.CONFIG_FAILED.value 
+                results["error"] = error
+                results["summary_config"] = (
+                            f"QOS Configuration Failed | Policy: {policy_name}"
+                            f"Interface: {interface} | Direction: {direction} "
+                            f"Class Name/Protocol: {class_name_protocol}"
+                    )
+            log.info(
+                "qos_check",
+                extra={
+                    "device_ip": device_ip,
+                    "component": "qos_automation",
+                    "event_type": "qos_config",
+                    "status": StepStatus.FAILED.value,
+                    "severity": "CRITICAL",
+                    "policy_name": policy_name,
+                    "interface": interface,
+                    "direction": direction,
+                    "Class Name/Protocol": class_name_protocol,
+                    "error": error,
+                    "message": (
+                                f"QOS Configuration Failed | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                        )
+                    }
+                )
+            results["events"].append(
+                emit_event(
+                        device_ip=device_ip,
+                        component="qos_automation",
+                        event_type="qos_config",
+                        outcome="FAIL",
+                        policy_name=policy_name,
+                        interface=interface,
+                        direction=direction,
+                        class_name_Protocol=class_name_protocol,
+                        error=error,
+                        reason=(
+                            f"QOS Configuration Failed | Policy: {policy_name}"
+                            f"Interface: {interface} | Direction: {direction} "
+                            f"Class Name/Protocol: {class_name_protocol}"
+                        )
+                     )
+                  )
+                return results
+            else:
+                results["status"] = OpStatus.CONFIGURED.value
+                results["summary_config"] = (
+                            f"QOS Configuration Successful | Policy: {policy_name}"
+                            f"Interface: {interface} | Direction: {direction} "
+                            f"Class Name/Protocol: {class_name_protocol}"
+                    )
+                log.info(
+                "qos_check",
+                extra={
+                    "device_ip": device_ip,
+                    "component": "qos_automation",
+                    "event_type": "qos_config",
+                    "status": StepStatus.SUCCESS.value,
+                    "severity": "INFO",
+                    "policy_name": policy_name,
+                    "interface": interface,
+                    "direction": direction,
+                    "Class Name/Protocol": class_name_protocol,
+                    "message": (
+                            f"QOS Configuration Successful | Policy: {policy_name}"
+                            f"Interface: {interface} | Direction: {direction} "
+                            f"Class Name/Protocol: {class_name_protocol}"
+                        )
+                    }
+                )
+                results["events"].append(
+                    emit_event(
+                            device_ip=device_ip,
+                            component="qos_automation",
+                            event_type="qos_config",
+                            outcome="SUCCESS",
+                            policy_name=policy_name,
+                            interface=interface,
+                            direction=direction,
+                            class_name_Protocol=class_name_protocol,
+                            reason=(
+                                f"QOS Configuration Successful | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                            )
+                        )
+                    )
+                native = collect_netconf_state(session)
+                actual_qos = build_qos_state(native)
+
+                expected_qos = {
+                    "policy_name": policy_name,
+                    "class_mapss": class_maps
+                }
+
+                qos_ok, failures = check_qos(expected_qos, actual_qos)
+
+                results["validated"] = qos_ok
+                results["failures"] = failures
+                
+                if qos_ok: 
+                    results["status"] = OpStatus.SUCCESS.value 
+                    results["summary_validation"] = (
+                                f"QOS Validation Successful | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                        )
+                    log.info(
+                    "qos_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "component": "qos_automation",
+                        "event_type": "qos_config",
+                        "status": StepStatus.SUCCESS.value,
+                        "severity": "INFO",
+                        "policy_name": policy_name,
+                        "interface": interface,
+                        "direction": direction,
+                        "Class Name/Protocol": class_name_protocol,
+                        "message": (
+                                f"QOS Validation Successful | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                            )
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                                device_ip=device_ip,
+                                component="qos_automation",
+                                event_type="qos_config",
+                                outcome="SUCCESS",
+                                policy_name=policy_name,
+                                interface=interface,
+                                direction=direction,
+                                class_name_Protocol=class_name_protocol,
+                                reason=(
+                                f"QOS Validation Successful | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                                )
+                            )
+                        )
+                else: 
+                    results["status"] = OpStatus.VALIDATION_FAILED.value 
+                    results["summary_validation"] = (
+                                f"QOS Validation Failed | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+
+                        )
+                    log.info(
+                    "qos_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "component": "qos_automation",
+                        "event_type": "qos_config",
+                        "status": StepStatus.FAILED.value,
+                        "severity": "CRITICAL",
+                        "policy_name": policy_name,
+                        "interface": interface,
+                        "direction": direction,
+                        "Class Name/Protocol": class_name_protocol,
+                        "message": (
+                                f"QOS Validation Failed | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                            )
+                        }
+                    )
+                    results["events"].append(
+                        emit_event(
+                                device_ip=device_ip,
+                                component="qos_automation",
+                                event_type="qos_config",
+                                outcome="FAIL",
+                                policy_name=policy_name,
+                                interface=interface,
+                                direction=direction,
+                                class_name_Protocol=class_name_protocol,
+                                reason=(
+                                f"QOS Validation Failed | Policy: {policy_name}"
+                                f"Interface: {interface} | Direction: {direction} "
+                                f"Class Name/Protocol: {class_name_protocol}"
+                                )
+                            )
+                        )
+    
+    except Exception as e:
+        results["error"] = str(e)
+        results["status"] = OpStatus.ERROR.value 
+        log.exception(
+        "qos_check",
+        extra={
+            "device_ip": device_ip,
+            "component": "qos_automation",
+            "event_type": "qos_validation",
+            "status": StepStatus.ERROR.value,
+            "severity": "CRITICAL",
+            "policy_name": policy_name,
+            "interface": interface,
+            "direction": direction,
+            "Class Name/Protocol": class_name_protocol,
+            "message": (
+                    f"Try/Exception Error | QOS Configuration | "
+                    f"Policy: {policy_name}"
+                    f"Interface: {interface} | Direction: {direction} "
+                    f"Class Name: {class_name} | Protocol: {class_protocol}"
+                )
+            }
+        )
+        results["events"].append(
+            emit_event(
+                    device_ip=device_ip,
+                    component="qos_automation",
+                    event_type="qos_validation",
+                    outcome="ERROR",
+                    policy_name=policy_name,
+                    interface=interface,
+                    direction=direction,
+                    class_name_Protocol=class_name_protocol,
+                    reason=(
+                    f"Try/Exception Error | QOS Configuration | "
+                    f"Policy: {policy_name}"
+                    f"Interface: {interface} | Direction: {direction} "
+                    f"Class Name: {class_name} | Protocol: {class_protocol}"
+                    )
+                )
+            )
+        return results
+
+    results["summary"] = (
+            results["summary_validation"]
+            or results["summary_config"]
+        )
+    results["events"].append(
+            emit_event(
+                    device_ip=device_ip,
+                    component="qos_automation",
+                    event_type="qos_config",
+                    outcome=(
+                            "DRY_RUN" if DRY_RUN else "SUCCESS"
+                            if results["status"] == OpStatus.SUCCESS.value
+                            else "FAIL"
+                        ),
+                    policy_name=policy_name,
+                    interface=interface,
+                    direction=direction,
+                    class_name_Protocol=class_name_protocol,
+                    reason="QOS Automation Complete "
+                )
+            )
+    return results
 
 
 def main_process(task):
