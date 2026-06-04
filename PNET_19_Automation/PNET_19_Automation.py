@@ -8,7 +8,6 @@ from genie.gre import defaultdict
 from typing import Dict, Tuple
 import graypy
 import logging
-from numpy.array_api import arange
 from dataclasses import dataclass
 from typing import Literal
 from jinja2 import Environment, FileSystemLoader
@@ -122,6 +121,11 @@ def safe_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+def find_acl(actual_acls, acl_name):
+    for acl in actual_acls:
+        if acl.get("acl_name") == acl_name:
+            return acl
+    return None
 def normalize_acl(device_ip, acl_context):
     acl_list = []
 
@@ -159,7 +163,7 @@ def build_index(interfaces, ip_addresses, vlans):
         if hasattr(interface, "device") and interface.device:
             interfaces_on_device[interface.device.id].append(interface)
         if interface.custom_fields.get("ospf_enabled"):
-        ospf_config_by_interface[interface.id] = {
+            ospf_config_by_interface[interface.id] = {
             "process_id": interface.custom_fields.get("ospf_process_id", 1),
             "area_id": interface.custom_fields.get("ospf_area_id", 0),
             "network_type": interface.custom_fields.get("ospf_network_type", "ospf-broadcast"),
@@ -476,11 +480,11 @@ def netconf_state(device_ip, auth, log):
     xml_data = fetch_netconf_raw(device_ip, auth, log)
     return parse_netconf_state(xml_data)
 def build_acl_state(native):
+
     actual_acls = []
 
     ip = native.get("ip", {})
     access_list = ip.get("access-list", {})
-
     extended = access_list.get("extended", [])
 
     if isinstance(extended, dict):
@@ -496,10 +500,10 @@ def build_acl_state(native):
         rules = []
 
         for r in seq_rules:
+
             ace = r.get("ace-rule", {})
 
-        rules = [
-            {
+            rules.append({
                 "seq": int(r.get("sequence", 0)),
                 "action": ace.get("action"),
                 "protocol": ace.get("protocol"),
@@ -508,9 +512,7 @@ def build_acl_state(native):
                 "dest_ip": ace.get("dest-ipv4-address", "any"),
                 "dest_mask": ace.get("dest-mask"),
                 "port": ace.get("dst-eq")
-            }
-            for r in seq_rules
-        ]
+            })
 
         actual_acls.append({
             "acl_name": acl_obj.get("name"),
@@ -4969,44 +4971,44 @@ def configure_qos(session, device_ip, qos_data, log):
                             f"Interface: {interface} | Direction: {direction} "
                             f"Class Name/Protocol: {class_name_protocol}"
                     )
-            log.info(
-                "qos_check",
-                extra={
-                    "device_ip": device_ip,
-                    "component": "qos_automation",
-                    "event_type": "qos_config",
-                    "status": StepStatus.FAILED.value,
-                    "severity": "CRITICAL",
-                    "policy_name": policy_name,
-                    "interface": interface,
-                    "direction": direction,
-                    "Class Name/Protocol": class_name_protocol,
-                    "error": error,
-                    "message": (
+                log.info(
+                    "qos_check",
+                    extra={
+                        "device_ip": device_ip,
+                        "component": "qos_automation",
+                        "event_type": "qos_config",
+                        "status": StepStatus.FAILED.value,
+                        "severity": "CRITICAL",
+                        "policy_name": policy_name,
+                        "interface": interface,
+                        "direction": direction,
+                        "Class Name/Protocol": class_name_protocol,
+                        "error": error,
+                        "message": (
+                                    f"QOS Configuration Failed | Policy: {policy_name}"
+                                    f"Interface: {interface} | Direction: {direction} "
+                                    f"Class Name/Protocol: {class_name_protocol}"
+                            )
+                        }
+                    )
+                results["events"].append(
+                    emit_event(
+                            device_ip=device_ip,
+                            component="qos_automation",
+                            event_type="qos_config",
+                            outcome="FAIL",
+                            policy_name=policy_name,
+                            interface=interface,
+                            direction=direction,
+                            class_name_Protocol=class_name_protocol,
+                            error=error,
+                            reason=(
                                 f"QOS Configuration Failed | Policy: {policy_name}"
                                 f"Interface: {interface} | Direction: {direction} "
                                 f"Class Name/Protocol: {class_name_protocol}"
-                        )
-                    }
-                )
-            results["events"].append(
-                emit_event(
-                        device_ip=device_ip,
-                        component="qos_automation",
-                        event_type="qos_config",
-                        outcome="FAIL",
-                        policy_name=policy_name,
-                        interface=interface,
-                        direction=direction,
-                        class_name_Protocol=class_name_protocol,
-                        error=error,
-                        reason=(
-                            f"QOS Configuration Failed | Policy: {policy_name}"
-                            f"Interface: {interface} | Direction: {direction} "
-                            f"Class Name/Protocol: {class_name_protocol}"
-                        )
-                     )
-                  )
+                            )
+                         )
+                      )
                 return results
             else:
                 results["status"] = OpStatus.CONFIGURED.value
@@ -5171,7 +5173,7 @@ def configure_qos(session, device_ip, qos_data, log):
                     f"Try/Exception Error | QOS Configuration | "
                     f"Policy: {policy_name}"
                     f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name: {class_name} | Protocol: {class_protocol}"
+                    f"Class Name/Protocol: {class_name_protocol}"
                 )
             }
         )
@@ -5189,7 +5191,7 @@ def configure_qos(session, device_ip, qos_data, log):
                     f"Try/Exception Error | QOS Configuration | "
                     f"Policy: {policy_name}"
                     f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name: {class_name} | Protocol: {class_protocol}"
+                    f"Class Name/Protocol: {class_name_protocol}"
                     )
                 )
             )
@@ -5258,17 +5260,21 @@ def main_process(task):
 
                 for roas_data in context.get("roass", []):
                     config_roas = configure_roas(host_ip, roas_data, session, adapter)
-                    if config_roas.get("status") == "SUCCESS":
+                    device_result["actions_taken"].append(
+                            config_roas["summary"], "No Summary Returned"
+                        )
+                    if config_roas.get("status") == OpStatus.SUCCESS.value:
                         updated = True
-                        device_result["actions_taken"].append(config_roas["summary"])
                         device_result.append(
                             config_roas["event"]
                         )
                 for ospf_data in context.get("ospf", []):
                     config_ospf = configure_ospf(host_ip, ospf_data, session, adapter)
-                    if config_ospf.get("status") == "CONFIGURED":
+                    device_result["actions_taken"].append(
+                        config_ospf["summary"], "No Summary Returned"
+                            )
+                    if config_ospf.get("status") == OpStatus.CONFIGURED.value:
                         updated = True
-                        device_result["actions_taken"].append(config_ospf["summary"])
                         device_result.append(
                             config_ospf["event"]
                         )
@@ -5277,7 +5283,7 @@ def main_process(task):
                     time.sleep(30)
 
                 checker = OSPF_Checker()
-                for ospf_data in context("ospf", []):
+                for ospf_data in context.get("ospf", []):
                     report = checker.validate_device_ospf(host_ip, state , ospf_data)
 
                     device_result["ospf_report"].append(report)
@@ -5295,6 +5301,75 @@ def main_process(task):
                                 "issues": report["warnings"]
                             }
                         )
+
+            with manager.connect(
+                    host=host_ip,
+                    port=830,
+                    username=device.get("username"),
+                    password=device.get("password"),
+                    hostkey_verify=False,
+                    timeout=30
+                ) as session:
+
+                native = collect_netconf_state(session)
+                actual_acls = build_acl_state(native)
+                expected_acls = context.get("ACL", [])
+                changed = False
+                for acl_data in expected_acls: 
+                    acl_name = acl_data.get("acl_name", "")
+                    rules = acl_data.get("rules", [])
+                    rules_summary = [
+                        f"{r['sequence']} {r['action']} {r['protocol']}"
+                        for r in rules
+                    ]
+                    actual_acl = find_acl(actual_acls, acl_name)
+                    exists = actual_acl is not None 
+                    if exists:
+                        acl_ok, failures = check_acl(acl_data, actual_acl)
+                        if acl_ok: 
+                            adapter.info(
+                                "acl_check",
+                                extra={
+                                    "device_ip": host_ip,
+                                    "component": "main_process",
+                                    "event_type": "acl_precheck",
+                                    "status": StepStatus.SKIPPED.value,
+                                    "message": (f"ACL already exists | Name: {acl_name}"
+                                                f" Rules: {rules_summary}"
+                                        )
+                                }
+                            )
+                            device_result["actions_taken"].append(
+                                    f"ACL already exists | Name: {acl_name}"
+                                    f" Rules: {rules_summary}"
+                                )
+                            continue
+                        device_result["critical_issues"].append({
+                                "acl": acl_name,
+                                "issues": failures
+                            })
+                        config_acl = configure_acl(session, host_ip, acl_data, adapter)
+
+                        device_result["actions_taken"].append(
+                            config_acl.get("summary", "No Summary Returned")
+                        )
+
+                        if config_acl.get("status") == OpStatus.SUCCESS.value:
+                            changed = True
+
+
+                    else: 
+                        device_result["critical_issues"].append(
+                        f"ACL {acl_name} missing on device {host_ip}"
+                                )
+                        config_acl = configure_acl(session, host_ip, acl_data, adapter)
+                        device_result["actions_taken"].append(
+                                config_acl.get("summary", "No Summary Returned")
+                           )
+                        if config_acl.get("status") == OpStatus.SUCCESS.value: 
+                            changed = True
+                        
+
         else:
             with ConnectHandler(**device) as conn:
                 conn.enable()
@@ -5307,15 +5382,15 @@ def main_process(task):
                     name = vlan_data.get("name")
                     exists = check_vlan(state, vlan_id, name)
                     if exists:
-                        log.info(
+                        adapter.info(
                             "vlan_check",
                             extra={
                                 "device_ip": host_ip,
-                                "component": "main_process"
+                                "component": "main_process",
                                 "event_type": "vlan_precheck",
                                 "status": StepStatus.SKIPPED.value,
-                                "message": f"VLAN already exists | VLAN: {vlan_id} | "
-                                           f"Name: {name}"
+                                "message": (f"VLAN already exists | VLAN: {vlan_id} | "
+                                           f"Name: {name}")
                             }
                         )
                         device_result["actions_taken"].append(
@@ -5323,17 +5398,19 @@ def main_process(task):
                             f"Name: {name}"
                         )
                         continue
-                    config_vlan = configure_vlan(conn, host_ip, vlan_data, log)
+                    config_vlan = configure_vlan(conn, host_ip, vlan_data, adapter)
+                    device_result["actions_taken"].append(
+                        config_vlan.get("summary"), "No Summary Returned"
+                            )
                     if config_vlan.get("status") == OpStatus.SUCCESS.value:
                         changed = True
-                        device_result["actions_taken"].append(config_vlan["summary"])
 
                 for access_data in context.get("access_ports", []):
                     access_interface = access_data.get("access_interface", "")
                     access_vlan = access_data.get("access_vlan", "")
                     exists = check_switch_mode(state, access_interface, "access", access_vlan)
                     if exists:
-                        log.info(
+                        adapter.info(
                             "access_port_check",
                             extra={
                                 "device_ip": host_ip,
@@ -5349,10 +5426,68 @@ def main_process(task):
                             f"{access_interface} | VLAN: {access_vlan}"
                         )
                         continue
-                        config_access = configure_access_ports(conn, host_ip, access_data, log)
-                        if config_access:
-                            changed = True
-                            device_result["actions_taken"].append(
-                                config_access["summary"]
+                    config_access = configure_access_ports(conn, host_ip, access_data, log)
+                    device_result["actions_taken"].append(
+                            config_access.get("summary"), "No summary returned"
+                        )
+                    if config_access.get("status") == OpStatus.SUCCESS.value: 
+                        changed = True 
+
+                for trunk_data in context.get("trunk_ports", []): 
+                    trunk_interface = trunk_data.get("trunk_interface", "")
+                    allowed_vlans = trunk_data.get("allowed_vlans", "")
+                    exists = check_switch_mode(state, trunk_interface, "trunk", allowed_vlans)
+                    if exists: 
+                        adapter.info(
+                                "trunk_port_check",
+                                extra={
+                                    "device_ip": device_ip,
+                                    "component": "main_process",
+                                    "event_type": "trunk_port_precheck",
+                                    "status": StepStatus.SKIPPED.value,
+                                    "message": (
+                                            f"Trunk Port Already Exists | Interface: "
+                                            f"{trunk_interface} | Allowed VLANs: {allowed_vlans}"
+                                    )
+                                }
                             )
-                
+                        device_result["actions_taken"].append(
+                                f"Trunk Port Already Exists | Interface: "
+                                f"{trunk_interface} | Allowed VLANs: {allowed_vlans}"
+                            )
+                        continue
+                    config_trunk = configure_trunk_ports(conn, host_ip, trunk_data, adapter)
+                    device_result["actions_taken"].append(
+                            config_trunk.get("summary", "No sumamry returned")
+                        )
+                    if config_trunk.get("status") == OpStatus.SUCCESS.value:
+                        changed = True
+                for interface_data in context.get("interface", []): 
+                    interface = interface_data.get("interface", "")
+                    description = interface_data.get("description", "")
+                    exists = check_interface(state, interface)
+                    if exists: 
+                        adapter.info(
+                                "interface_check",
+                                extra={
+                                    "device_ip": device_ip,
+                                    "component": "main_process",
+                                    "event_type": "interface_precheck",
+                                    "status": StepStatus.SKIPPED.value,
+                                    "message": (
+                                            f"Interface Already Up/Up | Interface: "
+                                            f"{interface}"
+                                    )
+                                }
+                            )
+                        device_result["actions_taken"].append(
+                                f"Interface Already Up/Up | Interface: "
+                                f"{interface}"
+                            )
+                        continue
+                    config_interface = configure_interface(conn, host_ip, interface_data, adapter)
+                    device_result["actions_taken"].append(
+                            config_interface.get("summary", "No sumamry returned")
+                        )
+                    if config_interface.get("status") == OpStatus.SUCCESS.value: 
+                        changed = True
