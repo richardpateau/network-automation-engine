@@ -116,16 +116,46 @@ def emit_event(
         reason=reason or default_reason,
         **kwargs
     )
+def listify(data):
+    if not data: return []
+    return data if isinstance(data, list) else [data] 
 def safe_int(value):
     try:
         return int(value)
     except (TypeError, ValueError):
         return None
-def find_acl(actual_acls, acl_name):
-    for acl in actual_acls:
-        if acl.get("acl_name") == acl_name:
-            return acl
-    return None
+def normalize_val(val):
+    """Converts various 'any' formats and casing into a standard string."""
+    if val is None:
+        return "any"
+    
+    # Convert to string and lowercase
+    v = str(val).strip().lower()
+    
+    # List of values that all mean "any" in Cisco-land
+    any_equivalents = [
+        "any", 
+        "0.0.0.0 255.255.255.255", 
+        "0.0.0.0/0", 
+        "0.0.0.0 0.0.0.0", # Sometimes seen in wildcard masks
+        "::/0"             # IPv6 any
+    ]
+    
+    if v in any_equivalents:
+        return "any"
+    
+    return v
+def normalize_vlans(vlan_str):
+    if vlan_str is None:
+        return ""
+
+    return " ".join(
+        sorted(
+            str(v).strip()
+            for v in str(vlan_str).replace(",", " ").split()
+            if v.strip()
+        )
+    )
 def normalize_acl(device_ip, acl_context):
     acl_list = []
 
@@ -190,7 +220,7 @@ def get_netbox():
         "vlans":[],
         "access_ports":[],
         "trunk_ports":[],
-        "interface":[],
+        "interfaces":[],
         "roass":[],
         "ospf":[],
         "ACL": [],
@@ -233,6 +263,12 @@ def get_netbox():
         qos_context = context.get("qos", {})
         for device_interface in interface_on_device(device_name.id, []):
             tags = [t.slug for t in device_interface.tags]
+
+            config_data["interfaces"].append({
+            "device": host_ip,
+            "interface": intf_name.lower(),
+            "should_be_up": device_interface.custom_fields.get("should_be_up", True) if hasattr(device_interface, "custom_fields") else True
+                })
 
             if is_switch:
                 if device_interface.mode and device_interface.mode.value == "access":
@@ -441,404 +477,6 @@ def collect_device_state(conn):
     except Exception:
         device_state["interfaces"] = {}
     return device_state
-def fetch_netconf_raw(device_ip, auth, log):
-    username, password = auth
-
-    filter_xml = """
-      <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
-    """
-
-    with manager.connect(
-        host=device_ip,
-        port=830,
-        username=username,
-        password=password,
-        hostkey_verify=False,
-        timeout=30
-    ) as m:
-
-        response = m.get_config(source="running", filter=("subtree", filter_xml))
-        return response.data_xml
-def collect_netconf_state(session):
-    filter_xml = """
-    <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
-    """
-
-    response = session.get_config(
-        source="running",
-        filter=("subtree", filter_xml)
-    )
-
-    return parse_netconf_state(response.data_xml)
-def parse_netconf_state(xml_data):
-    import xmltodict
-
-    full_dict = xmltodict.parse(xml_data)
-
-    return full_dict.get("rpc-reply", {}).get("data", {}).get("native", {})
-def netconf_state(device_ip, auth, log):
-    xml_data = fetch_netconf_raw(device_ip, auth, log)
-    return parse_netconf_state(xml_data)
-def build_acl_state(native):
-
-    actual_acls = []
-
-    ip = native.get("ip", {})
-    access_list = ip.get("access-list", {})
-    extended = access_list.get("extended", [])
-
-    if isinstance(extended, dict):
-        extended = [extended]
-
-    for acl_obj in extended:
-
-        seq_rules = acl_obj.get("access-list-seq-rule", [])
-
-        if isinstance(seq_rules, dict):
-            seq_rules = [seq_rules]
-
-        rules = []
-
-        for r in seq_rules:
-
-            ace = r.get("ace-rule", {})
-
-            rules.append({
-                "seq": int(r.get("sequence", 0)),
-                "action": ace.get("action"),
-                "protocol": ace.get("protocol"),
-                "source_ip": ace.get("ipv4-address", "any"),
-                "source_mask": ace.get("mask"),
-                "dest_ip": ace.get("dest-ipv4-address", "any"),
-                "dest_mask": ace.get("dest-mask"),
-                "port": ace.get("dst-eq")
-            })
-
-        actual_acls.append({
-            "acl_name": acl_obj.get("name"),
-            "rules": sorted(rules, key=lambda x: x["seq"])
-        })
-
-    return actual_acls
-def build_acl_bindings_state(native):
-    actual = []
-
-    interfaces = native.get("interface", {}).get("GigabitEthernet", [])
-
-    if isinstance(interfaces, dict):
-        interfaces = [interfaces]
-
-    for intf in interfaces:
-        name = intf.get("name")
-
-        ip = intf.get("ip", {})
-        access_group = ip.get("access-group", {})
-
-        if not access_group:
-            continue
-
-        # can be list or dict depending on device
-        if isinstance(access_group, dict):
-            access_group = [access_group]
-
-        for ag in access_group:
-            actual.append({
-                "interface": name,
-                "acl_name": ag.get("acl-name"),
-                "direction": ag.get("direction")
-            })
-
-    return actual
-def build_ntp_state(native):
-
-    ntp = native.get("ntp", {})
-
-    trusted = ntp.get("trusted-key", [])
-    if isinstance(trusted, dict):
-        trusted = [trusted]
-
-    trusted_ids = {
-        int(t.get("number", 0))
-        for t in trusted
-    }
-
-    keys = ntp.get("authentication-key", [])
-    if isinstance(keys, dict):
-        keys = [keys]
-
-    actual_keys = [
-        {
-            "id": int(k.get("number", 0)),
-            "trusted": int(k.get("number", 0)) in trusted_ids
-        }
-        for k in keys
-    ]
-
-    servers = ntp.get("server", {}).get("server-list", [])
-    if isinstance(servers, dict):
-        servers = [servers]
-
-    actual_servers = [
-        {
-            "ip": s.get("ip-address"),
-            "key": int(s.get("key", 0))
-        }
-        for s in servers
-    ]
-
-    return {
-        "keys": sorted(actual_keys, key=lambda x: x["id"]),
-        "servers": sorted(actual_servers, key=lambda x: x["ip"])
-    }
-def build_qos_state(native):
-
-    policy = native.get("policy", {})
-
-    # ---------- CLASS MAPS ----------
-    class_mapss = policy.get("class-map", [])
-
-    if isinstance(class_mapss, dict):
-        class_mapss = [class_mapss]
-
-    actual_class_mapss = []
-
-    for cm in class_mapss:
-
-        protocols = (
-            cm.get("match", {})
-              .get("protocol", {})
-              .get("protocols-list", {})
-              .get("protocols")
-        )
-
-        actual_class_mapss.append({
-            "name": cm.get("name"),
-            "match_type": cm.get("prematch"),
-            "protocol": protocols
-        })
-
-    # ---------- POLICY MAP ----------
-    policy_maps = policy.get("policy-map", [])
-
-    if isinstance(policy_maps, dict):
-        policy_maps = [policy_maps]
-
-    actual_policy_name = None
-
-    for pm in policy_maps:
-
-        actual_policy_name = pm.get("name")
-
-        classes = pm.get("class", [])
-
-        if isinstance(classes, dict):
-            classes = [classes]
-
-        class_lookup = {
-            c["name"]: c
-            for c in actual_class_mapss
-        }
-
-        for cls in classes:
-
-            name = cls.get("name")
-
-            if name == "class-default":
-                continue
-
-            action = cls.get("action-list", {})
-            action_type = action.get("action-type")
-
-            bandwidth = None
-
-            if action_type == "priority":
-                bandwidth = (
-                    action.get("priority", {})
-                          .get("kilo-bits")
-                )
-
-            elif action_type == "bandwidth":
-                bandwidth = (
-                    action.get("bandwidth", {})
-                          .get("kilo-bits")
-                )
-
-            if name in class_lookup:
-
-                class_lookup[name]["action_type"] = action_type
-                class_lookup[name]["bandwidth"] = (
-                    int(bandwidth)
-                    if bandwidth is not None
-                    else None
-                )
-
-    return {
-        "policy_name": actual_policy_name,
-        "class_mapss": sorted(
-            actual_class_mapss,
-            key=lambda x: x["name"]
-        )
-    }
-def check_qos(expected_qos, actual_qos):
-
-    failures = []
-
-    if expected_qos.get("policy_name") != actual_qos.get("policy_name"):
-        failures.append(
-            "QoS policy name mismatch"
-        )
-
-    if expected_qos.get("interface") != actual_qos.get("interface"):
-        failures.append(
-            "QoS interface mismatch"
-        )
-
-    if expected_qos.get("direction") != actual_qos.get("direction"):
-        failures.append(
-            "QoS direction mismatch"
-        )
-
-    expected_classes = sorted(
-        [
-            {
-                "name": c.get("name"),
-                "match_type": c.get("match_type"),
-                "protocol": c.get("protocol"),
-                "action_type": c.get("action_type"),
-                "bandwidth": c.get("bandwidth")
-            }
-            for c in expected_qos.get("class_mapss", [])
-        ],
-        key=lambda x: x["name"]
-    )
-
-    actual_classes = sorted(
-        actual_qos.get("class_mapss", []),
-        key=lambda x: x["name"]
-    )
-
-    if expected_classes != actual_classes:
-        failures.append(
-            "QoS class-map/policy-map mismatch"
-        )
-
-    return len(failures) == 0, failures
-def check_ntp(expected_ntp, actual_ntp):
-
-    failures = []
-
-    expected_keys = sorted(
-        [
-            {
-                "id": k["id"],
-                "trusted": k.get("trusted", False)
-            }
-            for k in expected_ntp.get("keys", [])
-        ],
-        key=lambda x: x["id"]
-    )
-
-    actual_keys = sorted(
-        actual_ntp.get("keys", []),
-        key=lambda x: x["id"]
-    )
-
-    if expected_keys != actual_keys:
-        failures.append(
-            "NTP authentication/trusted keys mismatch"
-        )
-
-    expected_servers = sorted(
-        [
-            {
-                "ip": s["ip"],
-                "key": s["key"]
-            }
-            for s in expected_ntp.get("servers", [])
-        ],
-        key=lambda x: x["ip"]
-    )
-
-    actual_servers = sorted(
-        actual_ntp.get("servers", []),
-        key=lambda x: x["ip"]
-    )
-
-    if expected_servers != actual_servers:
-        failures.append(
-            "NTP servers mismatch"
-        )
-
-    return len(failures) == 0, failures
-def check_acl(expected_acls, actual_acls):
-
-    actual_lookup = {
-        acl["acl_name"]: acl["rules"]
-        for acl in actual_acls
-    }
-
-    failures = []
-
-    for expected_acl in expected_acls:
-
-        acl_name = expected_acl["acl_name"]
-
-        if acl_name not in actual_lookup:
-            failures.append(
-                f"ACL {acl_name} missing from device"
-            )
-            continue
-
-        if expected_acl["rules"] != actual_lookup[acl_name]:
-            failures.append(
-                f"ACL {acl_name} rules mismatch"
-            )
-
-    return len(failures) == 0, failures
-def check_acl_binding(expected_bindings, actual_bindings):
-    failures = []
-
-    # build lookup from actual device state
-    actual_lookup = {
-        (b["interface"], b["acl_name"], b["direction"])
-        for b in actual_bindings
-    }
-
-    for exp in expected_bindings:
-        key = (exp["interface"], exp["acl_name"], exp["direction"])
-
-        if key not in actual_lookup:
-            failures.append(
-                f"Missing ACL binding: {exp['acl_name']} on {exp['interface']} {exp['direction']}"
-            )
-
-    return len(failures) == 0, failures
-def check_vlan(device_state, vlan_id, name):
-    vlan_string = str(vlan_id)
-    vlans_device_state = device_state.get("vlans", {}).get("vlans", {})
-    vlan_data = vlans_device_state.get(vlan_string, {})
-    vlan_name = vlan_data.get("name", "")
-    return vlan_name == name
-def check_switch_mode(device_state, switch_interface, mode, vlan_or_allowed):
-    switchports = device_state.get("switchports", {})
-    switchport_data = switchports.get(switch_interface, {})
-    operational_mode = switchport_data.get("operational_mode", "")
-    access_vlan = switchport_data.get("access_vlan", "")
-    trunk_vlans = switchport_data.get("trunk_vlans", "")
-    if mode == "access":
-        return "access" in operational_mode and str(access_vlan) == str(vlan_or_allowed)
-    if mode == "trunk":
-        return "trunk" in operational_mode and str(vlan_or_allowed) in str(trunk_vlans)
-    return False
-def check_interface(device_state, r_interface):
-    interfaces = device_state.get("interfaces", {})
-    interface = interfaces.get(r_interface)
-    if not interface:
-        return False
-
-    status = interface.get("status", "")
-    protocol = interface.get("protocol", "")
-    return status == "up" and protocol == "up"
 def restconf_state(device_ip, session, log):
     headers = {"Accept": "application/yang-data+json"}
     session = requests.Session()
@@ -880,29 +518,868 @@ def restconf_state(device_ip, session, log):
     finally:
         session.close()
     return state
-def check_roas(restconf_state, roas_data):
-    interface_data = restconf_state.get("interface_restconf", {})
-    router_interface = roas_data["router_interface"]
-    router_vlan = roas_data["router_vlan"]
-    ip = roas_data["ip"]
-    n_interface = "".join([c for c in router_interface if c.isdigit() or c == "/" or c == "."])
+def fetch_netconf_raw(device_ip, auth, log):
+    username, password = auth
 
-    GigabitEthernet = interface_data.get("Cisco-IOS-XE-native:interface", {}).get("GigabitEthernet", [])
-    for gig in GigabitEthernet:
-        if gig.get("name") == n_interface:
-            vlan_id = (
-                gig.get("encapsulation", {})
-                .get("dot1Q", {})
-                .get("vlan-id", "")
+    filter_xml = """
+      <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
+    """
+
+    with manager.connect(
+        host=device_ip,
+        port=830,
+        username=username,
+        password=password,
+        hostkey_verify=False,
+        timeout=30
+    ) as m:
+
+        response = m.get_config(source="running", filter=("subtree", filter_xml))
+        return response.data_xml
+def collect_netconf_state(session):
+    filter_xml = """
+    <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
+    """
+
+    response = session.get_config(
+        source="running",
+        filter=("subtree", filter_xml)
+    )
+
+    return parse_netconf_state(response.data_xml)
+def parse_netconf_state(xml_data):
+    import xmltodict
+
+    full_dict = xmltodict.parse(xml_data)
+
+    return full_dict.get("rpc-reply", {}).get("data", {}).get("native", {})
+def netconf_state(device_ip, auth, log):
+    xml_data = fetch_netconf_raw(device_ip, auth, log)
+    return parse_netconf_state(xml_data)
+def build_vlan_state(device_state)
+
+    vlan_table = device_state.get("vlans", {})
+
+    vlan_list = vlan_table.get("vlans", {})
+
+    actual_inventory = {}
+
+    for vlan_id, vlan_info in vlan_list.items():
+        actual_inventory[str(vlan_id)] = {
+            "name": vlan_info.get("name"),
+            "status": vlan_info.get("status")
+        }
+
+    return actual_inventory
+def build_interface_state(device_state):
+ 
+    actual = {}
+
+    interfaces = device_state.get("interfaces", {})
+
+    if not isinstance(interfaces, dict):
+        return {}
+
+    # Genie output is usually keyed by interface name
+    for intf_name, data in interfaces.items():
+
+        if not isinstance(data, dict):
+            continue
+
+        name = intf_name.lower().strip()
+
+        status = str(data.get("status", "")).lower().strip()
+        protocol = str(data.get("protocol", "")).lower().strip()
+
+        actual[name] = {
+            "interface": name,
+            "status": status,        
+            "protocol": protocol,   
+            "is_up": status == "up" and protocol == "up"
+        }
+
+    return actual
+def build_access_state(device_state):
+  
+    sw_data = device_state.get("switchports", {})
+    if not isinstance(sw_data, dict):
+        return {}
+
+    actual_access = {}
+
+    for intf, data in sw_data.items():
+
+        if not isinstance(data, dict):
+            continue
+
+        op_mode = str(data.get("operational_mode", "")).lower()
+
+
+        if "access" not in op_mode or "trunk" in op_mode:
+            continue
+
+        interface = intf.lower().strip()
+        access_vlan = str(data.get("access_vlan", "") or "").strip()
+        access_vlan = access_vlan.split("(")[0].strip()
+
+        actual_access[interface] = {
+            "interface": interface,
+            "mode": "access",
+            "access_vlan": access_vlan
+        }
+
+    return actual_access
+def build_trunk_state(device_state):
+    
+    sw_data = device_state.get("switchports", {})
+    if not isinstance(sw_data, dict):
+        return {}
+
+    actual_trunks = {}
+
+    for intf, data in sw_data.items():
+
+        if not isinstance(data, dict):
+            continue
+
+        op_mode = str(data.get("operational_mode", "")).lower()
+
+        if "trunk" not in op_mode:
+            continue
+
+        interface = intf.lower()
+
+        allowed_vlans = str(data.get("trunk_vlans", ""))
+
+        actual_trunks[interface] = {
+            "interface": interface,
+            "mode": "trunk",
+            "allowed_vlans": allowed_vlans
+        }
+
+    return actual_trunks
+def build_roas_state(restconf_data):
+
+    actual_roas = {}
+
+    iface_root = restconf_data.get("interface_restconf", {})
+
+    interfaces = iface_root.get(
+        "Cisco-IOS-XE-native:interface", {}
+    )
+
+    for intf_type, intf_list in interfaces.items():
+
+        if not isinstance(intf_list, list):
+            intf_list = [intf_list]
+
+        for intf in intf_list:
+
+            base_name = str(intf.get("name", "")).lower()
+
+            subifs = intf.get("GigabitEthernet-subinterface", [])
+            if not isinstance(subifs, list):
+                subifs = [subifs]
+
+            for sub in subifs:
+
+                sub_name = sub.get("name")
+                if not sub_name:
+                    continue
+
+                full_intf = f"{base_name}.{sub_name}".lower()
+
+                ipv4 = sub.get("ip", {}).get("address", {})
+
+                primary = ipv4.get("primary", {})
+
+                ip_addr = primary.get("address")
+                mask = primary.get("mask")
+
+                vlan_id = sub.get("encapsulation", {}).get("dot1Q", {}).get("vlan-id")
+
+                actual_roas[full_intf] = {
+                    "interface": full_intf,
+                    "vlan": vlan_id,
+                    "ip": ip_addr,
+                    "mask": mask
+                }
+
+    return actual_roas
+def build_ospf_state(restconf_state):
+
+    actual = {
+        "processes": {}
+    }
+
+    ospf_data = restconf_state.get("ospf_restconf", {})
+
+    router = ospf_data.get(
+        "Cisco-IOS-XE-native:router", {}
+    )
+
+    ospf = router.get("ospf", {})
+
+    processes = ospf.get("process-id", [])
+
+    if not isinstance(processes, list):
+        processes = [processes]
+
+    for proc in processes:
+
+        pid = str(proc.get("id"))
+
+        router_id = proc.get("router-id", "")
+
+        networks = []
+
+        for net in proc.get("network", []):
+
+            if not isinstance(net, dict):
+                continue
+
+            networks.append({
+                "ip": net.get("ip"),
+                "wildcard": net.get("wildcard"),
+                "area": str(net.get("area"))
+            })
+
+        actual["processes"][pid] = {
+            "process_id": pid,
+            "router_id": router_id,
+            "network_list": networks
+        }
+
+    return actual
+def build_acl_state(native):
+
+    actual_acls = {}
+
+    extended = listify(
+        native.get("ip", {})
+              .get("access-list", {})
+              .get("extended", [])
+    )
+
+    for acl_obj in extended:
+
+        name = acl_obj.get("name")
+
+        if not name:
+            continue
+
+        rules = []
+
+        seq_rules = listify(
+            acl_obj.get("access-list-seq-rule", [])
+        )
+
+        for r in seq_rules:
+
+            ace = r.get("ace-rule", {})
+
+            rules.append({
+                "seq": int(r.get("sequence", 0)),
+                "action": ace.get("action"),
+                "protocol": ace.get("protocol"),
+
+                "source_ip": ace.get("ipv4-address", "any"),
+                "source_mask": ace.get("mask"),
+
+                "dest_ip": ace.get("dest-ipv4-address", "any"),
+                "dest_mask": ace.get("dest-mask"),
+
+                "port": ace.get("dst-eq")
+            })
+
+        actual_acls[name] = sorted(rules, key=lambda x: x["seq"])
+    return actual_acls
+def build_acl_bindings_state(native):
+    actual_bindings = {}
+
+    intf_types = ["GigabitEthernet", "TenGigabitEthernet", "Vlan", "Loopback", "Port-channel"]
+    interfaces_root = native.get("interface", {})
+
+    for i_type in intf_types:
+        intf_list = listify(interfaces_root.get(i_type, []))
+
+        for intf in intf_list:
+            name_val = intf.get("name")
+            if not name_val:
+                continue
+
+            name = str(name_val).lower()
+
+            ip_data = intf.get("ip", {})
+            access_groups = listify(ip_data.get("access-group", []))
+
+            for ag in access_groups:
+                direction = ag.get("direction")
+                acl_name = ag.get("acl-name")
+
+                if not direction or not acl_name:
+                    continue
+
+                key = f"{name}|{direction.lower()}"
+
+                actual_bindings[key] = {
+                    "interface": name,
+                    "acl_name": acl_name.lower(),
+                    "direction": direction.lower()
+                }
+
+    return actual_bindings
+def build_ntp_state(native):
+    ntp = native.get("ntp", {}) or {}
+
+    trusted = listify(ntp.get("trusted-key", []))
+
+    trusted_ids = set()
+    for t in trusted:
+        try:
+            trusted_ids.add(int(t.get("number", 0)))
+        except (TypeError, ValueError):
+            continue
+
+    keys_raw = listify(ntp.get("authentication-key", []))
+
+    actual_keys = []
+    for k in keys_raw:
+        try:
+            key_id = int(k.get("number", 0))
+        except (TypeError, ValueError):
+            continue
+
+        actual_keys.append({
+            "id": key_id,
+            "trusted": key_id in trusted_ids
+        })
+
+    servers_root = ntp.get("server", {}) or {}
+    servers_raw = listify(servers_root.get("server-list", []))
+
+    actual_servers = []
+    
+    for s in servers_raw:
+        try:
+            ip = s.get("ip-address")
+            key = int(s.get("key", 0))
+        except (TypeError, ValueError):
+            continue
+
+        if not ip:
+            continue
+
+        actual_servers.append({
+            "ip": ip,
+            "key": key
+        })
+
+    return {
+        "keys": sorted(actual_keys, key=lambda x: x["id"]),
+        "servers": sorted(actual_servers, key=lambda x: x["ip"])
+    }
+def build_qos_state(native):
+    policy = native.get("policy", {})
+
+    cm_raw = listify(policy.get("class-map", []))
+    class_inventory = {}
+
+    for cm in cm_raw:
+        name = cm.get("name")
+        if not name:
+            continue
+
+        match_data = cm.get("match", {}) or {}
+        protocol = (
+            match_data.get("protocol", {})
+            .get("protocols-list", {})
+            .get("protocols")
+        )
+
+        class_inventory[name] = {
+            "name": name,
+            "match_type": cm.get("prematch"),
+            "protocol": protocol,
+            "action_type": None,
+            "bandwidth": None
+        }
+
+    pm_raw = listify(policy.get("policy-map", []))
+    actual_policy_name = None
+
+    for pm in pm_raw:
+        actual_policy_name = pm.get("name")
+
+        pm_classes = listify(pm.get("class", []))
+
+        for cls in pm_classes:
+            c_name = cls.get("name")
+
+            if not c_name or c_name == "class-default":
+                continue
+
+            if c_name not in class_inventory:
+                continue
+
+            action = cls.get("action-list", {}) or {}
+            a_type = action.get("action-type")
+
+            bw_val = None
+            if a_type == "priority":
+                bw_val = action.get("priority", {}).get("kilo-bits")
+            elif a_type == "bandwidth":
+                bw_val = action.get("bandwidth", {}).get("kilo-bits")
+
+            class_inventory[c_name]["action_type"] = a_type
+            class_inventory[c_name]["bandwidth"] = int(bw_val) if bw_val else None
+
+    return {
+        "policy_name": actual_policy_name,
+        "classes": class_inventory
+    }
+def check_qos(expected_qos, actual_qos):
+    failures = []
+
+    exp_policy = expected_qos.get("policy_name")
+    act_policy = actual_qos.get("policy_name")
+
+    if exp_policy != act_policy:
+        failures.append(
+            f"Policy name mismatch: expected={exp_policy}, actual={act_policy}"
+        )
+
+    exp_classes = expected_qos.get("class_map", {})
+    act_classes = actual_qos.get("classes", {})
+
+    exp_keys = set(exp_classes.keys())
+    act_keys = set(act_classes.keys())
+
+    for name in (exp_keys - act_keys):
+        failures.append(f"Missing QoS class: {name}")
+
+ 
+    for name in (act_keys - exp_keys):
+        failures.append(f"Unexpected QoS class on device: {name}")
+
+
+    for name in (exp_keys & act_keys):
+        exp = exp_classes[name]
+        act = act_classes[name]
+
+        if str(exp.get("protocol")).lower() != str(act.get("protocol")).lower():
+            failures.append(
+                f"{name} protocol mismatch: expected={exp.get('protocol')} actual={act.get('protocol')}"
             )
-            ip_add = (
-                gig.get("ip", {})
-                .get("address", {})
-                .get("primary", {})
-                .get("address", "")
+
+        if exp.get("action_type") != act.get("action_type"):
+            failures.append(
+                f"{name} action mismatch: expected={exp.get('action_type')} actual={act.get('action_type')}"
             )
-            return str(vlan_id) == str(router_vlan) and str(ip) == str(ip_add)
-    return False
+
+        if str(exp.get("bandwidth")) != str(act.get("bandwidth")):
+            failures.append(
+                f"{name} bandwidth mismatch: expected={exp.get('bandwidth')} actual={act.get('bandwidth')}"
+            )
+
+    return len(failures) == 0, failures
+def check_ntp(expected_ntp, actual_ntp):
+    failures = []
+
+    expected_ntp = expected_ntp or {}
+    actual_ntp = actual_ntp or {}
+
+
+    exp_keys = {
+        k.get("id"): bool(k.get("trusted", False))
+        for k in expected_ntp.get("keys", [])
+        if k.get("id") is not None
+    }
+
+    act_keys = {
+        k.get("id"): bool(k.get("trusted", False))
+        for k in actual_ntp.get("keys", [])
+        if k.get("id") is not None
+    }
+
+    # Missing / mismatch keys
+    for kid, exp_trusted in exp_keys.items():
+
+        if kid not in act_keys:
+            failures.append(f"Missing NTP Key: {kid}")
+            continue
+
+        if exp_trusted != act_keys[kid]:
+            failures.append(
+                f"NTP Key {kid} trust mismatch "
+                f"(expected={exp_trusted}, actual={act_keys[kid]})"
+            )
+
+    exp_servers = {
+        s.get("ip"): s.get("key", 0)
+        for s in expected_ntp.get("servers", [])
+        if s.get("ip")
+    }
+
+    act_servers = {
+        s.get("ip"): s.get("key", 0)
+        for s in actual_ntp.get("servers", [])
+        if s.get("ip")
+    }
+
+    for ip, exp_key in exp_servers.items():
+
+        if ip not in act_servers:
+            failures.append(f"Missing NTP Server: {ip}")
+            continue
+
+        if int(exp_key) != int(act_servers[ip]):
+            failures.append(
+                f"NTP Server {ip} key mismatch "
+                f"(expected={exp_key}, actual={act_servers[ip]})"
+            )
+
+    for ip in (act_servers.keys() - exp_servers.keys()):
+        failures.append(f"Unexpected NTP Server (manual config): {ip}")
+
+    return len(failures) == 0, failures
+def check_acl(expected_rules, actual_rules):
+
+    failures = []
+
+    expected = {
+        r.get("seq"): r
+        for r in expected_rules
+        if r.get("seq") is not None
+    }
+
+    actual = {
+        r.get("seq"): r
+        for r in actual_rules
+        if r.get("seq") is not None
+    }
+
+    exp_seqs = set(expected.keys())
+    act_seqs = set(actual.keys())
+
+    for seq in (exp_seqs - act_seqs):
+        failures.append(
+            f"Missing rule {seq}"
+        )
+
+    for seq in (act_seqs - exp_seqs):
+        failures.append(
+            f"Unexpected rule {seq}"
+        )
+
+    for seq in (exp_seqs & act_seqs):
+
+        for key, expected_value in expected[seq].items():
+
+            actual_value = actual[seq].get(key)
+
+            if normalize_val(expected_value) != normalize_val(actual_value):
+
+                failures.append(
+                    f"Rule {seq} mismatch on '{key}' "
+                    f"(expected={expected_value}, actual={actual_value})"
+                )
+
+    return len(failures) == 0, failures
+def normalize(v):
+    if v is None:
+        return ""
+    return str(v).strip().lower()
+def check_acl_bindings(expected_bindings, actual_bindings):
+    failures = []
+
+    expected = {}
+
+    for b in expected_bindings:
+        interface = normalize(b.get("interface"))
+        direction = normalize(b.get("direction"))
+        acl_name = normalize(b.get("acl_name"))
+
+        if not interface or not direction:
+            failures.append(f"Malformed expected binding: {b}")
+            continue
+
+        key = f"{interface}|{direction}"
+        expected[key] = {
+            "acl_name": acl_name,
+            "raw": b
+        }
+
+    exp_keys = set(expected.keys())
+    act_keys = set(actual_bindings.keys())
+
+    for key in (exp_keys - act_keys):
+        failures.append(f"Missing ACL Binding: {key.replace('|', ' ')}")
+
+    for key in (act_keys - exp_keys):
+        act = actual_bindings[key]
+        failures.append(
+            f"Unexpected ACL Binding: {key.replace('|', ' ')} "
+            f"(ACL: {act.get('acl_name')})"
+        )
+    for key in (exp_keys & act_keys):
+        exp = expected[key]["acl_name"]
+        act = normalize(actual_bindings[key].get("acl_name"))
+
+        if exp != act:
+            failures.append(
+                f"ACL mismatch on {key.replace('|', ' ')}: "
+                f"expected={exp}, actual={act}"
+            )
+
+    return len(failures) == 0, failures
+def check_vlan(expected_vlan, actual_inventory):
+  
+    failures = []
+
+    vid = str(expected_vlan.get("vlan_id", "")).strip()
+    exp_name = (expected_vlan.get("name") or "").strip()
+
+    actual = actual_inventory.get(vid)
+
+    if not actual:
+        failures.append(f"VLAN {vid} is missing from device")
+        return False, failures
+
+    act_name = (actual.get("name") or "").strip()
+
+
+    if exp_name.lower() != act_name.lower():
+        failures.append(
+            f"VLAN {vid} name mismatch: expected={exp_name}, actual={act_name}"
+        )
+
+    return len(failures) == 0, failures
+def check_interface(expected_interface, actual_inventory):
+    failures = []
+
+
+    intf = str(expected_interface.get("interface", "")).lower().strip()
+
+    should_be_up = expected_interface.get("should_be_up", True)
+
+    actual = actual_inventory.get(intf)
+
+    if not actual:
+        failures.append(f"Interface {intf} not found on device")
+        return False, failures
+
+
+    is_up = actual.get("is_up", False)
+
+
+    if should_be_up and not is_up:
+        failures.append(
+            f"{intf} should be UP but is DOWN "
+            f"(status={actual.get('status')}, protocol={actual.get('protocol')})"
+        )
+
+    # Case 2: SHOULD BE DOWN but is UP (drift detection)
+    if not should_be_up and is_up:
+        failures.append(
+            f"{intf} should be DOWN but is UP (unexpected active interface)"
+        )
+
+    return len(failures) == 0, failures
+def check_access_port(expected_port, actual_inventory):
+    failures = []
+
+    intf = str(expected_port.get("access_interface", "")).lower().strip()
+
+
+    exp_vlan = str(expected_port.get("access_vlan", "") or "").strip()
+
+
+    actual = actual_inventory.get(intf)
+
+    if not actual:
+        failures.append(
+            f"Interface {intf} missing or not configured as access port"
+        )
+        return False, failures
+
+    act_vlan = str(actual.get("access_vlan", "") or "").strip()
+
+    # Handle Cisco formatting like "10 (VLAN0010)"
+    act_vlan = act_vlan.split("(")[0].strip()
+
+    if exp_vlan != act_vlan:
+        failures.append(
+            f"Access VLAN mismatch on {intf}: "
+            f"expected={exp_vlan}, actual={act_vlan}"
+        )
+
+    if actual.get("mode") != "access":
+        failures.append(
+            f"{intf} is not in access mode"
+        )
+
+    return len(failures) == 0, failures
+def check_trunk(expected_trunk, actual_inventory):
+    failures = []
+
+    if not isinstance(expected_trunk, dict):
+        return False, ["Expected trunk data is not a valid dictionary"]
+
+    raw_intf = expected_trunk.get("trunk_interface")
+    if not raw_intf:
+        return False, ["Missing trunk_interface in expected config"]
+
+    intf = str(raw_intf).lower().strip()
+
+    # VLAN validation early (prevents silent bad comparisons)
+    raw_vlans = expected_trunk.get("allowed_vlans", "")
+    if raw_vlans is None:
+        return False, [f"Trunk {intf}: allowed_vlans is None"]
+
+    exp_vlans = normalize_vlans(raw_vlans)
+
+    if exp_vlans is None:
+        return False, [f"Trunk {intf}: VLAN normalization failed (invalid input: {raw_vlans})"]
+
+    actual = actual_inventory.get(intf)
+
+    if not actual:
+        failures.append(
+            f"Interface {intf} missing or not configured as trunk"
+        )
+        return False, failures
+
+    if not isinstance(actual, dict):
+        return False, [f"Invalid actual trunk structure for {intf}"]
+
+
+    act_raw_vlans = actual.get("allowed_vlans", "")
+
+    if act_raw_vlans is None:
+        act_raw_vlans = ""
+
+    act_vlans = normalize_vlans(act_raw_vlans)
+
+    if act_vlans is None:
+        return False, [f"Trunk {intf}: device returned invalid VLAN format"]
+
+    if exp_vlans != act_vlans:
+        failures.append(
+            f"Trunk {intf} VLAN mismatch: expected={exp_vlans}, actual={act_vlans}"
+        )
+
+
+    if actual.get("mode") and actual.get("mode") != "trunk":
+        failures.append(
+            f"Trunk {intf} mode mismatch: expected=trunk, actual={actual.get('mode')}"
+        )
+
+    return len(failures) == 0, failures
+def check_interface(device_state, r_interface):
+    interfaces = device_state.get("interfaces", {})
+    interface = interfaces.get(r_interface)
+    if not interface:
+        return False
+
+    status = interface.get("status", "")
+    protocol = interface.get("protocol", "")
+    return status == "up" and protocol == "up"
+def check_roas(expected_roas, actual_roas):
+
+    failures = []
+
+   
+    base_intf = str(expected_roas.get("router_interface", "")).lower().strip()
+    vlan = str(expected_roas.get("router_vlan", "")).strip()
+    ip = expected_roas.get("ip")
+
+    # Build expected subinterface key
+    expected_key = f"{base_intf}.{vlan}"
+
+    actual = actual_roas.get(expected_key)
+
+
+    if not actual:
+        failures.append(
+            f"ROAS missing: {expected_key} (VLAN {vlan} on {base_intf})"
+        )
+        return False, failures
+
+
+    actual_vlan = str(actual.get("vlan", "")).strip()
+
+    if vlan != actual_vlan:
+        failures.append(
+            f"ROAS VLAN mismatch on {expected_key}: "
+            f"expected={vlan}, actual={actual_vlan}"
+        )
+
+  
+    actual_ip = actual.get("ip")
+
+    if ip and actual_ip and ip != actual_ip:
+        failures.append(
+            f"ROAS IP mismatch on {expected_key}: "
+            f"expected={ip}, actual={actual_ip}"
+        )
+
+    return len(failures) == 0, failures
+def check_ospf(expected, actual_state):
+
+    failures = []
+
+
+    pid = str(expected.get("process_id"))
+
+    actual_proc = actual_state.get("processes", {}).get(pid)
+
+    if not actual_proc:
+        failures.append(f"Missing OSPF process {pid}")
+        return False, failures
+
+    exp_router_id = str(expected.get("router_id", "")).strip()
+    act_router_id = str(actual_proc.get("router_id", "")).strip()
+
+    if exp_router_id and act_router_id and exp_router_id != act_router_id:
+        failures.append(
+            f"Router-ID mismatch: expected={exp_router_id}, actual={act_router_id}"
+        )
+
+    exp_networks = expected.get("network_list", [])
+    act_networks = actual_proc.get("network_list", [])
+
+    exp_set = {
+        (
+            str(n.get("ip", "")).strip(),
+            str(n.get("wildcard", "")).strip(),
+            str(n.get("area", "")).strip()
+        )
+        for n in exp_networks
+    }
+
+    # Normalize actual
+    act_set = {
+        (
+            str(n.get("ip", "")).strip(),
+            str(n.get("wildcard", "")).strip(),
+            str(n.get("area", "")).strip()
+        )
+        for n in act_networks
+    }
+
+    for net in (exp_set - act_set):
+        failures.append(
+            f"Missing OSPF network: ip={net[0]} wildcard={net[1]} area={net[2]}"
+        )
+
+
+    for net in (act_set - exp_set):
+        failures.append(
+            f"Unexpected OSPF network on device: ip={net[0]} wildcard={net[1]} area={net[2]}"
+        )
+
+    return len(failures) == 0, failures
 class OSPF_Checker:
     def validate_device_ospf(self, device_ip: str, restconf_state: Dict, ospf_data: Dict, log) -> Dict:
         results = {
@@ -2483,1724 +2960,347 @@ class OSPF_Checker:
                            f"Function: check_lsa_age", exc_info=True)
             return "error", 0
 def configure_vlan(conn, device_ip, vlan_data, log):
-    vlan_id, name = vlan_data.get("vlan_id", ""), vlan_data.get("name", "")
-    timestamp = datetime.utcnow().isoformat()
-    results = {
-        "device_ip": device_ip,
-        "vlan_id": vlan_id,
-        "name": name,
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "vlan_automation",
+  
 
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-    }
+    vlan_id = vlan_data.get("vlan_id")
+    name = vlan_data.get("name")
+
     try:
-        log.info(
-            "vlan_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "vlan_config",
-                "severity": "INFO",
-                "component": "vlan_automation",
-                "message": f"Configuring VLAN | VLAN: {vlan_id} | Name: {name}"
-            }
-        )
-        if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.DRY_RUN.value
-            results["summary_config"] = (f"[DRY-RUN] Would Configure VLAN "
-                                         f"| VLAN {vlan_id} | {name}")
 
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="vlan_automation",
-                    event_type="vlan_config",
-                    outcome="DRY_RUN",
-                    vlan_id=vlan_id,
-                    name=name,
-                    timestamp=timestamp,
-                    reason=(f"[DRY-RUN] Would Configure VLAN "
-                            f"| VLAN {vlan_id} | {name}")
+        template = template_env.get_template("vlan.j2")
 
-                )
-            )
-        else:
-            template = template_env.get_template("vlan.j2")
-            commands = template.render(
-                vlan_id=vlan_id,
-                name=name
-            )
-
-            configured, error = safe_send_config(conn, commands)
-            results["configured"] = configured
-
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = f"VLAN Config Failed | VLAN: {vlan_id} | Name: {name}"
-
-                log.info(
-                    "vlan_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "vlan_automation",
-                        "event_type": "vlan_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "CRITICAL",
-                        "timestamp": timestamp,
-                        "message":f"VLAN Config Failed | VLAN: {vlan_id} | Name: {name}"
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="vlan_automation",
-                        event_type="vlan_config",
-                        outcome="FAIL",
-                        vlan_id=vlan_id,
-                        name=name,
-                        timestamp=timestamp,
-                        error=error
-                    )
-                )
-            else:
-                results["summary_config"] = f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}"
-                results["status"] = OpStatus.CONFIGURED.value
-                log.info(
-                    "vlan_check",
-                    extra = {
-                        "device_ip": device_ip,
-                        "event_type": "vlan_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "component": "vlan_automation",
-                        "message": f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}",
-                        "timestamp": timestamp
-
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="vlan_automation",
-                        event_type="vlan_config",
-                        outcome="SUCCESS",
-                        vlan_id=vlan_id,
-                        name=name,
-                        reason=f"VLAN Successfully Configured | VLAN: {vlan_id} | Name: {name}",
-                        timestamp=timestamp
-                    )
-                )
-                device_state = collect_device_state(conn)
-
-                vlan_ok = check_vlan(device_state, vlan_id, name)
-
-                results["validated"] = vlan_ok
-
-                if vlan_ok:
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
-                    log.info(
-                        "vlan_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "vlan_validation",
-                            "status": StepStatus.SUCCESS.value,
-                            "severity": "INFO",
-                            "component": "vlan_automation",
-                            "message": f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="vlan_automation",
-                            event_type="vlan_validation",
-                            outcome="SUCCESS",
-                            vlan_id=vlan_id,
-                            name=name,
-                            timestamp=timestamp,
-                            reason=f"VLAN Validation Successful | VLAN: {vlan_id} | Name: {name}",
-                        )
-                    )
-                else:
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] = f"VLAN Validation Failed | VLAN: {vlan_id} | Name: {name}"
-                    log.info(
-                        "vlan_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "vlan_validation",
-                            "status": StepStatus.FAILED.value,
-                            "severity": "CRITICAL",
-                            "component": "vlan_automation",
-                            "message": f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="vlan_automation",
-                            event_type="vlan_validation",
-                            outcome="FAIL",
-                            vlan_id=vlan_id,
-                            name=name,
-                            reason=f"VLAN Validation Failed  | VLAN: {vlan_id} | Name: {name}",
-                            timestamp=timestamp
-                        )
-                    )
-
-    except Exception as e:
-        results["error"] = str(e)
-        results["status"] = OpStatus.ERROR.value
-        log.exception(
-            "vlan_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "vlan_config",
-                "status": StepStatus.ERROR.value,
-                "severity": "CRITICAL",
-                "error": str(e),
-                "component": "vlan_automation",
-                "message": "Try/Exception Error | VLAN Configuration | "
-                           "Function: def configure_vlan",
-            },
-
-        )
-        results["events"].append(
-            emit_event(
-                device_ip=device_ip,
-                component="vlan_automation",
-                event_type="vlan_config",
-                outcome="ERROR",
-                vlan_id=vlan_id,
-                name=name,
-                error=str(e),
-                timestamp=timestamp,
-                reason="Exception Error"
-            )
-        )
-
-    results["summary"] = (
-            results["summary_validation"]
-            or results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="vlan_automation",
-            event_type="vlan_overall",
-            outcome=(
-                "DRY_RUN" if DRY_RUN else "SUCCESS"
-                if results["status"] == OpStatus.SUCCESS.value
-                else "FAIL"
-            ),
+        config_commands = template.render(
             vlan_id=vlan_id,
-            name=name,
-            timestamp=timestamp,
-            reason="VLAN Automation completed"
-        )
-    )
+            name=name
+        ).splitlines()
 
-    return results
+
+        if DRY_RUN:
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY_RUN] Would configure VLAN {vlan_id} ({name})"
+            }
+
+
+        output = conn.send_config_set(config_commands)
+
+        log.info(
+            "vlan_config_success",
+            extra={
+                "device_ip": device_ip,
+                "component": "vlan_automation",
+                "event_type": "vlan_config",
+                "status": StepStatus.SUCCESS.value,
+                "vlan_id": vlan_id,
+                "name": name,
+                "message": f"VLAN configured successfully | {vlan_id} {name}"
+            }
+        )
+
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"Successfully configured VLAN {vlan_id} ({name})",
+            "output": output
+        }
+
+    except Exception as e:
+        log.exception(
+            "vlan_config_exception",
+            extra={
+                "device_ip": device_ip,
+                "component": "vlan_automation",
+                "event_type": "vlan_config",
+                "vlan_id": vlan_id,
+                "name": name
+            }
+        )
+
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": f"VLAN config failed: {str(e)}",
+            "error": str(e)
+        }
 def configure_access_ports(conn, device_ip, access_data, log):
-    access_interface,  access_vlan = access_data["access_interface"], access_data["access_vlan"]
-    timestamp = datetime.utcnow().isoformat()
-    results = {
-        "device_ip": device_ip,
-        "interface": access_interface,
-        "vlan_id": access_vlan,
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "access_port_automation",
+  
+    intf = access_data.get("access_interface")
+    vlan = access_data.get("access_vlan")
 
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-    }
     try:
-        log.info(
-            "access_port_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "access_port_config",
-                "severity": "INFO",
-                "component": "access_port_automation",
-                "message": f"Configuring Access Port | Interface: {access_interface} |"
-                           f" VLAN: {access_vlan}"
-            }
-        )
+   
+        template = template_env.get_template("access_port.j2")
+
+        commands = template.render(
+            interface=intf,
+            vlan=vlan
+        ).splitlines()
+
+    
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.SUCCESS.value
-            results["summary_config"] = (f"[DRY-RUN] Would Configure Access Port | "
-                                         f"Interface: {access_interface} | VLAN: {access_vlan}")
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="access_port_automation",
-                    event_type="access_port_config",
-                    outcome="DRY_RUN",
-                    vlan_id=access_vlan,
-                    interface=access_interface,
-                    timestamp=timestamp,
-                    reason=(f"[DRY-RUN] Would Configure Access Port | "
-                                         f"Interface: {access_interface} | VLAN: {access_vlan}")
-                )
-            )
-            return results
-        else:
-            template = template_env.get_template("access_port.j2")
-            commands = template.render(
-                access_interface=access_interface,
-                access_vlan=access_vlan
-            )
-            configured, error = safe_send_config(conn, commands)
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY_RUN] Would configure access port {intf} VLAN {vlan}"
+            }
 
-            results["configured"] = configured
 
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (f"Access Port Config Failed | "
-                                             f"Interface: {access_interface} | VLAN: {access_vlan} ")
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="access_port_automation",
-                        event_type="access_port_config",
-                        outcome="FAIL",
-                        vlan_id=access_vlan,
-                        interface=access_interface,
-                        timestamp=timestamp,
-                        error=error
-                    )
-                )
-            else:
-                results["summary_config"] = (f"Access Port Successfully Configured | "
-                                             f"Interface: {access_interface} | VLAN: {access_vlan} ")
-                results["status"] = OpStatus.CONFIGURED.value
-                log.info(
-                    "access_port_check",
-                    extra = {
-                        "device_ip": device_ip,
-                        "event_type": "access_port_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "component": "access_port_automation",
-                        "message": f"Access Port Successfully Configured | "
-                                   f"Interface: {access_interface} | VLAN: {access_vlan}"
+        output = conn.send_config_set(commands)
 
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="access_port_automation",
-                        event_type="access_port_config",
-                        outcome="SUCCESS",
-                        vlan_id=access_vlan,
-                        interface=access_interface,
-                        timestamp=timestamp,
-                        reason=f"Access Port Successfully Configured | "
-                                   f"Interface: {access_interface} | VLAN: {access_vlan}"
 
-                    )
-                )
+        if "%" in output or "Error" in output or "Invalid" in output:
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"CLI rejected access config on {intf}",
+                "error": output
+            }
 
-                device_state = collect_device_state(conn)
-
-                access_port_ok = check_switch_mode(
-                    device_state,
-                    access_interface,
-                    "access",
-                    access_vlan
-                )
-
-                results["validated"] = access_port_ok
-
-                if access_port_ok:
-                    log.info(
-                        "access_port_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "access_port_validation",
-                            "status": StepStatus.SUCCESS.value,
-                            "severity": "INFO",
-                            "component": "access_port_automation",
-                            "message": f"Access Port Validation Passed | VLAN: {access_vlan} | "
-                                       f"Interface: {access_interface}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="access_port_automation",
-                            event_type="access_port_validation",
-                            outcome="SUCCESS",
-                            vlan_id=access_vlan,
-                            interface=access_interface,
-                            timestamp=timestamp,
-                            reason=f"Access Port Validation Passed | VLAN: {access_vlan} | "
-                                       f"Interface: {access_interface}"
-                        )
-                    )
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = (f"Access Port Validation Passed | VLAN: {access_vlan} | "
-                                       f"Interface: {access_interface}")
-
-                else:
-                    log.info(
-                        "access_port_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "access_port_validation",
-                            "status": StepStatus.FAILED.value,
-                            "severity": "CRITICAL",
-                            "component": "access_port_automation",
-                            "message": f"Access Port Validation Failed | VLAN: {access_vlan} | "
-                                       f"Interface: {access_interface}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="access_port_automation",
-                            event_type="access_port_validation",
-                            outcome="FAIL",
-                            vlan_id=access_vlan,
-                            interface=access_interface,
-                            timestamp=timestamp,
-                            reason=f"Access Port Validation Failed | VLAN: {access_vlan} | "
-                                       f"Interface: {access_interface}"
-                        )
-                    )
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] = (f"Access Port Validation Failed | VLAN: {access_vlan} | "
-                                       f"Interface: {access_interface}")
+ 
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"Access port configured: {intf} VLAN {vlan}"
+        }
 
     except Exception as e:
         log.exception(
-            "access_port_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "access_port_config",
-                "status": OpStatus.ERROR.value,
-                "severity": "CRITICAL",
-                "component": "access_port_automation",
-                "error": str(e),
-                "message": "Try/Exception Error | Access Port | Function: "
-                           "def configure_access_ports"
-            },
+            "access_config_exception",
+            extra={"device_ip": device_ip}
         )
-        results["events"].append(
-            emit_event(
-                device_ip=device_ip,
-                component="access_port_automation",
-                event_type="access_port_config",
-                outcome="ERROR",
-                vlan_id=access_vlan,
-                interface=access_interface,
-                error=str(e),
-                timestamp=timestamp,
-                reason=f"Try/Exception Error | def configure_access_ports"
-            )
-        )
-        results["status"] = OpStatus.ERROR.value
-        results["error"] = str(e)
 
-    results["summary"] = (
-            results["summary_validation"]
-            or results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="access_port_validation",
-            event_type="access_port_overall",
-            outcome=("DRY_RUN" if DRY_RUN
-                     else "SUCCESS" if results["status"] == OpStatus.SUCCESS.value else "FAIL"),
-            vlan_id=access_vlan,
-            interface=access_interface,
-            timestamp=timestamp,
-            reason=f"Access Port Automation Completed."
-
-        )
-    )
-    return results
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": str(e)
+        }
 def configure_trunk_ports(conn, device_ip, trunk_data, log):
-    trunk_interface, allowed_vlans = (trunk_data.get("trunk_interface"),
-                                      trunk_data.get("allowed_vlans"))
-    timestamp = datetime.utcnow().isoformat()
-    results = {
-        "device_ip": device_ip,
-        "interface": trunk_interface,
-        "allowed_vlans": allowed_vlans,
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "trunk_port_automation",
 
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-    }
+    intf = trunk_data.get("trunk_interface", "")
+    vlans = trunk_data.get("allowed_vlans", "")
+
     try:
-        log.info(
-            "trunk_port_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "trunk_port_config",
-                "severity": "INFO",
-                "component": "trunk_port_automation",
-                "message": f"Configuring Trunk Port | Trunk: {trunk_interface} | "
-                           f"Allowed VLANs: {allowed_vlans}"
-            }
-        )
+   
+        template = template_env.get_template("trunk.j2")
+
+        commands = template.render(
+            trunk_interface=intf,
+            allowed_vlans=vlans
+        ).splitlines()
+
+  
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.SUCCESS.value
-            results["summary_config"] = (f"[DRY-RUN] Would Configure Trunk Port | "
-                                         f"Interface: {trunk_interface} | Allowed VLANs: "
-                                         f"{allowed_vlans}")
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="trunk_port_automation",
-                    event_type="trunk_port_config",
-                    outcome="DRY_RUN",
-                    interface=trunk_interface,
-                    allowed_vlans=allowed_vlans,
-                    timestamp=timestamp,
-                    reason=f"[DRY-RUN] Would Configure Trunk Port | "
-                            f"Interface: {trunk_interface} | Allowed VLANs: "
-                            f"{allowed_vlans}"
-                )
-            )
-        else:
-            template = template_env.get_template("trunk.j2")
-            commands = template.render(
-                trunk_interface=trunk_interface,
-                allowed_vlans=allowed_vlans
-            )
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY_RUN] Would configure trunk {intf} (VLANs: {vlans})"
+            }
 
-            configured, error = safe_send_config(conn, commands)
 
-            results["configured"] = configured
+        conn.send_config_set(commands)
 
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (f"Trunk Port Configuration Failed | Interface: "
-                                             f"{trunk_interface} | Allowed VLANs: {allowed_vlans}")
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="trunk_port_automation",
-                        event_type="trunk_port_config",
-                        outcome="FAIL",
-                        interface=trunk_interface,
-                        allowed_vlans=allowed_vlans,
-                        timestamp=timestamp,
-                        error=error
-                    )
-                )
-            else:
-                results["summary_config"] =( f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
-                                             f"Allowed VLANs: {allowed_vlans}")
-                results["status"] = OpStatus.CONFIGURED.value
-                log.info(
-                    "trunk_port_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "event_type": "trunk_port_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "component": "trunk_port_automation",
-                        "message": f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
-                                   f"Allowed VLANs: {allowed_vlans}"
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="trunk_port_automation",
-                        event_type="trunk_port_config",
-                        outcome="SUCCESS",
-                        interface=trunk_interface,
-                        allowed_vlans=allowed_vlans,
-                        timestamp=timestamp,
-                        reason=f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
-                                   f"Allowed VLANs: {allowed_vlans}"
-                    )
-                )
-
-                device_state = collect_device_state(conn)
-
-                trunk_ok = check_switch_mode(
-                    device_state,
-                    trunk_interface,
-                    "trunk",
-                    allowed_vlans
-                )
-
-                results["validated"] = trunk_ok
-
-                if trunk_ok:
-                    log.info(
-                        "trunk_port_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "trunk_port_validation",
-                            "status": StepStatus.SUCCESS.value,
-                            "severity": "INFO",
-                            "component": "trunk_port_automation",
-                            "message": f"Trunk Port Validation Passed | Interface: {trunk_interface} | "
-                                       f"Allowed VLANs: {allowed_vlans}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="trunk_port_automation",
-                            event_type="trunk_port_validation",
-                            outcome="SUCCESS",
-                            interface=trunk_interface,
-                            allowed_vlans=allowed_vlans,
-                            timestamp=timestamp,
-                            reason=f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
-                                   f"Allowed VLANs: {allowed_vlans}"
-                        )
-                    )
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = (f"Trunk Port Successfully Configured | Interface: {trunk_interface} | "
-                                                    f"Allowed VLANs: {allowed_vlans}")
-                else:
-                    log.info(
-                        "trunk_port_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "trunk_port_validation",
-                            "status": StepStatus.FAILED.value,
-                            "severity": "CRITICAL",
-                            "component": "trunk_port_automation",
-                            "message": f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
-                                       f"Expected Allowed VLANs: {allowed_vlans}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="trunk_port_automation",
-                            event_type="trunk_port_validation",
-                            outcome="FAIL",
-                            interface=trunk_interface,
-                            allowed_vlans=allowed_vlans,
-                            timestamp=timestamp,
-                            reason=f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
-                                    f"Expected Allowed VLANs: {allowed_vlans}"
-                        )
-                    )
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] = (f"Trunk Port Validation Failed | Expected Interface: {trunk_interface} | "
-                                                    f"Expected Allowed VLANs: {allowed_vlans}")
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"Trunk configured successfully on {intf} (Allowed VLANs: {vlans})"
+        }
 
     except Exception as e:
         log.exception(
-            "trunk_port_check",
+            "trunk_config_exception",
             extra={
                 "device_ip": device_ip,
-                "event_type": "trunk_port_config",
-                "status": StepStatus.ERROR.value,
-                "severity": "CRITICAL",
-                "component": "trunk_port_automation",
-                "error": str(e),
-                "message": "Try/Exception Error | Trunk Port Config | "
-                           "Function: def configure_trunk_ports"
+                "interface": intf,
+                "vlans": vlans,
+                "component": "trunk_config"
             }
         )
-        results["events"].append(
-            emit_event(
-                device_ip=device_ip,
-                component="trunk_port_automation",
-                event_type="trunk_port_config",
-                outcome="ERROR",
-                interface=trunk_interface,
-                allowed_vlans=allowed_vlans,
-                timestamp=timestamp,
-                reason="Try Exception Error | def configure_trunk_ports"
-            )
-        )
-        results["error"] = str(e)
-        results["status"] = OpStatus.ERROR.value
 
-    results["summary"] = (
-        results["summary_validation"]
-        or results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="trunk_port_automation",
-            event_type="trunk_port_overall",
-            outcome=("DRY_RUN"
-                    if DRY_RUN
-                    else "SUCCESS"
-                    if results["status"] == OpStatus.SUCCESS.value
-                    else "FAIL"),
-            interface=trunk_interface,
-            allowed_vlans=allowed_vlans,
-            timestamp=timestamp,
-            reason="Trunk Port Automation Complete"
-        )
-    )
-    return results
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": f"Trunk configuration failed on {intf}: {str(e)}"
+        }
 def configure_interface(conn, device_ip, interface_data, log):
-    interface = interface_data["interface"]
-    description = interface_data["description"]
-    timestamp = datetime.utcnow().isoformat()
-    results = {
-        "device_ip": device_ip,
-        "interface": interface,
-        "description": description,
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "interface_automation",
 
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-    }
     try:
-        log.info(
-            "interface_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "interface_config",
-                "severity": "INFO",
-                "component": "interface_automation",
-                "message": f"Configuring Interface Status/Protocol to Up/Up | Interface"
-                           f": {interface}"
-            }
-        )
+        intf = interface_data.get("interface")
+        should_be_up = interface_data.get("should_be_up", True)
+
+
+        state = "no shutdown" if should_be_up else "shutdown"
+
+
+        template = template_env.get_template("interface.j2")
+
+        commands = template.render(
+            interface=intf,
+            state=state
+        ).splitlines()
+
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.DRY_RUN.value
-            results["summary_config"] = (f"[DRY_RUN] Would Configure Interface Status/Protocol to"
-                                         f" Up/Up | Interface: {interface}")
-            log.info(
-                "interface_check",
-                extra={
-                    "device_ip": device_ip,
-                    "component": "interface_automation",
-                    "event_type": "interface_config",
-                    "severity": "INFO",
-                    "message": (f"[DRY_RUN] Would Configure Interface Status/Protocol to"
-                                 f" Up/Up | Interface: {interface}")
-                }
-            )
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="interface_automation",
-                    event_type="interface_config",
-                    outcome="DRY_RUN",
-                    interface=interface,
-                    timestamp=timestamp,
-                    reason= (f"[DRY_RUN] Would Configure Interface Status/Protocol to"
-                             f" Up/Up | Interface: {interface}")
-                )
-            )
-        else:
-            template = template_env.get_template("interface.j2")
-            commands = template.render(interface=interface,
-                                       description=description)
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY] Would set {intf} -> {state}"
+            }
 
-            configured, error = safe_send_config(conn, commands)
+        output = conn.send_config_set(commands)
 
-            results["configured"] = configured
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (f"[DRY_RUN] Would Configure Interface Status/Protocol to"
-                                             f" Up/Up | Interface: {interface}")
-                log.info(
-                    "interface_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "interface_automation",
-                        "event_type": "interface_config",
-                        "status": StepStatus.FAILED.value,
-                        "severity": "CRITICAL",
-                        "error": error,
+        if "%" in output or "Error" in output or "Invalid" in output:
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"CLI rejected interface config on {intf}",
+                "error": output
+            }
 
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="interface_automation",
-                        event_type="interface_config",
-                        outcome="FAIL",
-                        interface=interface,
-                        timestamp=timestamp,
-                        reason=(f"[DRY_RUN] Would Configure Interface Status/Protocol to"
-                                f" Up/Up | Interface: {interface}")
-                    )
-                )
-            else:
-                results["summary_config"] = f"Interface Successfully Configured | Interface: {interface}"
-                results["status"] = OpStatus.CONFIGURED.value
-                log.info(
-                    "interface_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "event_type": "interface_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "component": "interface_automation",
-                        "message": f"Interface Successfully Configured | Interface: {interface}"
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="interface_automation",
-                        event_type="interface_config",
-                        outcome="SUCCESS",
-                        interface=interface,
-                        timestamp=timestamp,
-                        reason=f"Interface Successfully Configured | Interface: {interface}"
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"Interface {intf} configured to {state}"
+        }
 
-                    )
-                )
-
-                device_state = collect_device_state(conn)
-
-                interface_ok = check_interface(device_state, interface)
-
-                results["validated"] = interface_ok
-
-                if interface_ok:
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = (f"Interface (Status/Protocol) Validation Passed "
-                                                     f"| Interface: {interface}")
-                    log.info(
-                        "interface_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "interface_validation",
-                            "status": "PASS",
-                            "severity": "INFO",
-                            "component": "interface_automation",
-                            "message":  (f"Interface (Status/Protocol) Validation Passed "
-                                                     f"| Interface: {interface}")
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="interface_automation",
-                            event_type="interface_validation",
-                            outcome="SUCCESS",
-                            interface=interface,
-                            timestamp=timestamp,
-                            reeason=  (f"Interface (Status/Protocol) Validation Passed "
-                                                     f"| Interface: {interface}")
-                        )
-                    )
-                else:
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] =  (f"Interface (Status/Protocol) Validation Failed "
-                                                     f"| Interface: {interface}")
-                    log.info(
-                        "interface_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "interface_validation",
-                            "status": StepStatus.FAILED.value,
-                            "severity": "CRITICAL",
-                            "component": "interface_automation",
-                            "message": f"Interface (Status/Protocol) Validation Failed "
-                                       f"| Interface: {interface}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="interface_automation",
-                            event_type="interface_validation",
-                            outcome="FAIL",
-                            interface=interface,
-                            timestamp=timestamp,
-                            reason= (f"Interface (Status/Protocol) Validation Failed "
-                                                     f"| Interface: {interface}")
-                        )
-                    )
     except Exception as e:
-        results["error"] = str(e)
-        results["status"] = OpStatus.ERROR.value
         log.exception(
-            "interface_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "interface_config",
-                "status": StepStatus.ERROR.value,
-                "error": str(e),
-                "component": "interface_automation",
-                "severity": "CRITICAL",
-                "message": "Try/Exception Error | Interface Config | "
-                           "Function: def configure_interface"
-                },
+            "interface_config_exception",
+            extra={"device_ip": device_ip, "interface": interface_data.get("interface")}
         )
-        results["events"].append(
-            emit_event(
-                device_ip=device_ip,
-                component="interface_automation",
-                event_type="inteface_config",
-                outcome="ERROR",
-                interface=interface,
-                timestamp=timestamp,
-                reason="Try/Exception Error | def configure_interface"
-            )
-        )
-        return results
 
-    results["summary"] = (
-        results["summary_validation"]
-        or results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="interface_automation",
-            event_type="interface_overall",
-            outcome=(
-                "DRY_RUN" if DRY_RUN else "SUCCESS"
-                if results["status"] == OpStatus.SUCCESS.value else "FAIL"),
-            interface=interface,
-            timestamp=timestamp,
-            reason="Interface (Status/Protocol) Automation Complete"
-        )
-    )
-    return results
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": str(e)
+        }
 def configure_roas(device_ip, roas_data, session, log):
-    router_interface = roas_data["router_interface"]
-    router_vlan = roas_data["router_vlan"]
-    ip = roas_data["ip"]
-    mask = roas_data["mask"]
-    timestamp = datetime.utcnow().isoformat()
-    new_interface = "".join([c for c in router_interface if c.isdigit() or c == "/" or c == "."])
-    url = (f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/"
-           f"interface/GigabitEthernet={new_interface}")
-    results = {
-        "device_ip": device_ip,
-        "router_interface": router_interface,
-        "router_vlan": router_vlan,
-        "ip": f"{ip}/{mask}",
-        "configured": False,
-        "validated": False,
-
-        "status": "PENDING",
-        "summary_config": None,
-        "summary_validation": None,
-        "summary": None,
-        "events": [],
-        "component": "roas_automation"
-
-    }
 
     try:
-        log.info(
-            "roas_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "roas_config",
-                "severity":"INFO",
-                "component": "roas_automation",
-                "message": f"Configuring ROAS | Interface: {router_interface}.{router_vlan} |"
-                           f" VLAN: {router_vlan} | IP: {ip}/{mask}"
+        payload = build_roas_payload(roas_data)  
 
-            }
-        )
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.DRY_RUN.value
-            results["summary_config"] = (f"[DRY_RUN] Would Configure ROAS | Interface: "
-                                         f"{router_interface}.{router_vlan} | VLAN: {router_vlan} | "
-                                         f"IP: {ip}/{mask}")
-            log.info(
-                "roas_check",
-                extra={
-                    "device_ip": device_ip,
-                    "component": "roas_automation",
-                    "event_type": "roas_config",
-                    "severity": "INFO",
-                    "message": f"[DRY_RUN] Would Configure ROAS | Interface: "
-                               f"{router_interface}.{router_vlan} | VLAN: {router_vlan} | "
-                               f"IP: {ip}/{mask}"
-                }
-            )
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="roas_automation",
-                    event_type="roas_config",
-                    outcome="DRY_RUN",
-                    interface=router_interface,
-                    vlan_id=router_vlan,
-                    ip=f"{ip}/{mask}",
-                    timestamp=timestamp,
-                    reason=(f"[DRY_RUN] Would Configure ROAS | Interface: "
-                            f"{router_interface}.{router_vlan} | VLAN: {router_vlan} | "
-                            f"IP: {ip}/{mask}")
-                )
-            )
-        else:
-            template = template_env.get_template("roas.j2")
-            commands = template.render(
-                new_interface=new_interface,
-                router_vlan=router_vlan,
-                ip=ip,
-                mask=mask
-            )
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY] Would configure ROAS on {device_ip}"
+            }
 
-            configured, error = safe_restconf_patch(session, url, commands)
+        response = session.patch(
+            url=f"https://{device_ip}/restconf/.../roas",
+            json=payload
+        )
 
-            results["configured"] = configured
+        if response.status_code not in [200, 201, 204]:
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"ROAS config failed {response.text}",
+                "error": response.text
+            }
 
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (f"ROAS Configuration Failed | Interface: {router_interface}.{router_vlan} |"
-                                             f" VLAN: {router_vlan} | IP: {ip}/{mask}")
-                log.info(
-                    "roas_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "roas_automation",
-                        "event_type": "roas_config",
-                        "status": StepStatus.FAILED.value,
-                        "severity": "CRITICAL",
-                        "message": (f"ROAS Configuration Failed | Interface: {router_interface}.{router_vlan} |"
-                                             f" VLAN: {router_vlan} | IP: {ip}/{mask}")
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="roas_automation",
-                        event_type="roas_config",
-                        outcome="FAIL",
-                        interface=router_interface,
-                        vlan=router_vlan,
-                        ip=f"{ip}/{mask}",
-                        error=error,
-                        timestamp=timestamp,
-                        reason= (f"ROAS Configuration Failed | Interface: {router_interface}.{router_vlan} |"
-                                             f" VLAN: {router_vlan} | IP: {ip}/{mask}")
-                    )
-
-                )
-            else:
-                results["summary_config"] = (f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
-                                             f"VLAN: {router_vlan} | IP: {ip}/{mask}")
-                results["status"] = OpStatus.CONFIGURED.value
-                log.info(
-                    "roas_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "event_type": "roas_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "component": "roas_automation",
-                        "message": f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
-                                   f"VLAN: {router_vlan} | IP: {ip}/{mask}"
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="roas_automation",
-                        event_type="roas_config",
-                        outcome="SUCCESS",
-                        severity="INFO",
-                        interface=router_interface,
-                        vlan=router_vlan,
-                        ip=f"{ip}/{mask}",
-                        timestamp=timestamp,
-                        reason=(f"ROAS Successfully Configured | Interface: {router_interface}.{router_vlan} | "
-                                      f"VLAN: {router_vlan} | IP: {ip}/{mask}")
-                    )
-                )
-
-                state = restconf_state(device_ip, session)
-                roas_ok = check_roas(state, roas_data)
-                results["validated"] = roas_ok
-
-                if roas_ok:
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = (f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
-                                                     f"IP: {ip}/{mask}")
-                    log.info(
-                        "roas_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "roas_validation",
-                            "status": "PASS",
-                            "severity": "INFO",
-                            "component": "roas_automation",
-                            "message": f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
-                                       f"IP: {ip}/{mask}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="roas_automation",
-                            event_type="roas_validation",
-                            outcome="SUCCESS",
-                            interface=router_interface,
-                            vlan=router_vlan,
-                            ip=f"{ip}/{mask}",
-                            timestamp=timestamp,
-                            reason=(f"ROAS Validation Passed | Interface: {router_interface}.{router_vlan} | "
-                                          f"IP: {ip}/{mask}")
-                        )
-                    )
-                else:
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] = (f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
-                                                 f"IP: {ip}/{mask}")
-                    log.info(
-                        "roas_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "event_type": "roas_validation",
-                            "status": StepStatus.FAILED.value,
-                            "severity": "CRITICAL",
-                            "component": "roas_automation",
-                            "message": f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
-                                       f"IP: {ip}/{mask}"
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="roas_automation",
-                            event_type="roas_validation",
-                            status="FAIL",
-                            interface=router_interface,
-                            vlan=router_vlan,
-                            ip=f"{ip}/{mask}",
-                            reason=(f"ROAS Validation Failed | Interface: {router_interface}.{router_vlan} | "
-                                          f"IP: {ip}/{mask}")
-                        )
-                    )
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"ROAS configured successfully on {device_ip}"
+        }
 
     except Exception as e:
-        results["status"] = OpStatus.ERROR.value
-        results["error"] = str(e)
-        log.exception(
-            "roas_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "roas_config",
-                "status": "ERROR",
-                "severity": "CRITICAL",
-                "component": "roas_automation",
-                "error": str(e),
-                "message": "Try/Exception Error | ROAS Config | Function: def configured_roas"
-            },
-        )
-        results["events"].append(
-            build_event(
-                device_ip=device_ip,
-                component="roas_automation",
-                event_type="roas_config",
-                status=StepStatus.ERROR.value,
-                interface=router_interface,
-                vlan=router_vlan,
-                ip=f"{ip}/{mask}",
-                error=str(e)
-            )
-        )
-        return results
+        log.exception("roas_exception", extra={"device_ip": device_ip})
 
-    results["summary"] = (
-        results["summary_validation"]
-        if results["validated"] else results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="roas_automation",
-            event_type="roas_overall",
-            outcome=(
-                "DRY_RUN" if DRY_RUN else "SUCCESS"
-                if results["status"] == OpStatus.SUCCESS.value
-                else "FAIL"
-            ),
-            interface=router_interface,
-            vlan_id=router_vlan,
-            ip=f"{ip}/{mask}",
-            timestamp=timestamp,
-            reason="ROAS Automation Complete"
-        )
-    )
-    return results
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": str(e)
+        }
 def configure_ospf(device_ip, ospf_data, session, log):
-    process_id = ospf_data["process_id"]
-    router_id = ospf_data["router_id"]
-    network_list = ospf_data["network_list"]
-    network_log = []
-    timestamp = datetime.utcnow().isoformat()
-    for network in network_list:
-        subnet = network.get("subnet", "")
-        wildcard = network.get("wildcard", "")
-        area = network.get("area", "")
 
-        network_log.append(
-            f"{subnet}/{wildcard} Area: {area}"
-        )
-    network = " | ".join(network_log)
-    url = f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/router"
-    results = {
-        "device_ip": device_ip,
-        "process_id": process_id,
-        "router_id": router_id,
-        "configured": False,
-        "validated": "PENDING",
-        "status": "PENDING",
-
-        "timestamp": timestamp,
-        "summary_config": None,
-        "summary_validation": None,
-        "summary": None,
-        "event": [],
-        "component": "ospf_automation"
-    }
     try:
-        log.info(
-            "ospf_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "ospf_config",
-                "severity": "INFO",
-                "component": "ospf_automation",
-                "timestamp": timestamp,
-                "message": f"Configuring OSPF | Process ID: {process_id} | "
-                           f"RID: {router_id} | Networks: {network}"
-            }
+        template = template_env.get_template("ospf.j2")
+
+        xml_payload = template.render(
+            process_id=ospf_data.get("process_id"),
+            router_id=ospf_data.get("router_id"),
+            network_list=ospf_data.get("network_list", [])
         )
+
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.DRY_RUN.value
-            results["summary_config"] = (f"[DRY_RUN] Would Configure OSPF | Process ID: {process_id} | "
-                                        f"RID: {router_id} | Networks: {network}")
-            log.info(
-                "ospf_check",
-                extra={
-                    "device_ip": device_ip,
-                    "component": "ospf_automation",
-                    "event_type": "ospf_config",
-                    "status": StepStatus.DRY_RUN.value,
-                    "severity": "INFO",
-                    "timestamp": timestamp,
-                    "message": (f"[DRY_RUN] Would Configure OSPF | Process ID: {process_id} | "
-                                f"RID: {router_id} | Networks: {network}")
-                }
-            )
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="ospf_automation",
-                    event_type="ospf_config",
-                    outcome="DRY_RUN",
-                    proces_id=process_id,
-                    router_id=router_id,
-                    network_count=len(network_list),
-                    networks= [n["subnet"] for n in network_list],
-                    timestamp=timestamp,
-                    reason=(f"[DRY_RUN] Would Configure OSPF | Process ID: {process_id} | "
-                            f"RID: {router_id} | Networks: {network}")
-                )
-            )
-        else:
-            template = template_env.get_template("Cisco_Router_OSPF.j2")
-            commands = template.render(
-                process_id=process_id,
-                router_id=router_id,
-                network_list=network_list
-            )
-            configured, error = safe_restconf_patch(session,url, commands)
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY] Would configure OSPF process {ospf_data.get('process_id')}"
+            }
 
-            results["configured"] = configured
+        success, error = safe_netconf_edit(session, xml_payload)
 
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (
-                    f"OSPF Configuration Failed | Process ID: {process_id} | "
-                               f"RID: {router_id} | Networks: {network}"
-                )
-                log.info(
-                    "ospf_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "ospf_automation",
-                        "event_type": "ospf_config",
-                        "status": StepStatus.FAILED.value,
-                        "severity": "CRITICAL",
-                        "timestamps": timestamp,
-                        "message": (
-                               f"OSPF Configuration Failed | Process ID: {process_id} | "
-                               f"RID: {router_id} | Networks: {network}"
-                )
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="ospf_automation",
-                        event_type="ospf_config",
-                        outcome="FAIL",
-                        process_id=process_id,
-                        router_id=router_id,
-                        network_count=len(network_list),
-                        networks=[n["subnet"] for n in network_list],
-                        error=error,
-                        timestamp=timestamp,
-                        reason="OSPF configuration failed"
-                    )
-                )
-            else:
-                results["status"] = OpStatus.CONFIGURED.value
-                results["summary_config"] = (
-                    f"OSPF Successfully Configured | Process ID: {process_id} | "
-                    f"RID: {router_id} | Networks: {network}"
-                )
-                log.info(
-                    "ospf_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "event_type": "ospf_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "component": "ospf_automation",
-                        "timestamp": timestamp,
-                        "message": f"OSPF Successfully Configured | Process ID: {process_id} | "
-                               f"RID: {router_id} | Networks: {network}"
-                    }
-                )
-                results["events"].append(
-                    build_event(
-                        device_ip=device_ip,
-                        component="ospf_automation",
-                        event_type="ospf_config",
-                        outcome=StepStatus.SUCCESS.value,
-                        process_id=process_id,
-                        router_id=router_id,
-                        network_count=len(network_list),
-                        networks=[n["subnet"] for n in network_list],
-                        timestamp=timestamp,
-                        reason=(f"OSPF Successfully Configured")
-                    )
-                )
+        if not success:
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"OSPF config failed for process {ospf_data.get('process_id')}",
+                "error": error
+            }
+
+        return {
+            "status": OpStatus.CONFIGURED.value,
+            "summary": f"OSPF configured successfully | process {ospf_data.get('process_id')}",
+            "event": "ospf_config_applied"
+        }
+
     except Exception as e:
         log.exception(
-            "ospf_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "ospf_config",
-                "status": "ERROR",
-                "severity": "CRITICAL",
-                "component": "ospf_automation",
-                "error": str(e),
-                "timestamp": timestamp,
-                "message": f"Try/Exception Error | OSPF Config Failed | Function: "
-                           f"def configure_ospf"
-            },)
-        results["events"].append(
-            build_event(
-                device_ip=device_ip,
-                component="ospf_automation",
-                event_type="ospf_config",
-                outcome=StepStatus.ERROR.value,
-                process_id=process_id,
-                router_id=router_id,
-                network_count=len(network_list),
-                networks=[n["subnet"] for n in network_list],
-                error=str(e),
-                timestamp=timestamp,
-                reason="Try/Exception Error | def configure_ospf"
-            )
+            "ospf_config_exception",
+            extra={"device_ip": device_ip}
         )
-        results["configured"] = False
-        results["validated"] = False
-        results["error"] = str(e)
-        results["status"] = OpStatus.ERROR.value
-        return results
-    results["summary"] = (
-        results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="ospf_automation",
-            event_type="ospf_overall",
-            outcome=(
-                "DRY_RUN" if DRY_RUN else "SUCCESS"
-                if results["status"] == OpStatus.SUCCESS.value else "FAIL"
-            ),
-            process_id=process_id,
-            router_id=router_id,
-            network_count=len(network_list),
-            networks=[n["subnet"] for n in network_list],
-            timestamp=timestamp,
-            reason="OSPF Automation Complete"
-        )
-    )
-    return results
+
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": f"OSPF exception: {str(e)}"
+        }
 def configure_acl(session, device_ip, acl_data, log):
-    acl_name = acl_data.get("acl_name")
-    rules = acl_data.get("rules")
-    timestamp = datetime.utcnow().isoformat()
 
-    rules_summary = [
-        f"{r['sequence']} {r['action']} {r['protocol']}"
-        for r in rules
-    ]
+    acl_name = acl_data.get("acl_name", "")
+    rules = acl_data.get("rules", [])
 
-    results = {
-        "device_ip": device_ip,
-        "acl_name": acl_name,
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "acl_automation",
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-    }
     try:
-        log.info(
-            "acl_check",
-            extra={
-                "device_ip": device_ip,
-                "event_type": "acl_config",
-                "component": "acl_automation",
-                "acl_name": acl_name,
-                "rule_count": len(rules),
-                "rule_list": rules_summary,
-                "message": f"Configuring ACLs via NETCONF | Name: {acl_name} | "
-                           f"Rules: {len(rules)}"
-            }
+        # Render NETCONF payload
+        template = template_env.get_template("ACL.j2")
+
+        xml_payload = template.render(
+            acl_name=acl_name,
+            rules=rules
         )
+
+        # DRY RUN support
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.DRY_RUN.value
-            results["summary_config"] = (
-                f"[DRY-RUN] Would Configure Extended ACL via NETCONF | Name: {acl_name} "
-                f"Rules: {len(rules)}"
-            )
-            log.info(
-                "acl_check",
-                extra= {
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY_RUN] ACL would be configured | {acl_name}",
+                "error": None
+            }
+
+        # Push to device (NETCONF)
+        success, error = safe_netconf_edit(session, xml_payload)
+
+        if not success:
+            log.error(
+                "acl_config_failed",
+                extra={
                     "device_ip": device_ip,
                     "component": "acl_automation",
-                    "event_type": "acl_config",
-                    "status": StepStatus.DRY_RUN.value,
                     "acl_name": acl_name,
-                    "rule_count": len(rules),
-                    "rule_list": rules_summary,
-                    "message": (
-                        f"[DRY-RUN] Would Configure Extended ACL via NETCONF | Name: {acl_name} "
-                        f"Rules: {len(rules)}"
-                    )
+                    "error": error
                 }
             )
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="acl_automation",
-                    event_type="acl_config",
-                    outcome=StepStatus.DRY_RUN.value,
-                    acl_name=acl_name,
-                    rule_count=len(rules),
-                    rule_summary=rules_summary,
-                    timestamp=timestamp,
-                    reason=(
-                        f"[DRY-RUN] Would Configure Extended ACL via NETCONF | Name: {acl_name} "
-                        f"Rules: {len(rules)}"
-                    )
-                )
-            )
-        else:
-            template = template_env.get("ACL.j2")
-            commands = template.render(
-                acl_name=acl_name,
-                rules=rules
-            )
 
-            configured, error = safe_netconf_edit(
-                session, commands
-            )
-            results["configured"] = configured
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"ACL configuration failed | {acl_name}",
+                "error": error
+            }
 
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (
-                    f"Failed to Configure Extended ACL via NETCONF | Name: {acl_name} "
-                    f"Rules: {len(rules)}"
-                )
-                log.info(
-                    "acl_check",
-                    extra= {
-                        "device_ip": device_ip,
-                        "component": "acl_automation",
-                        "event_type": "acl_config",
-                        "status": StepStatus.FAILED.value,
-                        "acl_name": acl_name,
-                        "rule_count": len(rules),
-                        "rule_list": rules_summary,
-                        "message": (
-                            f"Failed to Configure Extended ACL via NETCONF | Name: {acl_name} "
-                            f"Rules: {len(rules)}"
-                        )
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="acl_automation",
-                        event_type="acl_config",
-                        outcome=StepStatus.FAILED.value,
-                        acl_name=acl_name,
-                        rule_count=len(rules),
-                        rule_summary=rules_summary,
-                        timestamp=timestamp,
-                        reason=(
-                            f"Failed to Configure Extended ACL via NETCONF | Name: {acl_name} "
-                            f"Rules: {len(rules)}"
-                        )
-                    )
-                )
-            else:
-                results["status"] = OpStatus.CONFIGURED.value
-                results["summary_config"] = (
-                    f"Successfully Configured Extended ACL via NETCONF | Name: {acl_name} "
-                    f"Rules: {len(rules)}"
-                )
-                log.info(
-                    "acl_check",
-                    extra= {
-                        "device_ip": device_ip,
-                        "component": "acl_automation",
-                        "event_type": "acl_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "acl_name": acl_name,
-                        "rule_count": len(rules),
-                        "rule_list": rules_summary,
-                        "message": (
-                            f"Successfully Configured Extended ACL via NETCONF | Name: {acl_name} "
-                            f"Rules: {len(rules)}"
-                        )
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="acl_automation",
-                        event_type="acl_config",
-                        outcome=StepStatus.SUCCESS.value,
-                        acl_name=acl_name,
-                        rule_count=len(rules),
-                        rule_summary=rules_summary,
-                        timestamp=timestamp,
-                        reason=(
-                            f"Successfully Configured Extended ACL Name: {acl_name} "
-                            f"Rules: {len(rules)} | API: NETCONF"
-                        )
-                    )
-                )
-                actual_native = collect_netconf_state(session)
+        # Success
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"ACL configured successfully | {acl_name}",
+            "error": None
+        }
 
-                actual_acls = build_acl_state(actual_native)
-
-                acl_ok, failures = check_acl(
-                    actual_acls,
-                    [acl_data]
-                )
-
-                results["validated"] = acl_ok
-                results["failures"] = failures
-
-
-                if acl_ok:
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = (
-                        f"Extended ACL Validation Successful | Name: {acl_name} "
-                        f"Rules: {len(rules)} | API: NETCONF"
-                    )
-                    log.info(
-                        "acl_check",
-                        extra= {
-                            "device_ip": device_ip,
-                            "component": "acl_automation",
-                            "event_type": "acl_validation",
-                            "status": StepStatus.SUCCESS.value,
-                            "acl_name": acl_name,
-                            "rule_count": len(rules),
-                            "rule_list": rules_summary,
-                            "message": (
-                                 f"Extended ACL Validation Successful | Name: {acl_name} "
-                                 f"Rules: {len(rules)} | API: NETCONF"
-                            )
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="acl_automation",
-                            event_type="acl_validation",
-                            outcome=StepStatus.SUCCESS.value,
-                            acl_name=acl_name,
-                            rule_count=len(rules),
-                            rule_summary=rules_summary,
-                            timestamp=timestamp,
-                            reason=(
-                                f"Extended ACL Validation Successful | Name: {acl_name} "
-                                f"Rules: {len(rules)} | API: NETCONF"
-                            )
-                        )
-                    )
-                else:
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] = (
-                        f"Extended ACL Validation Failed | Name: {acl_name} "
-                        f"Rules: {len(rules)} | Failures: {failures} | "
-                        f"API: NETCONF"
-                    )
-                    log.info(
-                        "acl_check",
-                        extra= {
-                            "device_ip": device_ip,
-                            "component": "acl_automation",
-                            "event_type": "acl_validation",
-                            "status": StepStatus.FAILED.value,
-                            "acl_name": acl_name,
-                            "rule_count": len(rules),
-                            "rule_list": rules_summary,
-                            "failures": failures,
-                            "message": (
-                                f"Extended ACL Validation Failed | Name: {acl_name} "
-                                f"Rules: {len(rules)} | Failures: {failures} | "
-                                f"API: NETCONF"
-                            )
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="acl_automation",
-                            event_type="acl_validation",
-                            outcome=StepStatus.FAILED.value,
-                            acl_name=acl_name,
-                            rule_count=len(rules),
-                            rule_summary=rules_summary,
-                            timestamp=timestamp,
-                            reason=(
-                                f"Extended ACL Validation Failed | Name: {acl_name} "
-                                f"Rules: {len(rules)} | Failures: {failures} | "
-                                f"API: NETCONF"
-                            )
-                        )
-                    )
     except Exception as e:
-        results["status"] = OpStatus.ERROR.value
-        results["error"] = str(e)
         log.exception(
-            "acl_check",
-            extra= {
+            "acl_config_exception",
+            extra={
                 "device_ip": device_ip,
                 "component": "acl_automation",
-                "event_type": "acl_config",
-                "status": StepStatus.ERROR.value,
                 "acl_name": acl_name,
-                "rule_count": len(rules),
-                "rule_list": rules_summary,
-                "error": str(e),
-                "message": (
-                    f"Try/Exception Error | Name: {acl_name} "
-                    f"Rules: {len(rules)} | API: NETCONF"
-                )
+                "error": str(e)
             }
         )
-        results["events"].append(
-            emit_event(
-                device_ip=device_ip,
-                component="acl_automation",
-                event_type="acl_config",
-                outcome=StepStatus.ERROR.value,
-                acl_name=acl_name,
-                rule_count=len(rules),
-                rule_summary=rules_summary,
-                timestamp=timestamp,
-                reason=(
-                    f"Try/Exception Error | Name: {acl_name} "
-                    f"Rules: {len(rules)} | API: NETCONF"
-                )
-            )
-        )
-        return results
-    results["summary"] = (
-        results["summary_validation"]
-        or results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="acl_automation",
-            event_type="acl_overall",
-            outcome=(
-                "DRY_RUN" if DRY_RUN else "SUCCESS"
-                if results["status"] == OpStatus.SUCCESS.value
-                else "FAIL"
-            ),
-            acl_name=acl_name,
-            rule_count=len(rules),
-            rule_summary=rules_summary,
-            timestamp=timestamp,
-            reason=f"ACL Automation Complete"
-        )
-    )
-    return results
+
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": f"ACL exception occurred | {acl_name}",
+            "error": str(e)
+        }
 def configure_acl_bindings(session, device_ip, acl_binding_data, log):
     interface = acl_binding_data.get("interface", "")
     acl_name = acl_binding_data.get("acl_name", "")
@@ -4535,692 +3635,144 @@ def configure_acl_bindings(session, device_ip, acl_binding_data, log):
     )
     return results
 def configure_ntp(session, device_ip, ntp_data, log):
-    ntp_keys = ntp_data.get("ntp_keys", [])
-    ntp_servers = ntp_data.get("ntp_servers", [])
-    ntp_key_id = []
-    ntp_server_ip = []
-    ntp_key_id = [n["id"] for n in ntp_keys]
-    ntp_server_ip = [n["ip"] for n in ntp_servers]
-    results = {
-        "device_ip": device_ip,
-        "ntp_key_id": ntp_key_id,
-        "ntp_server_ip": ntp_server_ip,
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "ntp_automation",
-        "SOT": "NetBox",
-
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-
-    }
+  
     try:
-        log.info(
-            "ntp_check",
-            extra={
-                "device_ip": device_ip,
-                "component": "ntp_automation",
-                "event_type": "ntp_config",
-                "severity": "INFO",
-                "ntp_key_id": ntp_key_id,
-                "ntp_server_ip": ntp_server_ip,
-                "message":  f"Configuring NTP (Authenticated) | Key-ID: {ntp_key_id} | "
-                            f"Server: {ntp_server_ip}"
+        ntp_data = ntp_data or {}
 
-            }
+        keys = ntp_data.get("keys", [])
+        servers = ntp_data.get("servers", [])
+
+        template = template_env.get_template("NTP.j2")
+
+        xml_payload = template.render(
+            keys=keys,
+            servers=servers
         )
+
         if DRY_RUN:
-            results["configured"] = False
-            results["validated"] = False
-            results["status"] = OpStatus.DRY_RUN.value
-            results["summary_config"] = (
-                f"[DRY_RUN] Would Configure NTP (Authenticated) | Key-ID: {ntp_key_id} | "
-                f"Server: {ntp_server_ip}"
-            )
-            log.info(
-                "ntp_check",
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": f"[DRY_RUN] Would configure NTP on {device_ip}",
+                "error": None
+            }
+
+        success, error = safe_netconf_edit(session, xml_payload)
+
+        if not success:
+            log.error(
+                "ntp_config_failed",
                 extra={
                     "device_ip": device_ip,
-                    "component": "ntp_automation",
-                    "event_type": "ntp_config",
-                    "status": "DRY_RUN",
-                    "severity": "INFO",
-                    "ntp_key_id": ntp_key_id,
-                    "ntp_server_ip": ntp_server_ip,
-                    "message": (
-                        f"[DRY_RUN] Would Configure NTP (Authenticated) | Key-ID: {ntp_key_id} | "
-                        f"Server: {ntp_server_ip}"
-                    )
-
+                    "error": error,
+                    "component": "ntp"
                 }
             )
-            results["events"].append(
-                emit_event(
-                    device_ip=device_ip,
-                    component="ntp_automation",
-                    event_type="ntp_config",
-                    outcome="DRY_RUN",
-                    ntp_key_id=ntp_key_id,
-                    ntp_server=ntp_server_ip,
-                    reason=(
-                        f"[DRY_RUN] Would Configure NTP (Authenticated) | Key-ID: {ntp_key_id} | "
-                        f"Server: {ntp_server_ip}"
-                    )
-                )
-            )
-        else:
-            template = template_env.get_template("NTP.j2")
-            commands = template.render(
-                ntp_keys=ntp_keys,
-                ntp_servers=ntp_servers
-            )
 
-            configured, error = safe_netconf_edit(session, commands)
-            results["configured"] = configured
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"NTP Config Failed: {error}",
+                "error": error
+            }
 
-            if not configured:
-                results["status"] = OpStatus.CONFIG_FAILED.value
-                results["error"] = error
-                results["summary_config"] = (
-                    f"NTP (Authenticated) Configuration Failed | Key-ID: {ntp_key_id} | "
-                    f"Server: {ntp_server_ip}"
-                )
-                log.info(
-                    "ntp_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "ntp_automation",
-                        "event_type": "ntp_config",
-                        "status": StepStatus.FAILED.value,
-                        "severity": "CRITICAL",
-                        "SOT": "NetBox",
-                        "ntp_key_id": ntp_key_id,
-                        "ntp_server_ip": ntp_server_ip,
-                        "error": error,
-                        "message": (
-                            f"NTP (Authenticated) Configuration Failed | Key-ID: {ntp_key_id} | "
-                            f"Server: {ntp_server_ip}"
-                        )
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"NTP configuration applied successfully on {device_ip}",
+            "error": None
+        }
 
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="ntp_automation",
-                        event_type="ntp_config",
-                        outcome="FAIL",
-                        ntp_key_id=ntp_key_id,
-                        ntp_server=ntp_server_ip,
-                        SOT="NetBox",
-                        timestamp=timestamp,
-                        reason=(
-                                f"NTP (Authenticated) Configuration Failed | Key-ID: {ntp_key_id} | "
-                                f"Server: {ntp_server_ip}"
-                        )
-                    )
-                )
-            else:
-                results["status"] = OpStatus.CONFIGURED.value
-                results["summary_config"] = (
-                    f"NTP (Authenticated) Successfully Configured | Key-ID: {ntp_key_id} | "
-                    f"Server: {ntp_server_ip}"
-                )
-                log.info(
-                    "ntp_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "ntp_automation",
-                        "event_type": "ntp_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "SOT": "NetBox",
-                        "ntp_key_id": ntp_key_id,
-                        "ntp_server_ip": ntp_server_ip,
-                        "message": (
-                                f"NTP (Authenticated) Successfully Configured | Key-ID: {ntp_key_id} | "
-                                f"Server: {ntp_server_ip}"
-                        )
-
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                        device_ip=device_ip,
-                        component="ntp_automation",
-                        event_type="ntp_config",
-                        outcome="SUCCESS",
-                        ntp_key_id=ntp_key_id,
-                        ntp_server=ntp_server_ip,
-                        SOT="NetBox",
-                        timestamp=timestamp,
-                        reason=(
-                            f"NTP (Authenticated) Successfully Configured | Key-ID: {ntp_key_id} | "
-                            f"Server: {ntp_server_ip}"
-                        )
-                    )
-                )
-
-                native = collect_netconf_state(session)
-
-                actual_ntp = build_ntp_state(native)
-
-                ntp_ok, failures = check_ntp(
-                    ntp_data,
-                    actual_ntp
-                )
-
-                results["validated"] = ntp_ok
-                results["failures"] = failures
-
-                if ntp_ok:
-                    results["status"] = OpStatus.SUCCESS.value
-                    results["summary_validation"] = (
-                        f"NTP (Authenticated) Validation Successful | Key-ID: {ntp_key_id} | "
-                        f"Server: {ntp_server_ip}"
-                    )
-                    log.info(
-                        "ntp_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "component": "ntp_automation",
-                            "event_type": "ntp_validation",
-                            "status": StepStatus.SUCCESS.value,
-                            "severity": "INFO",
-                            "SOT": "NetBox",
-                            "ntp_key_id": ntp_key_id,
-                            "ntp_server_ip": ntp_server_ip,
-                            "message": (
-                                f"NTP (Authenticated) Validation Successful | Key-ID: {ntp_key_id} | "
-                                f"Server: {ntp_server_ip}"
-                            )
-
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="ntp_automation",
-                            event_type="ntp_validation",
-                            outcome="SUCCESS",
-                            ntp_key_id=ntp_key_id,
-                            ntp_server=ntp_server_ip,
-                            SOT="NetBox",
-                            timestamp=timestamp,
-                            reason=(
-                                    f"NTP (Authenticated) Validation Successful | Key-ID: {ntp_key_id} | "
-                                    f"Server: {ntp_server_ip}"
-                            )
-                        )
-                    )
-                else:
-                    results["status"] = OpStatus.VALIDATION_FAILED.value
-                    results["summary_validation"] = (
-                        f"NTP (Authenticated) Validation Failed | Key-ID: {ntp_key_id} | "
-                        f"Server: {ntp_server_ip}"
-                    )
-                    log.info(
-                        "ntp_check",
-                        extra={
-                            "device_ip": device_ip,
-                            "component": "ntp_automation",
-                            "event_type": "ntp_validation",
-                            "status": StepStatus.FAILED.value,
-                            "severity": "CRITICAL",
-                            "SOT": "NetBox",
-                            "ntp_key_id": ntp_key_id,
-                            "ntp_server_ip": ntp_server_ip,
-                            "failures": failures,
-                            "message": (
-                                f"NTP (Authenticated) Validation Failed | Key-ID: {ntp_key_id} | "
-                                f"Server: {ntp_server_ip}"
-                            )
-
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                            device_ip=device_ip,
-                            component="ntp_automation",
-                            event_type="ntp_validation",
-                            outcome="FAIL",
-                            ntp_key_id=ntp_key_id,
-                            ntp_server=ntp_server_ip,
-                            SOT="NetBox",
-                            timestamp=timestamp,
-                            reason=(
-                                f"NTP (Authenticated) Validation Failed | Key-ID: {ntp_key_id} | "
-                                f"Server: {ntp_server_ip}"
-                            )
-                        )
-                    )
     except Exception as e:
-        results["error"] = str(e)
-        results["status"] = OpStatus.ERROR.value
-        log.info(
-            "ntp_check",
+        log.exception(
+            "ntp_config_exception",
             extra={
                 "device_ip": device_ip,
-                "component": "ntp_automation",
-                "event_type": "ntp_config",
-                "status": StepStatus.ERROR.value,
-                "severity": "CRITICAL",
-                "SOT": "NetBox",
-                "ntp_key_id": ntp_key_id,
-                "ntp_server_ip": ntp_server_ip,
-                "error": str(e),
-                "message": (
-                    f"Try/Exception Error| NTP (Authenticated)| Key-ID: {ntp_key_id} | "
-                    f"Server: {ntp_server_ip}"
-                )
-
+                "component": "ntp"
             }
         )
-        results["events"].append(
-            emit_event(
-                device_ip=device_ip,
-                component="ntp_automation",
-                event_type="ntp_validation",
-                outcome="ERROR",
-                ntp_key_id=ntp_key_id,
-                ntp_server=ntp_server_ip,
-                SOT="NetBox",
-                timestamp=timestamp,
-                error=str(e),
-                reason=(
-                        f"Try/Exception Error| NTP (Authenticated)| Key-ID: {ntp_key_id} | "
-                        f"Server: {ntp_server_ip}"
-                )
-            )
-        )
-        return results
-    results["summary"] = (
-        results["summary_validation"]
-        or results["summary_config"]
-    )
-    results["events"].append(
-        emit_event(
-            device_ip=device_ip,
-            component="ntp_automation",
-            event_type="ntp_overall",
-            outcome=(
-                "DRY_RUN" if DRY_RUN else "SUCCESS"
-                if results["status"] == OpStatus.SUCCESS.value
-                else "FAIL"
-            ),
-            ntp_key_id=ntp_key_id,
-            ntp_server=ntp_server_ip,
-            SOT="NetBox",
-            timestamp=timestamp,
-            reason=(
-                "NTP Automation Complete"
-            )
-        )
-    )
-    return results
+
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": f"NTP Exception: {str(e)}",
+            "error": str(e)
+        }
 def configure_qos(session, device_ip, qos_data, log):
+ 
+
     policy_name = qos_data.get("policy_name", "")
-    direction = qos_data.get("direction", "")
-    interface = qos_data.get("interface", "")
-    class_maps = qos_data.get("class_maps", [])
-    class_name_protocol = [
-        {"name": c["name"], "protocol": c.get("protocol")}
-        for c in class_maps
-    ]
-
-    results = {
-        "device_ip": device_ip,
-        "policy_name": policy_name,
-        "interface": interface,
-        "direction": direction,
-        "class_name_protocol": class_name_protocol,
-
-        "configured": False,
-        "validated": False,
-        "status": OpStatus.PENDING.value,
-        "component": "qos_automation",
-
-        "timestamp": timestamp,
-        "summary": None,
-        "summary_config": None,
-        "summary_validation": None,
-        "events": []
-    }
+    class_map = qos_data.get("class_map", [])
 
     try:
-        log.info(
-            "qos_check",
-            extra={
-                "device_ip": device_ip,
-                "component": "qos_automation",
-                "event_type": "qos_config",
-                "severity": "INFO",
-                "message": (
-                    f"Configuring QoS | Policy: {policy_name} | "
-                    f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name/Protocol: {class_name_protocol}"
+       
+        template = template_env.get_template("QOS.j2")
+
+        xml_payload = template.render(
+            policy_name=policy_name,
+            class_map=class_map
+        )
+
+
+        if DRY_RUN:
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": (
+                    f"[DRY_RUN] Would configure QoS policy: {policy_name}"
                 )
             }
-        )
-        if DRY_RUN: 
-            results["configured"] = False 
-            results["validated"] = False 
-            results["status"] = OpStatus.DRY_RUN.value 
-            results["summary_config"] = (
-                    f"[DRY_RUN] Would Configure QOS | Policy: {policy_name}"
-                    f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name/Protocol: {class_name_protocol}"
-                )
-            log.info(
-            "qos_check",
-            extra={
-                "device_ip": device_ip,
-                "component": "qos_automation",
-                "event_type": "qos_config",
-                "status": StepStatus.DRY_RUN.value,
-                "policy_name": policy_name,
-                "interface": interface,
-                "direction": direction,
-                "Class Name/Protocol": class_name_protocol,
-                "severity": "INFO",
-                "message": (
-                    f"[DRY_RUN] Would Configure QOS | Policy: {policy_name}"
-                    f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name/Protocol: {class_name_protocol}"
-                    )
-                }
-            )
-            results["events"].append(
-                emit_event(
-                        device_ip=device_ip,
-                        component="qos_automation",
-                        event_type="qos_config",
-                        outcome="DRY_RUN",
-                        policy_name=policy_name,
-                        interface=interface,
-                        direction=direction,
-                        class_name_Protocol=class_name_protocol,
-                        reason=(
-                            f"[DRY_RUN] Would Configure QOS | Policy: {policy_name}"
-                            f"Interface: {interface} | Direction: {direction} "
-                            f"Class Name/Protocol: {class_name_protocol}"
-                        )
-                    )
-                )
-        else:
-            template = template_env.get_template("QOS.j2")
-            commands = template.render(
-                    class_maps=class_maps,
-                    policy_name=policy_name
-                )
 
-            configured, error = safe_netconf_edit(
-                    session, commands
-                )
-            results["configured"] = configured
 
-            if not configured: 
-                results["status"] = OpStatus.CONFIG_FAILED.value 
-                results["error"] = error
-                results["summary_config"] = (
-                            f"QOS Configuration Failed | Policy: {policy_name}"
-                            f"Interface: {interface} | Direction: {direction} "
-                            f"Class Name/Protocol: {class_name_protocol}"
-                    )
-                log.info(
-                    "qos_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "qos_automation",
-                        "event_type": "qos_config",
-                        "status": StepStatus.FAILED.value,
-                        "severity": "CRITICAL",
-                        "policy_name": policy_name,
-                        "interface": interface,
-                        "direction": direction,
-                        "Class Name/Protocol": class_name_protocol,
-                        "error": error,
-                        "message": (
-                                    f"QOS Configuration Failed | Policy: {policy_name}"
-                                    f"Interface: {interface} | Direction: {direction} "
-                                    f"Class Name/Protocol: {class_name_protocol}"
-                            )
-                        }
-                    )
-                results["events"].append(
-                    emit_event(
-                            device_ip=device_ip,
-                            component="qos_automation",
-                            event_type="qos_config",
-                            outcome="FAIL",
-                            policy_name=policy_name,
-                            interface=interface,
-                            direction=direction,
-                            class_name_Protocol=class_name_protocol,
-                            error=error,
-                            reason=(
-                                f"QOS Configuration Failed | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                            )
-                         )
-                      )
-                return results
-            else:
-                results["status"] = OpStatus.CONFIGURED.value
-                results["summary_config"] = (
-                            f"QOS Configuration Successful | Policy: {policy_name}"
-                            f"Interface: {interface} | Direction: {direction} "
-                            f"Class Name/Protocol: {class_name_protocol}"
-                    )
-                log.info(
-                "qos_check",
+        success, error = safe_netconf_edit(session, xml_payload)
+
+        if not success:
+            log.error(
+                "qos_config_failed",
                 extra={
                     "device_ip": device_ip,
                     "component": "qos_automation",
                     "event_type": "qos_config",
-                    "status": StepStatus.SUCCESS.value,
-                    "severity": "INFO",
+                    "status": StepStatus.FAILED.value,
                     "policy_name": policy_name,
-                    "interface": interface,
-                    "direction": direction,
-                    "Class Name/Protocol": class_name_protocol,
-                    "message": (
-                            f"QOS Configuration Successful | Policy: {policy_name}"
-                            f"Interface: {interface} | Direction: {direction} "
-                            f"Class Name/Protocol: {class_name_protocol}"
-                        )
-                    }
-                )
-                results["events"].append(
-                    emit_event(
-                            device_ip=device_ip,
-                            component="qos_automation",
-                            event_type="qos_config",
-                            outcome="SUCCESS",
-                            policy_name=policy_name,
-                            interface=interface,
-                            direction=direction,
-                            class_name_Protocol=class_name_protocol,
-                            reason=(
-                                f"QOS Configuration Successful | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                            )
-                        )
-                    )
-                native = collect_netconf_state(session)
-                actual_qos = build_qos_state(native)
-
-                expected_qos = {
-                    "policy_name": policy_name,
-                    "class_mapss": class_maps
+                    "error": error,
+                    "message": f"QoS configuration failed: {error}"
                 }
+            )
 
-                qos_ok, failures = check_qos(expected_qos, actual_qos)
+            return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": f"QoS Config Failed: {error}",
+                "error": error
+            }
 
-                results["validated"] = qos_ok
-                results["failures"] = failures
-                
-                if qos_ok: 
-                    results["status"] = OpStatus.SUCCESS.value 
-                    results["summary_validation"] = (
-                                f"QOS Validation Successful | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                        )
-                    log.info(
-                    "qos_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "qos_automation",
-                        "event_type": "qos_config",
-                        "status": StepStatus.SUCCESS.value,
-                        "severity": "INFO",
-                        "policy_name": policy_name,
-                        "interface": interface,
-                        "direction": direction,
-                        "Class Name/Protocol": class_name_protocol,
-                        "message": (
-                                f"QOS Validation Successful | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                            )
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                                device_ip=device_ip,
-                                component="qos_automation",
-                                event_type="qos_config",
-                                outcome="SUCCESS",
-                                policy_name=policy_name,
-                                interface=interface,
-                                direction=direction,
-                                class_name_Protocol=class_name_protocol,
-                                reason=(
-                                f"QOS Validation Successful | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                                )
-                            )
-                        )
-                else: 
-                    results["status"] = OpStatus.VALIDATION_FAILED.value 
-                    results["summary_validation"] = (
-                                f"QOS Validation Failed | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-
-                        )
-                    log.info(
-                    "qos_check",
-                    extra={
-                        "device_ip": device_ip,
-                        "component": "qos_automation",
-                        "event_type": "qos_config",
-                        "status": StepStatus.FAILED.value,
-                        "severity": "CRITICAL",
-                        "policy_name": policy_name,
-                        "interface": interface,
-                        "direction": direction,
-                        "Class Name/Protocol": class_name_protocol,
-                        "message": (
-                                f"QOS Validation Failed | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                            )
-                        }
-                    )
-                    results["events"].append(
-                        emit_event(
-                                device_ip=device_ip,
-                                component="qos_automation",
-                                event_type="qos_config",
-                                outcome="FAIL",
-                                policy_name=policy_name,
-                                interface=interface,
-                                direction=direction,
-                                class_name_Protocol=class_name_protocol,
-                                reason=(
-                                f"QOS Validation Failed | Policy: {policy_name}"
-                                f"Interface: {interface} | Direction: {direction} "
-                                f"Class Name/Protocol: {class_name_protocol}"
-                                )
-                            )
-                        )
-    
-    except Exception as e:
-        results["error"] = str(e)
-        results["status"] = OpStatus.ERROR.value 
-        log.exception(
-        "qos_check",
-        extra={
-            "device_ip": device_ip,
-            "component": "qos_automation",
-            "event_type": "qos_validation",
-            "status": StepStatus.ERROR.value,
-            "severity": "CRITICAL",
-            "policy_name": policy_name,
-            "interface": interface,
-            "direction": direction,
-            "Class Name/Protocol": class_name_protocol,
-            "message": (
-                    f"Try/Exception Error | QOS Configuration | "
-                    f"Policy: {policy_name}"
-                    f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name/Protocol: {class_name_protocol}"
-                )
+        log.info(
+            "qos_config_success",
+            extra={
+                "device_ip": device_ip,
+                "component": "qos_automation",
+                "event_type": "qos_config",
+                "status": StepStatus.SUCCESS.value,
+                "policy_name": policy_name,
+                "message": f"QoS configured successfully: {policy_name}"
             }
         )
-        results["events"].append(
-            emit_event(
-                    device_ip=device_ip,
-                    component="qos_automation",
-                    event_type="qos_validation",
-                    outcome="ERROR",
-                    policy_name=policy_name,
-                    interface=interface,
-                    direction=direction,
-                    class_name_Protocol=class_name_protocol,
-                    reason=(
-                    f"Try/Exception Error | QOS Configuration | "
-                    f"Policy: {policy_name}"
-                    f"Interface: {interface} | Direction: {direction} "
-                    f"Class Name/Protocol: {class_name_protocol}"
-                    )
-                )
-            )
-        return results
 
-    results["summary"] = (
-            results["summary_validation"]
-            or results["summary_config"]
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": f"QoS policy configured successfully: {policy_name}"
+        }
+
+    except Exception as e:
+        log.exception(
+            "qos_config_exception",
+            extra={
+                "device_ip": device_ip,
+                "component": "qos_automation",
+                "event_type": "qos_config",
+                "policy_name": policy_name
+            }
         )
-    results["events"].append(
-            emit_event(
-                    device_ip=device_ip,
-                    component="qos_automation",
-                    event_type="qos_config",
-                    outcome=(
-                            "DRY_RUN" if DRY_RUN else "SUCCESS"
-                            if results["status"] == OpStatus.SUCCESS.value
-                            else "FAIL"
-                        ),
-                    policy_name=policy_name,
-                    interface=interface,
-                    direction=direction,
-                    class_name_Protocol=class_name_protocol,
-                    reason="QOS Automation Complete "
-                )
-            )
-    return results
 
-
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": f"QoS Exception: {str(e)}"
+        }
 def main_process(task):
     device = task["device"]
     context = task["context"]
@@ -5258,104 +3810,343 @@ def main_process(task):
 
                 updated = False
 
-                for roas_data in context.get("roass", []):
-                    config_roas = configure_roas(host_ip, roas_data, session, adapter)
-                    device_result["actions_taken"].append(
-                            config_roas["summary"], "No Summary Returned"
+                actual_roas = build_roas_state(session)
+                expected_roas = context.get("roass", [])
+
+                updated = False
+
+                for roas_data in expected_roas:
+
+                    ok, failures = check_roas(roas_data, actual_roas)
+
+                    base_intf = roas_data.get("router_interface", "unknown")
+
+                    if ok:
+                        adapter.info(
+                            "roas_check",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "roas_precheck",
+                                "status": StepStatus.SKIPPED.value,
+                                "interface": base_intf,
+                                "message": f"ROAS already compliant | {base_intf}"
+                            }
                         )
-                    if config_roas.get("status") == OpStatus.SUCCESS.value:
+
+                        device_result["actions_taken"].append(
+                            f"ROAS compliant | {base_intf}"
+                        )
+                        continue
+
+      
+                    device_result["critical_issues"].extend(failures)
+
+                    adapter.warning(
+                        "roas_drift_detected",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "roas_audit",
+                            "status": StepStatus.FAILED.value,
+                            "interface": base_intf,
+                            "failures": failures,
+                            "message": f"ROAS drift detected | {base_intf}"
+                        }
+                    )
+
+                    res = configure_roas(host_ip, roas_data, session, adapter)
+
+                    device_result["actions_taken"].append(
+                        res.get("summary", "No Summary Returned")
+                    )
+
+                    if res.get("status") == OpStatus.SUCCESS.value:
                         updated = True
-                        device_result.append(
-                            config_roas["event"]
-                        )
-                for ospf_data in context.get("ospf", []):
-                    config_ospf = configure_ospf(host_ip, ospf_data, session, adapter)
-                    device_result["actions_taken"].append(
-                        config_ospf["summary"], "No Summary Returned"
+
+
+                if updated and not DRY_RUN:
+
+                    new_state = build_roas_state(session)
+
+                    for roas_data in expected_roas:
+
+                        ok, failures = check_roas(roas_data, new_state)
+
+                        base_intf = roas_data.get("router_interface", "unknown")
+
+                        if not ok:
+
+                            device_result["critical_issues"].extend(failures)
+
+                            adapter.error(
+                                "roas_post_validation_failed",
+                                extra={
+                                    "device_ip": host_ip,
+                                    "component": "main_process",
+                                    "event_type": "roas_postcheck",
+                                    "status": StepStatus.FAILED.value,
+                                    "interface": base_intf,
+                                    "failures": failures,
+                                    "message": "ROAS post-validation failed"
+                                }
                             )
-                    if config_ospf.get("status") == OpStatus.CONFIGURED.value:
-                        updated = True
-                        device_result.append(
-                            config_ospf["event"]
+
+                        else:
+                            device_result["actions_taken"].append(
+                                f"ROAS validated successfully | {base_intf}"
+                            )
+                actual_state = build_ospf_state(session)
+                expected_ospf = context.get("ospf", [])
+
+                updated = False
+
+                for ospf_data in expected_ospf:
+
+                    pid = ospf_data.get("process_id")
+
+                    ok, failures = check_ospf(ospf_data, actual_state)
+
+                    if ok:
+                        adapter.info(
+                            "ospf_check",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "ospf_precheck",
+                                "status": StepStatus.SKIPPED.value,
+                                "process_id": pid,
+                                "message": f"OSPF compliant | process {pid}"
+                            }
                         )
+
+                        device_result["actions_taken"].append(
+                            f"OSPF compliant | process {pid}"
+                        )
+                        continue
+
+                    device_result["critical_issues"].extend(failures)
+
+                    adapter.warning(
+                        "ospf_drift_detected",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "ospf_audit",
+                            "status": StepStatus.FAILED.value,
+                            "process_id": pid,
+                            "failures": failures,
+                            "message": f"OSPF drift detected | process {pid}"
+                        }
+                    )
+
+                    res = configure_ospf(host_ip, ospf_data, session, adapter)
+
+                    device_result["actions_taken"].append(
+                        res.get("summary", "No Summary Returned")
+                    )
+
+                    if res.get("status") == OpStatus.CONFIGURED.value:
+                        updated = True
+
+                if updated and not DRY_RUN:
+                    adapter.info(
+                        "ospf_convergence",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "ospf_post_config",
+                            "status": StepStatus.IN_PROGRESS.value,
+                            "message": "Waiting for OSPF convergence (30s)"
+                        }
+                    )
+
+                    time.sleep(30)
+
+                if updated and not DRY_RUN:
+
+                    new_state = build_ospf_state(session)
+
+                    for ospf_data in expected_ospf:
+
+                        pid = ospf_data.get("process_id")
+
+                        ok, failures = check_ospf(ospf_data, new_state)
+
+                        if not ok:
+
+                            device_result["critical_issues"].extend(failures)
+
+                            adapter.error(
+                                "ospf_post_validation_failed",
+                                extra={
+                                    "device_ip": host_ip,
+                                    "component": "main_process",
+                                    "event_type": "ospf_postcheck",
+                                    "status": StepStatus.FAILED.value,
+                                    "process_id": pid,
+                                    "failures": failures,
+                                    "message": f"OSPF post-validation failed | process {pid}"
+                                }
+                            )
+
+                        else:
+                            device_result["actions_taken"].append(
+                                f"OSPF validated successfully | process {pid}"
+                            )
                 if updated and not DRY_RUN:
                     adapter.info("⏳ Changes detected. Waiting 30s for network convergence...")
                     time.sleep(30)
 
                 checker = OSPF_Checker()
-                for ospf_data in context.get("ospf", []):
-                    report = checker.validate_device_ospf(host_ip, state , ospf_data)
+
+                updated = False
+
+                expected_ospf = context.get("ospf", [])
+
+                
+                for ospf_data in expected_ospf:
+
+                    report = checker.validate_device_ospf(
+                        host_ip,
+                        state,
+                        ospf_data
+                    )
 
                     device_result["ospf_report"].append(report)
-                    if report["status"] != "HEALTHY":
-                        device_result["status"] = "NON-COMPLIANT"
-                        device_result["critical_issues"].append(
-                            {
-                                "process_id": ospf_data["process_id"],
-                                "issues": report.get("critical_issues", [])
-                            })
-                    if report["warnings"]:
-                        device_result["warnings"].append(
-                            {
-                                "process_id": ospf_data["process_id"],
-                                "issues": report["warnings"]
+
+                    pid = ospf_data.get("process_id")
+
+                    
+                    if report["status"] == "HEALTHY":
+
+                        adapter.info(
+                            "ospf_health_check",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "ospf_check",
+                                "status": StepStatus.PASSED.value,
+                                "process_id": pid,
+                                "message": f"OSPF HEALTHY | process {pid}"
                             }
                         )
 
-            with manager.connect(
-                    host=host_ip,
-                    port=830,
-                    username=device.get("username"),
-                    password=device.get("password"),
-                    hostkey_verify=False,
-                    timeout=30
-                ) as session:
-
-                native = collect_netconf_state(session)
-                actual_acls = build_acl_state(native)
-                expected_acls = context.get("ACL", [])
-                changed = False
-                for acl_data in expected_acls: 
-                    acl_name = acl_data.get("acl_name", "")
-                    rules = acl_data.get("rules", [])
-                    rules_summary = [
-                        f"{r['sequence']} {r['action']} {r['protocol']}"
-                        for r in rules
-                    ]
-                    actual_acl = find_acl(actual_acls, acl_name)
-                    exists = actual_acl is not None 
-                    if exists:
-                        acl_ok, failures = check_acl(acl_data, actual_acl)
-                        if acl_ok: 
-                            adapter.info(
-                                "acl_check",
-                                extra={
-                                    "device_ip": host_ip,
-                                    "component": "main_process",
-                                    "event_type": "acl_precheck",
-                                    "status": StepStatus.SKIPPED.value,
-                                    "message": (f"ACL already exists | Name: {acl_name}"
-                                                f" Rules: {rules_summary}"
-                                        )
-                                }
-                            )
-                            device_result["actions_taken"].append(
-                                    f"ACL already exists | Name: {acl_name}"
-                                    f" Rules: {rules_summary}"
-                                )
-                            continue
-                        device_result["critical_issues"].append({
-                                "acl": acl_name,
-                                "issues": failures
-                            })
-                        config_acl = configure_acl(session, host_ip, acl_data, adapter)
-
                         device_result["actions_taken"].append(
-                            config_acl.get("summary", "No Summary Returned")
+                            f"OSPF HEALTHY | process {pid}"
                         )
 
-                        if config_acl.get("status") == OpStatus.SUCCESS.value:
-                            changed = True
+                        continue
+
+                  
+                    device_result["status"] = "NON-COMPLIANT"
+
+                    device_result["critical_issues"].append({
+                        "process_id": pid,
+                        "issues": report.get("critical_issues", [])
+                    })
+
+                    if report.get("warnings"):
+                        device_result["warnings"].append({
+                            "process_id": pid,
+                            "issues": report["warnings"]
+                        })
+
+                    adapter.warning(
+                        "ospf_health_failed",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "ospf_check",
+                            "status": StepStatus.FAILED.value,
+                            "process_id": pid,
+                            "message": "OSPF NOT HEALTHY"
+                        }
+                    )
+
+                    updated = True
+
+            with manager.connect(
+            host=host_ip,
+            port=830,
+            username=device.get("username"),
+            password=device.get("password"),
+            hostkey_verify=False,
+            timeout=30
+                ) as session:
+
+            native = collect_netconf_state(session)
+            actual_acls = build_acl_state(native)
+
+            expected_acls = context.get("ACL", [])
+
+            acls_to_config = []
+
+            for acl_data in expected_acls:
+
+                acl_name = acl_data.get("acl_name", "")
+                expected_rules = sorted(
+                    acl_data.get("rules", []),
+                    key=lambda x: x.get("seq", 0)
+                )
+
+                actual_rules = actual_acls.get(acl_name, [])
+
+                is_ok, failures = check_acl(expected_rules, actual_rules)
+
+                if is_ok:
+                    adapter.info(
+                        "acl_check",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "acl_precheck",
+                            "status": StepStatus.SKIPPED.value,
+                            "message": f"ACL already correct | {acl_name}"
+                        }
+                    )
+
+                    device_result["actions_taken"].append(
+                        f"ACL already correct | {acl_name}"
+                    )
+                    continue
+
+                acls_to_config.append(acl_data)
+
+                device_result["critical_issues"].append({
+                    "acl": acl_name,
+                    "issues": failures
+                })
+
+            for acl_data in acls_to_config:
+
+                result = configure_acl(session, host_ip, acl_data, adapter)
+
+                device_result["actions_taken"].append(
+                    result.get("summary", "No Summary Returned")
+                )
+
+                if result.get("status") == OpStatus.SUCCESS.value:
+                    changed = True
+
+            if changed and not DRY_RUN:
+
+                new_native = collect_netconf_state(session)
+                new_actual_acls = build_acl_state(new_native)
+
+                for acl_data in acls_to_config:
+                    acl_name = acl_data.get("acl_name")
+
+                    ok, failures = check_acl(
+                        sorted(acl_data.get("rules", []), key=lambda x: x.get("seq", 0)),
+                        new_actual_acls.get(acl_name, [])
+                    )
+
+                    if not ok:
+                        device_result["critical_issues"].append({
+                            "acl": acl_name,
+                            "issues": failures
+                        })
 
 
                     else: 
@@ -5367,8 +4158,229 @@ def main_process(task):
                                 config_acl.get("summary", "No Summary Returned")
                            )
                         if config_acl.get("status") == OpStatus.SUCCESS.value: 
-                            changed = True
-                        
+                             changed = True
+                
+            actual_bindings = build_acl_bindings_state(native)
+            expected_bindings = context.get("ACL_BINDINGS", [])
+
+            bindings_ok, binding_failures = check_acl_bindings(
+                expected_bindings,
+                actual_bindings
+            )
+            if bindings_ok:
+                device_result["actions_taken"].append(
+                    "ACL bindings already in desired state"
+                )
+
+                adapter.info(
+                    "acl_binding_check",
+                    extra={
+                        "device_ip": host_ip,
+                        "component": "main_process",
+                        "event_type": "acl_binding_precheck",
+                        "status": StepStatus.SKIPPED.value,
+                        "message": "ACL bindings already correct"
+                    }
+                )
+
+            else:
+                device_result["critical_issues"].extend(binding_failures)
+
+                adapter.warning(
+                    "acl_binding_drift",
+                    extra={
+                        "device_ip": host_ip,
+                        "component": "main_process",
+                        "event_type": "acl_binding_drift",
+                        "status": StepStatus.FAILED.value,
+                        "failures": binding_failures
+                    }
+                )
+                config = configure_acl_bindings(
+                    session,
+                    host_ip,
+                    expected_bindings,
+                    log
+                )
+
+                device_result["actions_taken"].append(
+                    config.get("summary", "No Summary Returned")
+                )
+
+                if config.get("status") == OpStatus.SUCCESS.value:
+                    changed = True
+
+                    new_native = collect_netconf_state(session)
+                    new_bindings = build_acl_bindings_state(new_native)
+
+                    post_ok, post_failures = check_acl_bindings(
+                        expected_bindings,
+                        new_bindings
+                    )
+
+                    if not post_ok:
+                        device_result["critical_issues"].extend(post_failures)
+
+                        adapter.error(
+                            "acl_binding_validation_failed",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "acl_binding_postcheck",
+                                "status": StepStatus.FAILED.value,
+                                "failures": post_failures
+                            }
+                        )
+
+                    else:
+                        device_result["actions_taken"].append(
+                            "ACL bindings validated successfully after config"
+                        )
+            
+            actual_ntp = build_ntp_state(native)
+
+            expected_ntp = context.get("NTP", {})
+
+            changed = False
+
+            ntp_ok, ntp_failures = check_ntp(expected_ntp, actual_ntp)
+
+            if ntp_ok:
+                device_result["actions_taken"].append(
+                    "NTP already in desired state"
+                )
+
+                adapter.info(
+                    "ntp_check",
+                    extra={
+                        "device_ip": host_ip,
+                        "component": "main_process",
+                        "event_type": "ntp_precheck",
+                        "status": StepStatus.SKIPPED.value,
+                        "message": "NTP already correctly configured"
+                    }
+                )
+
+            else:
+                device_result["critical_issues"].extend(ntp_failures)
+
+                adapter.warning(
+                    "ntp_check",
+                    extra={
+                        "device_ip": host_ip,
+                        "component": "main_process",
+                        "event_type": "ntp_drift_detected",
+                        "status": StepStatus.FAILED.value,
+                        "failures": ntp_failures
+                    }
+                )
+
+                config_ntp = configure_ntp(
+                    session,
+                    host_ip,
+                    expected_ntp,
+                    adapter
+                )
+
+                device_result["actions_taken"].append(
+                    config_ntp.get("summary", "No Summary Returned")
+                )
+
+                if config_ntp.get("status") == OpStatus.SUCCESS.value:
+                    changed = True
+
+
+                    new_native = collect_netconf_state(session)
+                    new_ntp = build_ntp_state(new_native)
+
+                    recheck_ok, recheck_failures = check_ntp(
+                        expected_ntp,
+                        new_ntp
+                    )
+
+                    if not recheck_ok:
+                        device_result["critical_issues"].extend(recheck_failures)
+                        device_result["status"] = "NON-COMPLIANT"
+
+            actual_qos = build_qos_state(native)
+            expected_qos = {
+                "policy_name": policy_name,
+                "class_map": {
+                    c["name"]: c for c in qos_data.get("class_map", [])
+                    }
+                }
+
+            qos_ok, qos_failures = check_qos(expected_qos, actual_qos)
+
+            if qos_ok:
+                device_result["actions_taken"].append(
+                    "QoS already in desired state"
+                )
+
+                adapter.info(
+                    "qos_check",
+                    extra={
+                        "device_ip": host_ip,
+                        "component": "main_process",
+                        "event_type": "qos_precheck",
+                        "status": StepStatus.SKIPPED.value,
+                        "message": "QoS already correct"
+                    }
+                )
+
+            else:
+                device_result["critical_issues"].extend(qos_failures)
+
+                adapter.warning(
+                    "qos_drift",
+                    extra={
+                        "device_ip": host_ip,
+                        "component": "main_process",
+                        "event_type": "qos_drift",
+                        "status": StepStatus.FAILED.value,
+                        "failures": qos_failures
+                    }
+                )
+
+                config_qos = configure_qos(
+                    session,
+                    host_ip,
+                    qos_data,
+                    adapter
+                )
+
+                device_result["actions_taken"].append(
+                    config_qos.get("summary", "No Summary Returned")
+                )
+
+                if config_qos.get("status") == OpStatus.SUCCESS.value:
+                    changed = True
+
+                    new_state = collect_netconf_state(session)
+                    new_qos = build_qos_state(new_state)
+
+                    recheck_ok, recheck_failures = check_qos(
+                        expected_qos,
+                        new_qos
+                    )
+
+                    if not recheck_ok:
+                        device_result["critical_issues"].extend(recheck_failures)
+
+                        adapter.error(
+                            "qos_post_validation_failed",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "qos_postcheck",
+                                "status": StepStatus.FAILED.value,
+                                "failures": recheck_failures
+                            }
+                        )
+                    else:
+                        device_result["actions_taken"].append(
+                            "QoS validated successfully after configuration"
+                        )
 
         else:
             with ConnectHandler(**device) as conn:
@@ -5376,12 +4388,45 @@ def main_process(task):
 
                 state = collect_device_state(conn)
                 changed = False
+                
+                actual_inventory = build_vlan_state(state)
+                expected_vlans = context.get("vlan", [])
 
-                for vlan_data in context.get("vlan", []):
-                    vlan_id = vlan_data.get("vlan_id")
-                    name = vlan_data.get("name")
-                    exists = check_vlan(state, vlan_id, name)
-                    if exists:
+                changed = False
+
+                expected_ids = {str(v["vlan_id"]) for v in expected_vlans}
+                actual_ids = set(actual_inventory.keys())
+                reserved_vlans = {"1", "1002", "1003", "1004", "1005"}
+
+                extra_vlans = (actual_ids - expected_ids) - reserved_vlans
+
+                for vlan_id in extra_vlans:
+                    vlan = actual_inventory.get(vlan_id)
+
+                    adapter.warning(
+                        "vlan_drift_detected",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "vlan_drift",
+                            "status": StepStatus.FAILED.value,
+                            "vlan_id": vlan_id,
+                            "name": vlan.get("name") if vlan else None,
+                            "message": f"Manual VLAN detected on device: {vlan_id}"
+                        }
+                    )
+
+                    device_result["critical_issues"].append(
+                        f"Unexpected VLAN {vlan_id} found on device"
+                    )
+
+                for vlan_data in expected_vlans:
+
+                    vlan_id = str(vlan_data.get("vlan_id"))
+
+                    is_ok, failures = check_vlan(vlan_data, actual_inventory)
+
+                    if is_ok:
                         adapter.info(
                             "vlan_check",
                             extra={
@@ -5389,105 +4434,457 @@ def main_process(task):
                                 "component": "main_process",
                                 "event_type": "vlan_precheck",
                                 "status": StepStatus.SKIPPED.value,
-                                "message": (f"VLAN already exists | VLAN: {vlan_id} | "
-                                           f"Name: {name}")
+                                "message": f"VLAN {vlan_id} is compliant. Skipping."
                             }
                         )
+
                         device_result["actions_taken"].append(
-                            f"VLAN already exists | VLAN: {vlan_id} | "
-                            f"Name: {name}"
+                            f"VLAN {vlan_id} is compliant. Skipping."
                         )
                         continue
-                    config_vlan = configure_vlan(conn, host_ip, vlan_data, adapter)
+
+
+                    device_result["critical_issues"].extend(failures)
+
+                    adapter.info(
+                        "vlan_drift_fix",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "vlan_audit",
+                            "status": StepStatus.FAILED.value,
+                            "vlan_id": vlan_id,
+                            "failures": failures,
+                            "message": f"VLAN drift detected: {vlan_id}"
+                        }
+                    )
+
+                    res = configure_vlan(conn, host_ip, vlan_data, adapter)
+
                     device_result["actions_taken"].append(
-                        config_vlan.get("summary"), "No Summary Returned"
-                            )
-                    if config_vlan.get("status") == OpStatus.SUCCESS.value:
+                        res.get("summary", "No Summary Returned")
+                    )
+
+                    if res.get("status") == OpStatus.SUCCESS.value:
                         changed = True
 
-                for access_data in context.get("access_ports", []):
-                    access_interface = access_data.get("access_interface", "")
-                    access_vlan = access_data.get("access_vlan", "")
-                    exists = check_switch_mode(state, access_interface, "access", access_vlan)
-                    if exists:
+
+                if changed and not DRY_RUN:
+
+                    new_inventory = build_vlan_state(conn)
+
+                    for vlan_data in expected_vlans:
+
+                        ok, failures = check_vlan(vlan_data, new_inventory)
+
+                        if not ok:
+                            device_result["critical_issues"].extend(failures)
+
+                            adapter.error(
+                                "vlan_post_validation_failed",
+                                extra={
+                                    "device_ip": host_ip,
+                                    "component": "main_process",
+                                    "event_type": "vlan_postcheck",
+                                    "status": StepStatus.FAILED.value,
+                                    "vlan_id": vlan_data.get("vlan_id"),
+                                    "failures": failures,
+                                    "message": "Post-validation failed"
+                                }
+                            )
+
+                        else:
+                            device_result["actions_taken"].append(
+                                f"VLAN {vlan_data.get('vlan_id')} validated successfully"
+                            )
+
+                actual_access = build_access_state(state)
+                expected_access = context.get("access_ports", [])
+
+                changed = False
+
+                expected_interfaces = {
+                    str(a.get("access_interface", "")).lower().strip()
+                    for a in expected_access
+                }
+
+                actual_interfaces = set(actual_access.keys())
+
+                extra_access_ports = actual_interfaces - expected_interfaces
+
+                for intf in extra_access_ports:
+
+                    port = actual_access.get(intf)
+
+                    adapter.warning(
+                        "access_drift_detected",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "access_drift",
+                            "status": StepStatus.FAILED.value,
+                            "interface": intf,
+                            "access_vlan": port.get("access_vlan"),
+                            "message": f"Unexpected access port detected: {intf}"
+                        }
+                    )
+
+                    device_result["critical_issues"].append(
+                        f"Unexpected access port found on {intf}"
+                    )
+
+                for access_data in expected_access:
+
+                    intf = str(
+                        access_data.get("access_interface", "")
+                    ).lower().strip()
+
+                    ok, failures = check_access_port(
+                        access_data,
+                        actual_access
+                    )
+
+                    if ok:
+
                         adapter.info(
-                            "access_port_check",
+                            "access_check",
                             extra={
                                 "device_ip": host_ip,
                                 "component": "main_process",
-                                "event_type": "access_port_precheck",
+                                "event_type": "access_precheck",
                                 "status": StepStatus.SKIPPED.value,
-                                "message": f"Access Port Already Exists | Interface: "
-                                           f"{access_interface} | VLAN: {access_vlan}"
+                                "interface": intf,
+                                "message": f"Access port {intf} is compliant"
                             }
                         )
-                        device_result["actions_taken"].append(
-                            f"Access Port Already Exists | Interface: "
-                            f"{access_interface} | VLAN: {access_vlan}"
-                        )
-                        continue
-                    config_access = configure_access_ports(conn, host_ip, access_data, log)
-                    device_result["actions_taken"].append(
-                            config_access.get("summary"), "No summary returned"
-                        )
-                    if config_access.get("status") == OpStatus.SUCCESS.value: 
-                        changed = True 
 
-                for trunk_data in context.get("trunk_ports", []): 
-                    trunk_interface = trunk_data.get("trunk_interface", "")
-                    allowed_vlans = trunk_data.get("allowed_vlans", "")
-                    exists = check_switch_mode(state, trunk_interface, "trunk", allowed_vlans)
-                    if exists: 
-                        adapter.info(
-                                "trunk_port_check",
+                        device_result["actions_taken"].append(
+                            f"Access port {intf} is compliant. Skipping."
+                        )
+
+                        continue
+
+
+                    device_result["critical_issues"].extend(failures)
+
+                    adapter.info(
+                        "access_drift_fix",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "access_audit",
+                            "status": StepStatus.FAILED.value,
+                            "interface": intf,
+                            "failures": failures,
+                            "message": f"Access port drift detected on {intf}"
+                        }
+                    )
+
+
+                    result = configure_access_ports(
+                        conn,
+                        host_ip,
+                        access_data,
+                        adapter
+                    )
+
+                    device_result["actions_taken"].append(
+                        result.get("summary", "No Summary Returned")
+                    )
+
+                    if result.get("status") == OpStatus.SUCCESS.value:
+                        changed = True
+
+
+                if changed and not DRY_RUN:
+
+                    new_state = collect_device_state(conn)
+                    new_access = build_access_state(new_state)
+
+                    for access_data in expected_access:
+
+                        intf = str(
+                            access_data.get("access_interface", "")
+                        ).lower().strip()
+
+                        ok, failures = check_access_port(
+                            access_data,
+                            new_access
+                        )
+
+                        if not ok:
+
+                            device_result["critical_issues"].extend(failures)
+
+                            adapter.error(
+                                "access_post_validation_failed",
                                 extra={
-                                    "device_ip": device_ip,
+                                    "device_ip": host_ip,
                                     "component": "main_process",
-                                    "event_type": "trunk_port_precheck",
-                                    "status": StepStatus.SKIPPED.value,
-                                    "message": (
-                                            f"Trunk Port Already Exists | Interface: "
-                                            f"{trunk_interface} | Allowed VLANs: {allowed_vlans}"
-                                    )
+                                    "event_type": "access_postcheck",
+                                    "status": StepStatus.FAILED.value,
+                                    "interface": intf,
+                                    "failures": failures,
+                                    "message": "Post-validation failed"
                                 }
                             )
-                        device_result["actions_taken"].append(
-                                f"Trunk Port Already Exists | Interface: "
-                                f"{trunk_interface} | Allowed VLANs: {allowed_vlans}"
+
+                        else:
+
+                            device_result["actions_taken"].append(
+                                f"Access port {intf} validated successfully"
                             )
-                        continue
-                    config_trunk = configure_trunk_ports(conn, host_ip, trunk_data, adapter)
-                    device_result["actions_taken"].append(
-                            config_trunk.get("summary", "No sumamry returned")
-                        )
-                    if config_trunk.get("status") == OpStatus.SUCCESS.value:
-                        changed = True
-                for interface_data in context.get("interface", []): 
-                    interface = interface_data.get("interface", "")
-                    description = interface_data.get("description", "")
-                    exists = check_interface(state, interface)
-                    if exists: 
+                                actual_trunks = build_trunk_state(state)
+                                expected_trunks = context.get("trunk_ports", [])
+
+                                changed = False
+
+                                expected_interfaces = {
+                                    str(t.get("trunk_interface", "")).lower().strip()
+                                    for t in expected_trunks
+                                }
+
+                actual_interfaces = set(actual_trunks.keys())
+
+                extra_trunks = actual_interfaces - expected_interfaces
+
+                for intf in extra_trunks:
+
+                    trunk = actual_trunks.get(intf)
+
+                    adapter.warning(
+                        "trunk_drift_detected",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "trunk_drift",
+                            "status": StepStatus.FAILED.value,
+                            "interface": intf,
+                            "allowed_vlans": trunk.get("allowed_vlans"),
+                            "message": f"Unexpected trunk detected on {intf}"
+                        }
+                    )
+
+                    device_result["critical_issues"].append(
+                        f"Unexpected trunk found on {intf}"
+                    )
+
+                for trunk_data in expected_trunks:
+
+                    intf = str(
+                        trunk_data.get("trunk_interface", "")
+                    ).lower().strip()
+
+                    ok, failures = check_trunk(
+                        trunk_data,
+                        actual_trunks
+                    )
+
+                    if ok:
+
                         adapter.info(
+                            "trunk_check",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "trunk_precheck",
+                                "status": StepStatus.SKIPPED.value,
+                                "interface": intf,
+                                "message": f"Trunk {intf} is compliant"
+                            }
+                        )
+
+                        device_result["actions_taken"].append(
+                            f"Trunk {intf} is compliant. Skipping."
+                        )
+
+                        continue
+
+                    device_result["critical_issues"].extend(
+                        failures
+                    )
+
+                    adapter.info(
+                        "trunk_drift_fix",
+                        extra={
+                            "device_ip": host_ip,
+                            "component": "main_process",
+                            "event_type": "trunk_audit",
+                            "status": StepStatus.FAILED.value,
+                            "interface": intf,
+                            "failures": failures,
+                            "message": f"Trunk drift detected on {intf}"
+                        }
+                    )
+
+                    result = configure_trunk_ports(
+                        conn,
+                        host_ip,
+                        trunk_data,
+                        adapter
+                    )
+
+                    device_result["actions_taken"].append(
+                        result.get(
+                            "summary",
+                            "No Summary Returned"
+                        )
+                    )
+
+                    if result.get("status") == OpStatus.SUCCESS.value:
+                        changed = True
+
+                if changed and not DRY_RUN:
+
+                    new_state = collect_device_state(conn)
+                    new_trunks = build_trunk_state(new_state)
+
+                    for trunk_data in expected_trunks:
+
+                        intf = str(
+                            trunk_data.get("trunk_interface", "")
+                        ).lower().strip()
+
+                        ok, failures = check_trunk(
+                            trunk_data,
+                            new_trunks
+                        )
+
+                        if not ok:
+
+                            device_result["critical_issues"].extend(
+                                failures
+                            )
+
+                            adapter.error(
+                                "trunk_post_validation_failed",
+                                extra={
+                                    "device_ip": host_ip,
+                                    "component": "main_process",
+                                    "event_type": "trunk_postcheck",
+                                    "status": StepStatus.FAILED.value,
+                                    "interface": intf,
+                                    "failures": failures,
+                                    "message": "Post-validation failed"
+                                }
+                            )
+
+                    actual_interfaces = build_interface_state(new_state)
+
+                    expected_interfaces = config_data.get("interfaces", [])
+
+                    changed = False
+
+    
+                    for intf_data in expected_interfaces:
+
+                        ok, failures = check_interface(intf_data, actual_interfaces)
+
+                        intf_name = intf_data.get("interface")
+
+                        if ok:
+                            adapter.info(
                                 "interface_check",
                                 extra={
-                                    "device_ip": device_ip,
+                                    "device_ip": host_ip,
                                     "component": "main_process",
                                     "event_type": "interface_precheck",
                                     "status": StepStatus.SKIPPED.value,
-                                    "message": (
-                                            f"Interface Already Up/Up | Interface: "
-                                            f"{interface}"
-                                    )
+                                    "message": f"Interface {intf_name} compliant"
                                 }
                             )
-                        device_result["actions_taken"].append(
-                                f"Interface Already Up/Up | Interface: "
-                                f"{interface}"
+
+                            device_result["actions_taken"].append(
+                                f"Interface {intf_name} already compliant"
                             )
-                        continue
-                    config_interface = configure_interface(conn, host_ip, interface_data, adapter)
-                    device_result["actions_taken"].append(
-                            config_interface.get("summary", "No sumamry returned")
+                            continue
+
+                        device_result["critical_issues"].extend(failures)
+
+                        adapter.warning(
+                            "interface_drift_detected",
+                            extra={
+                                "device_ip": host_ip,
+                                "component": "main_process",
+                                "event_type": "interface_audit",
+                                "status": StepStatus.FAILED.value,
+                                "interface": intf_name,
+                                "failures": failures,
+                                "message": f"Interface drift detected: {intf_name}"
+                            }
                         )
-                    if config_interface.get("status") == OpStatus.SUCCESS.value: 
-                        changed = True
+
+                        res = configure_interface(
+                            session,
+                            host_ip,
+                            intf_data,
+                            log
+                        )
+
+                        device_result["actions_taken"].append(
+                            res.get("summary", "No Summary Returned")
+                        )
+
+                        if res.get("status") == OpStatus.SUCCESS.value:
+                            changed = True
+
+                    if changed and not DRY_RUN:
+
+                    new_state = build_interface_state(
+                        collect_device_state(conn)
+                    )
+
+                    for intf_data in expected_interfaces:
+
+                        ok, failures = check_interface(intf_data, new_state)
+
+                        intf_name = intf_data.get("interface")
+
+                        if not ok:
+
+                            device_result["critical_issues"].extend(failures)
+
+                            adapter.error(
+                                "interface_post_validation_failed",
+                                extra={
+                                    "device_ip": host_ip,
+                                    "component": "main_process",
+                                    "event_type": "interface_postcheck",
+                                    "status": StepStatus.FAILED.value,
+                                    "interface": intf_name,
+                                    "failures": failures,
+                                    "message": "Post-validation failed"
+                                }
+                            )
+
+                        else:
+                            device_result["actions_taken"].append(
+                                f"Interface {intf_name} validated successfully"
+
+        
+    except Exception as e:
+
+    adapter.exception(
+        "main_process_failed",
+        extra={
+            "device_ip": host_ip,
+            "error": str(e)
+        }
+    )
+
+    device_result["status"] = "FAILED"
+    device_result["errors"].append(str(e))
+
+    end = datetime.utcnow()
+    device_result["end_time"] = end.isoformat()
+
+    device_result["duration_seconds"] = (
+        end - datetime.fromisoformat(device_result["start_time"])
+    ).total_seconds()
+
+    if device_result["critical_issues"]:
+        device_result["status"] = "NON-COMPLIANT"
+    else:
+        device_result["status"] = "COMPLIANT"
+
+    return device_result
