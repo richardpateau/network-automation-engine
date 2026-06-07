@@ -261,7 +261,7 @@ def get_netbox():
         acl_context = device_name.config_context.get("acl", {})
         ntp_context = context.get("ntp", {})
         qos_context = context.get("qos", {})
-        for device_interface in interface_on_device(device_name.id, []):
+        for device_interface in interface_on_device.get(device_name.id, []):
             tags = [t.slug for t in device_interface.tags]
 
             config_data["interfaces"].append({
@@ -297,7 +297,7 @@ def get_netbox():
                         'r_interface': device_interface.name,
                         "description": "- configured via Network Automation"
                     })
-                router_ips = ip_on_interface(device_interface.id, [])
+                router_ips = ip_on_interface.get(device_interface.id, [])
                 for rip in router_ips:
                     r_ip = ipaddress.ip_interface(str(rip.address))
                     if "roas" in tags:
@@ -3813,8 +3813,6 @@ def main_process(task):
                 actual_roas = build_roas_state(session)
                 expected_roas = context.get("roass", [])
 
-                updated = False
-
                 for roas_data in expected_roas:
 
                     ok, failures = check_roas(roas_data, actual_roas)
@@ -3896,10 +3894,9 @@ def main_process(task):
                             device_result["actions_taken"].append(
                                 f"ROAS validated successfully | {base_intf}"
                             )
-                actual_state = build_ospf_state(session)
+                actual_state = build_ospf_state(state)
                 expected_ospf = context.get("ospf", [])
 
-                updated = False
 
                 for ospf_data in expected_ospf:
 
@@ -3965,7 +3962,7 @@ def main_process(task):
 
                 if updated and not DRY_RUN:
 
-                    new_state = build_ospf_state(session)
+                    new_state = build_ospf_state(state)
 
                     for ospf_data in expected_ospf:
 
@@ -4000,7 +3997,6 @@ def main_process(task):
 
                 checker = OSPF_Checker()
 
-                updated = False
 
                 expected_ospf = context.get("ospf", [])
 
@@ -4241,8 +4237,6 @@ def main_process(task):
 
             expected_ntp = context.get("NTP", {})
 
-            changed = False
-
             ntp_ok, ntp_failures = check_ntp(expected_ntp, actual_ntp)
 
             if ntp_ok:
@@ -4392,7 +4386,6 @@ def main_process(task):
                 actual_inventory = build_vlan_state(state)
                 expected_vlans = context.get("vlan", [])
 
-                changed = False
 
                 expected_ids = {str(v["vlan_id"]) for v in expected_vlans}
                 actual_ids = set(actual_inventory.keys())
@@ -4500,8 +4493,6 @@ def main_process(task):
 
                 actual_access = build_access_state(state)
                 expected_access = context.get("access_ports", [])
-
-                changed = False
 
                 expected_interfaces = {
                     str(a.get("access_interface", "")).lower().strip()
@@ -4862,19 +4853,7 @@ def main_process(task):
                                 f"Interface {intf_name} validated successfully"
 
         
-    except Exception as e:
-
-    adapter.exception(
-        "main_process_failed",
-        extra={
-            "device_ip": host_ip,
-            "error": str(e)
-        }
-    )
-
-    device_result["status"] = "FAILED"
-    device_result["errors"].append(str(e))
-
+    finally:
     end = datetime.utcnow()
     device_result["end_time"] = end.isoformat()
 
@@ -4884,7 +4863,74 @@ def main_process(task):
 
     if device_result["critical_issues"]:
         device_result["status"] = "NON-COMPLIANT"
-    else:
+    elif device_result["status"] != "FAILED":
         device_result["status"] = "COMPLIANT"
 
     return device_result
+
+def main():
+    main_log = logging.LoggerAdapter(logger, {"dev": "MAIN"})
+    main_log.info("🚀 INITIALIZING HYBRID NETDEV-OPS ENGINE...")
+
+    COMPLIANCE_RESULTS = []
+
+    try:
+        inventory, config_data = get_netbox()
+        main_log.info(f"✅ NetBox Sync Successful. ({len(inventory)} devices found)")
+
+        tasks = []
+        for dev in inventory:
+            ip = dev["host"]
+
+            ctx = config_data.get(ip)
+            tasks.append({
+                "device": dev,
+                "context": copy.deepcopy(ctx) if ctx else {}
+            })
+
+        num_workers = min(len(inventory), 15)
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = [executor.submit(main_process, t) for t in tasks]
+
+            for f in as_completed(futures):
+                try:
+                    result = f.result()
+                    COMPLIANCE_RESULTS.append(result)
+
+                except Exception as e:
+                    main_log.error(f"❌ Device thread failed: {e}")
+                    COMPLIANCE_RESULTS.append({
+                        "device_name": "UNKNOWN",
+                        "status": "FAILED",
+                        "error": str(e)
+                    })
+
+        report = {
+            "run_metadata": {
+                "timestamp": datetime.utcnow().isoformat(),
+                "total_devices": len(inventory),
+                "successful_runs": len([r for r in COMPLIANCE_RESULTS if r.get("status") != "FAILED"])
+            },
+            "devices": COMPLIANCE_RESULTS,
+            "summary": {
+                "compliant": len([r for r in COMPLIANCE_RESULTS if r.get("status") == "COMPLIANT"]),
+                "non_compliant": len([r for r in COMPLIANCE_RESULTS if r.get("status") == "NON-COMPLIANT"]),
+                "failed": len([r for r in COMPLIANCE_RESULTS if r.get("status") == "FAILED"])
+            }
+        }
+
+        with open("final_compliance_report.json", "w") as f:
+            json.dump(report, f, indent=4, default=str)
+
+        main_log.info("📊 Final Compliance Report saved successfully")
+
+    except Exception as e:
+        main_log.error(f"❌ ENGINE ABORTED: {e}")
+
+    finally:
+        logging.LoggerAdapter(logger, {"dev": "FINAL"}).info(
+            "🏁 AUTOMATION CYCLE COMPLETE"
+        )
+if __name__ == "__main__":
+    main()
