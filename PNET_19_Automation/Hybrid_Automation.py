@@ -11,7 +11,8 @@ template_env = Environment(
 DRY_RUN = True
 netbox_url = "http://localhost:8000"
 netbox_token = "*****"
-from enum import enum 
+from enum import Enum
+import re 
 class OpStatus(Enum): 
 	SUCCESS = "SUCCESS"
 	FAILED_CONFIG = "FAILED_CONFIG"
@@ -150,6 +151,7 @@ def get_netbox():
 						config_data[host_ip]["trunk_ports"].append({
 								"device_ip": host_ip,
 								"trunk_interface": device_interface.name,
+								"mode": "trunk",
 								"allowed_vlans": ",".join(str(v["vid"]) for v in device_interface.tagged_vlans)
 							})
 			if is_router:
@@ -324,11 +326,6 @@ def collect_restconf_state(device_ip, session, log):
 				f"Try/Exception Error | {device_ip} | def collect_restconf_state | {e}"
 			)
 	return restconf_state
-
-
-
-
-
 def build_vlan(device_state): 
 	device_state_vlan = device_state.get("vlans", {})
 	vlan_data = device_state_vlan.get("vlans", {})
@@ -343,7 +340,7 @@ def build_access(device_state):
 	actual_access = {}
 
 	for access_int, access_values in device_state_access.items():
-		operational_mode = access_values.get("operational_mode")
+		operational_mode = access_values.get("operational_mode", "").lower()
 
 		if "access" not in operational_mode or "trunk" in operational_mode:
 			continue 
@@ -352,10 +349,95 @@ def build_access(device_state):
 
 		actual_access[access_interface] = {
 			"access_interface": access_interface,
-			"mode": "access",
-			"access_vlan": actual_vlans
+			"operational_mode": operational_mode,
+			"access_vlan": access_vlan
 		}
-		return actual_access
+	return actual_access
+def build_trunk(device_state):
+	device_state_trunk = device_state.get("switchports", {})
+	trunk_data = device_state_trunk.get("trunks", {})
+	actual_trunk = {}
+	for trunk_int, trunk_values in device_state_trunk.items():
+		operational_mode = trunk_values.get("operational_mode", "")
+
+		if "trunk" not in operational_mode:
+			continue
+		trunk_interface = trunk_int
+		allowed_vlans = trunk_values.get("trunk_vlans", "")
+
+		actual_trunk[trunk_interface] = {
+			"trunk_interface": trunk_interface,
+			"allowed_vlans": allowed_vlans,
+			"operational_mode": operational_mode
+		}
+	return actual_trunk
+def build_interface(device_state): 
+	device_state_interface = device_state.get("interfaces", {})
+	actual_interfaces = {}
+	interfaces = device_state_interface.get("interface", {})
+	for interface_name, interface_values in interfaces.items():
+		if not interfaces:
+			continue
+		status = interface_values.get("status", "")
+		protocol = interface_values.get("protocol", "")
+		interface_name = interface_name.lower().strip()
+		actual_interfaces[interface_name] = {
+				"interface": interface_name,
+				"status": status,
+				"protocol": protocol,
+				"is_up": status == "up" and protocol == "up"
+		}
+	return actual_interfaces
+def build_roas(restconf_state): 
+	restconf_state_roas = restconf_state.get("interface_restconf", {})
+	actual_roas = {}
+	interfaces = restconf_state_roas.get("Cisco-IOS-XE-native:interface", {})
+	for gigabit, gigabit_value in interfaces.items():
+		gigabit_values = normalize_to_list(gigabit_value)
+		for g in gigabit_values:
+			name = str(g.get("name", ""))
+
+			if "." not in name: 
+				continue
+			full_interface = f"{gigabit}{name}".lower().strip()
+			vlan_id = (g.get("encapsulation", {})
+						.get("dot1Q", {})
+						.get("vlan-id", {}))
+			ip_address = g.get("ip", {}).get("address", {}).get("primary", {}).get("address", "")
+			mask = g.get("ip", {}).get("address", {}).get("primary", {}).get("mask", "")
+			actual_roas[full_interface] = {
+				"interface": full_interface,
+				"router_vlan": vlan_id,
+				"ip": ip_address,
+				"mask": mask
+			}
+	return actual_roas
+def build_ospf(restconf_state): 
+	restconf_state_ospf = restconf_state.get("ospf_restconf")
+	get_ospf = (restconf_state_ospf.get("Cisco-IOS-XE-native:router", {})
+				.get("Cisco-IOS-XE-ospf:router-ospf", {})
+				)
+	ospf = get_ospf.get("ospf", {})
+	process_id = ospf.get("process-id", [])
+	process = normalize_to_list(process_id)
+	actual_ospf = {}
+	for proc in process: 
+		proc_id = proc.get("id", "")
+		router_id = proc.get("router-id", "")
+		networks = proc.get("network", [])
+		network = normalize_to_list(networks)
+		actual_ospf[proc_id] = {
+            "process_id": proc_id,
+            "router_id": router_id,
+            "network_list": []
+        	}
+		for net in network:
+			actual_ospf[proc_id]["network_list"].append({
+                "subnet": net.get("ip", ""),
+                "wildcard": net.get("wildcard", ""),
+                "area": net.get("area", "")
+            })
+		return actual_ospf
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -379,8 +461,8 @@ def check_vlan(expected_vlans, actual_vlans):
 	return len(failures) == 0, failures
 def check_access(expected_access, actual_config): 
 	failures = []
-	exp_interface = expected_access.get("access_interface", "").lower().split()
-	exp_vlan = str(expected_access.get("access_vlan", "")).lower().split()
+	exp_interface = str(expected_access.get("access_interface", "")).lower().strip()
+	exp_vlan = str(expected_access.get("access_vlan", "")).strip()
 
 	actual = actual_config.get(exp_interface)
 	if not actual:
@@ -390,7 +472,7 @@ def check_access(expected_access, actual_config):
 			)
 		return False, failures
 
-	actual_vlan = str(actual.get("access_vlan", "")).lower().split()
+	actual_vlan = str(actual.get("access_vlan", "")).strip()
 
 	if exp_vlan != actual_vlan: 
 		failures.append(
@@ -399,14 +481,129 @@ def check_access(expected_access, actual_config):
 			)
 		return False, failures
 
-	actual_mode = actual.get("operational_mode")
-	if actual_mode not in ["static access"].lower().strip():
+	actual_mode = actual.get("operational_mode").lower().strip()
+	if actual_mode != "static access":
 		failures.append(
 				f"Wrong Interface Operational Mode | Actual: {actual_mode}"
 				f" Expected: static access"
 			)
 	return len(failures) == 0, failures
+def check_trunk(expected_trunk, actual_config): 
+	failures = []
+	exp_interface = expected_trunk.get("trunk_interface", "").lower().strip()
+	exp_allowed_vlans = str(expected_trunk.get("allowed_vlans", "")).strip()
+	exp_mode = expected_trunk.get("operational_mode", "").lower().strip()
 
+	actual = actual_config.get(exp_interface)
+	if not actual: 
+		failures.append(
+				f"Missing Trunk Interface | Interface: {exp_interface} | "
+				f"Expected Allowed VLANs: {exp_allowed_vlans}"
+			)
+		return False, failures
+	actual_vlans = str(actual.get("allowed_vlans", "")).strip()
+	actual_mode = actual.get("operational_mode", "").lower().strip()
+	if exp_allowed_vlans != actual_vlans: 
+		failures.append(
+				f"Mismatch Found Trunk Port Allowed VLANs | Interface: {exp_interface}"
+				f"Expected: {exp_allowed_vlans} | Actual: {actual_vlans}"
+			)
+		return False, failures
+	if exp_mode != actual_mode: 
+		failures.append(
+				f"Incorrect Operational Mode | Interface: {exp_interface} | "
+				f"Expected: {exp_mode} | Actual: {actual_mode}"
+			)
+	return len(failures) == 0, failures
+def check_interface(expected_int, actual_config): 
+	failures = []
+	exp_interface = expected_int.get("interface", "").lower().strip()
+	exp_is_up = expected_int.get("should_be_up", False)
+
+	actual = actual_config.get(exp_interface)
+	if not actual: 
+		failures.append(
+				f"Missing Interface On Device | Interface: {exp_interface}"
+			)
+		return False, failures
+	actual_is_up = actual.get("is_up", False )
+	if exp_is_up != actual_is_up:
+		failures.append(
+			 f"Mismatched Interface State | Expected Should Be Up/Up: {exp_is_up} "
+			 f"Actual Should be Up/Up: {actual_is_up}"
+			)
+
+	return len(failures) == 0, failures
+def check_roas(expected_roas, actual_config): 
+	failures = []
+	exp_interface = expected_roas.get("interface", "")
+	exp_vlan = str(expected_roas.get("router_vlan", ""))
+	exp_ip = expected_roas.get("ip", "")
+	exp_mask = expected_roas.get("mask", "")
+	exp_ip_mask = f"{exp_ip}/{exp_mask}"
+	actual = actual_config.get(exp_interface)
+	if not actual: 
+		failures.append(
+				f"Missing ROAS Interface on Device | Interface: {exp_interface} | VLAN: "
+				f"{exp_vlan} | IP: {exp_ip}/{exp_mask}"
+			)
+		return False, failures
+	actual_vlan = str(actual.get("router_vlan", ""))
+	if exp_vlan != actual_vlan: 
+		failures.append(
+				f"ROAS VLAN Mismatch | Expected: {exp_vlan} | Actual: {actual_vlan}"
+			)
+		return False, failures
+	actual_ip = actual.get("ip", "")
+	actual_mask = actual.get("mask", "")
+	actual_ip_mask = f"{actual_ip}/{actual_mask}"
+
+	if exp_ip_mask != actual_ip_mask: 
+		failures.append(
+				f"ROAS IP/Mask Mismatch | Interface: {exp_interface} | "
+				f"Expected IP/Mask: {exp_ip_mask} | Actual IP/Mask: {actual_ip_mask}"
+			)
+	return len(failures) == 0, failures
+def check_ospf(expected_ospf, actual_config): 
+	failures = []
+	exp_proc = expected_ospf.get("process_id", "")
+	exp_router_id = expected_ospf.get("router_id", "")
+	exp_net_list = expected_ospf.get("network_list", [])
+	actual = actual_config.get(exp_proc)
+	if not actual: 
+		failures.append(
+				f"Missing Process ID (OSPF) | ID: {exp_proc}"
+			)
+		return False, failures
+	actual_router_id = actual.get("router_id", "")
+	if exp_router_id != actual_router_id: 
+		failures.append(
+				f"(OSPF) Mismatched Router ID | Process: {exp_proc} | "
+				f"Expected RID: {exp_router_id} | Actual RID: {actual_router_id}"
+			)
+		return False, failures
+	actual_net_list = actual.get("network_list", [])
+	for exp_net in exp_net_list: 
+		matched = False 
+		exp_subnet = str(exp_net.get("subnet", ""))
+		exp_wildcard = str(exp_net.get("wildcard", ""))
+		exp_area = str(exp_net.get("area", ""))
+		for act_net in actual_net_list: 
+			act_subnet = str(act_net.get("subnet", ""))
+			act_wildcard = str(act_net.get("wildcard", ""))
+			act_area = str(act_net.get("area", ""))
+
+			if (
+				exp_subnet == act_subnet and 
+				exp_wildcard == act_wildcard and 
+				exp_area == act_area
+				):
+				matched = True
+			else:
+
+
+
+	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
@@ -477,4 +674,385 @@ def configure_access(conn, device_ip, access_data, log):
 	access_vlan = access_data.get("access_vlan", "")
 
 	try: 
-		
+		template = template_env.get_template("access_port.j2")
+		commands = template.render(
+				access_interface=access_interface,
+				access_vlan=access_vlan
+			).splitlines()
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure Access Port | Interface: {access_interface} | "
+						f"VLAN: {access_vlan}"
+                	)
+			}
+		conn.send_config_set(commands)
+
+		log.info(
+            "access_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "access_port_automation",
+                "event_type": "access_config",
+                "status": StepStatus.SUCCESS.value,
+                "vlan_id": access_vlan,
+ 				"interface": access_interface,
+                "message": (f"Access Port configured successfully | "
+                			f"Interface: {access_interface} | VLAN: {access_vlan}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary":(f"Access Port configured successfully | "
+                		   f"Interface: {access_interface} | VLAN: {access_vlan}"
+                	)
+			}
+	except Exception as e: 
+		log.info(
+            "access_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "access_port_automation",
+                "event_type": "access_config",
+                "status": StepStatus.ERROR.value,
+                "vlan_id": access_vlan,
+ 				"interface": access_interface,
+                "message": (f"Try/Exception Error | Access Port Configuration | "
+                			f"Interface: {access_interface} | VLAN: {access_vlan}"
+                			f" | Error: {e}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(f"Try/Exception Error | Access Port Configuration | "
+                			f"Interface: {access_interface} | VLAN: {access_vlan}"
+                			f" | Error: {e}]"
+                	),
+				"error": str(e)
+			}
+def configure_trunk(conn, device_ip, trunk_data, log): 
+	trunk_interface = trunk_data.get("trunk_interface", "")
+	allowed_vlans = trunk_data.get("allowed_vlans", "")
+
+	try: 
+		template = template_env.get_template("trunk_ports.j2")
+		commands = template.render(
+				trunk_interface=trunk_interface,
+				allowed_vlans=allowed_vlans
+			).splitlines()
+
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (f"[DRY_RUN] Would Configure Trunk Interface | "
+                			f"Interface: {trunk_interface} | "
+                			f"Allowed VLANs: {allowed_vlans}"
+                	)
+			}
+
+		conn.send_config_set(commands)
+
+		log.info(
+            "trunk_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "trunk_automation",
+                "event_type": "trunk_config",
+                "status": StepStatus.SUCCESS.value,
+                "trunk_interface": trunk_interface,
+                "allowed_vlans": allowed_vlans,
+                "message": (f"Trunk Interface configured successfully | "
+                			f"Interface: {trunk_interface} | "
+                			f"Allowed VLANs: {allowed_vlans}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (f"Trunk Interface configured successfully | "
+                			f"Interface: {trunk_interface} | "
+                			f"Allowed VLANs: {allowed_vlans}"
+                	)
+			}
+	except Exception as e: 
+		log.info(
+            "trunk_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "trunk_automation",
+                "event_type": "trunk_config",
+                "status": StepStatus.ERROR.value,
+                "trunk_interface": trunk_interface,
+                "allowed_vlans": allowed_vlans,
+                "message": (f"Try/Exception Error | Trunk Interface Configuration | "
+                			f"Interface: {trunk_interface} | "
+                			f"Allowed VLANs: {allowed_vlans} | Error: {e}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(f"Try/Exception Error | VLAN Configuration | "
+                		   f"Interface: {trunk_interface} | "
+                			f"Allowed VLANs: {allowed_vlans} | Error: {e}"
+                	),
+				"error": str(e)
+			}
+def configure_interfaces(conn, device_ip, interface_data, log): 
+	interface = interface_data.get("interface", "")
+	description = interface_data.get("description", "")
+	should_be_up = interface_data.get("should_be_up", False)
+	if should_be_up: 
+		state = "no shutdown"
+	else: 
+		state = "shutdown"
+	try: 
+		template = template_env.get_template("interface.j2")
+		commands = template.render(
+				interface=interface,
+				description=description,
+				state=state
+			).splitlines()
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (f"[DRY_RUN] Would Change Interface Status | Interface: {interface} "
+							f"| Should Be Up/Up: {should_be_up}" 
+                	)
+			}
+
+		conn.send_config_set(commands)
+
+		log.info(
+            "interface_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "interface_automation",
+                "event_type": "interface_config",
+                "status": StepStatus.SUCCESS.value,
+                "interface": interface,
+                "should_be_up": should_be_up,
+                "message": (f"Interface Status Successfully changed | Interface: {interface} "
+						    f"| Should Be Up/Up: {should_be_up}" 
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (f"Interface Status Successfully Changed | Interface: {interface} "
+						    f"| Should Be Up/Up: {should_be_up}" 
+                	)
+			}
+	except Exception as e: 
+		log.info(
+            "interface_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "interface_automation",
+                "event_type": "interface_config",
+                "status": StepStatus.ERROR.value,
+                "interface": interface,
+                "should_be_up": should_be_up,
+                "message": (f"Try/Exception Error | Interface Status Configuration | "
+                			f"Interface: {interface} | "
+                			f"Should Be Up/Up: {should_be_up} | Error: {e}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(f"Try/Exception Error | Interface Status Configuration | "
+                		   f"Interface: {interface} | "
+                			f"Should Be Up/Up: {should_be_up} | Error: {e}"
+                	),
+				"error": str(e)
+			}
+def configure_roas(session, device_ip, roas_data, log): 
+	interface = roas_data.get("interface", "")
+	router_vlan = roas_data.get("router_vlan", "")
+	ip = roas_data.get("ip", "")
+	mask = roas_data.get("mask", "")
+	new_int = re.search(r'[\d./]+$', interface).group()
+
+	try: 
+		template = template_env.get_template("restconf_roas.j2")
+		commands = template.render(
+				new_interface=new_int,
+				router_vlan=router_vlan,
+				ip=ip,
+				mask=mask
+			)
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure ROAS | "
+						f"Interface: {interface} | VLAN: {router_vlan} | "
+						f"IP: {ip}/{mask} | Transport: RESTCONF"
+				)
+			}
+		response = session.patch(
+				url=f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/interface",
+				data=commands
+			)
+		if response.status_code not in [200,201,204]: 
+			return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": (f"ROAS config failed {response.text}"
+                		    f"Interface: {interface} | VLAN: {router_vlan} | "
+						    f"IP: {ip}/{mask}"
+                	),
+                "error": response.text
+            }
+
+		log.info(
+            "roas_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "roas_automation",
+                "event_type": "roas_config",
+                "status": StepStatus.SUCCESS.value,
+                "interface": interface,
+                "vlan_id": router_vlan,
+                "ip": f"{ip}/{mask}",
+                "message": (f"ROAS Successfully Configured | "
+						    f"Interface: {interface} | VLAN: {router_vlan} | "
+						    f"IP: {ip}/{mask} | Transport: RESTCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (f"ROAS Successfully Configured | "
+						    f"Interface: {interface} | VLAN: {router_vlan} | "
+						    f"IP: {ip}/{mask} | Transport: RESTCONF"
+                	)
+			}
+	except Exception as e: 
+		log.info(
+            "roas_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "roas_automation",
+                "event_type": "roas_config",
+                "status": StepStatus.ERROR.value,
+                "interface": interface,
+                "vlan_id": router_vlan,
+                "ip": f"{ip}/{mask}",
+                "message": (f"Try/Exception Error | ROAS Configuration | "
+                			f"Interface: {interface} | VLAN: {router_vlan} | "
+						    f"IP: {ip}/{mask} | Transport: RESTCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(f"Try/Exception Error | ROAS Configuration | "
+                			f"Interface: {interface} | VLAN: {router_vlan} | "
+						    f"IP: {ip}/{mask} | Transport: RESTCONF"
+                	),
+				"error": str(e)
+			}
+def configure_ospf(session, device_ip, ospf_data, log): 
+	process_id = ospf_data.get("process_id", "")
+	router_id = ospf_data.get("router_id", "")
+	network_list = ospf_data.get("network_list", [])
+	network = ",".join(
+			f"{n['subnet']}/{n['wildcard']} area {n['area']}"
+			for n in network_list
+		)
+	try: 
+		template = template_env.get_template("OSPF.j2")
+		commands = template.render(
+				process_id=process_id,
+				router_id=router_id,
+				network_list=network_list
+			)
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure OSPF | "
+						f"Process ID: {process_id} | "
+						f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+				)
+			}
+		response = session.patch( 
+				url = f"https://{device_ip}/restconf/data/Cisco-IOS-XE-native:native/router",
+				data=commands
+			)
+		if response.status_code not in [200,201,204]: 
+			return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": (
+                			f"OSPF config failed {response.text}"
+                		    f"Process ID: {process_id} | "
+						    f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+                	),
+                "error": response.text
+            }
+
+		log.info(
+            "ospf_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "ospf_automation",
+                "event_type": "ospf_config",
+                "status": StepStatus.SUCCESS.value,
+                "process_id": process_id,
+                "RID": router_id,
+                "networks": network,
+                "message": (
+                			f"OSPF Successfully Configured | "
+						    f"Process ID: {process_id} | "
+						    f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"OSPF Successfully Configured | "
+						    f"Process ID: {process_id} | "
+						    f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+                	)
+			}
+	except Exception as e: 
+		log.info(
+            "ospf_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "ospf_automation",
+                "event_type": "ospf_config",
+                "status": StepStatus.ERROR.value,
+                "process_id": process_id,
+                "RID": router_id,
+                "networks": network,
+                "message": (f"Try/Exception Error | OSPF Configuration | "
+                			f"Process ID: {process_id} | "
+						    f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | OSPF Configuration | "
+                			f"Process ID: {process_id} | "
+						    f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+                	),
+				"error": str(e)
+			}
