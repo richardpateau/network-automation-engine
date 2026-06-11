@@ -1,7 +1,7 @@
 <config>
  <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
   <policy>
-    {% for cm in class_maps %}
+    {% for cm in class %}
     <class-map xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-policy">
       <name>{{ cm.name }}</name>
       <prematch>{{ cm.match_type }}</prematch>

@@ -2,7 +2,9 @@ import pynetbox
 from collections import defaultdict
 import ipaddress
 from netmiko import ConnectHandler
-from jinja2 import Environment, FileSystemLoader 
+from jinja2 import Environment, FileSystemLoader
+from ncclient import manager 
+import xmltodict
 template_env = Environment(
 		loader=FileSystemLoader("/run/media/rich/HDD/Templates/"),
 		trim_blocks=True,
@@ -326,6 +328,44 @@ def collect_restconf_state(device_ip, session, log):
 				f"Try/Exception Error | {device_ip} | def collect_restconf_state | {e}"
 			)
 	return restconf_state
+def collect_netconf_state(device_ip, username, password, log):
+    netconf_state = {}
+
+    try:
+        with manager.connect(
+            host=device_ip,
+            port=830,
+            username=username,
+            password=password,
+            hostkey_verify=False,
+            timeout=30
+        ) as m:
+
+            filter_xml = """
+            <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native"/>
+            """
+
+            response = m.get_config(
+                source="running",
+                filter=("subtree", filter_xml)
+            )
+
+            if response.ok:
+                netconf_data = xmltodict.parse(response.data_xml)
+
+                state["native_netconf"] = (
+                    netconf_dataf.get("rpc-reply", {})
+                          .get("data", {})
+                          .get("native", {})
+                )
+            else:
+                state["native_netconf"] = {}
+
+    except Exception as e:
+        log.info(f"NETCONF collection error | {device_ip} | {e}")
+        state["native_netconf"] = {}
+
+    return netconf_state
 def build_vlan(device_state): 
 	device_state_vlan = device_state.get("vlans", {})
 	vlan_data = device_state_vlan.get("vlans", {})
@@ -438,6 +478,31 @@ def build_ospf(restconf_state):
                 "area": net.get("area", "")
             })
 		return actual_ospf
+def build_ntp(netconf_state):
+	native = netconf_state.get("native_netconf", {})
+	ntp = native.get("ntp", {})
+	if not ntp:
+		return {"keys": [], "servers": []}
+	actual_ntp = {
+		"keys": [],
+		"servers": []
+	}
+	server_lists = ntp.get("server", {}).get("server-list", {})
+	server_list = normalize_to_list(server_lists)
+	ntp_key_id = ntp.get("authentication-key", {}).get("number", "")
+	ntp_trusted = ntp.get("trusted-key", {}).get("number", "")
+	for s in server_list:
+		ntp_ip = s.get("ip-address")
+		server_id = s.get("key", "")
+		actual_ntp["servers"].append({
+				"server_ip":ntp_ip,
+				"server_id": server_id
+			})
+	actual_ntp["keys"].append({
+			"id": ntp_key_id,
+			"trusted": str(ntp_key_id) == str(ntp_trusted)
+		})
+	return actual_ntp
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -603,6 +668,56 @@ def check_ospf(expected_ospf, actual_config):
 
 
 
+	return len(failures) == 0, failures
+def check_ntp(expected_ntp, actual_config):
+	failures = []
+	exp_ntp = expected_ntp.get("ntp", {})
+	exp_keys = exp_ntp.get("keys", [])
+	exp_servers = exp_ntp.get("servers", [])
+	act_keys = actual_config.get("keys", [])
+	act_servers = actual_config.get("servers", [])
+
+	for exp_key in exp_keys:
+		exp_id = exp_key.get("id", "")
+		exp_trusted = exp_key.get("trusted", False)
+		matched = False 
+		for act_key in act_keys: 
+			act_id = act_key.get("id", "")
+			act_trusted = act_key.get("trusted", "")
+
+			if exp_id == act_id: 
+				matched = True 
+
+				if exp_trusted != act_trusted:
+					failures.append(
+							f"NTP Trusted (T/F) Key Mismatch | Key: {exp_id} | "
+							f"Expected: {exp_trusted} | Actual: {act_trusted}"
+						)
+		if not matched: 
+			failures.append(
+					"Missing Key ID | Key ID: {exp_id}"
+				)
+	for exp_server in exp_servers: 
+		exp_ip = exp_server.get("ip", "")
+		exp_id = exp_server.get("key_id", "")
+		for act_server in act_servers:
+			act_ip = act_server.get("server_ip", "")
+			act_id = act_server.get("server_id", "")
+			matched = False 
+
+			if exp_key == act_ip: 
+				matched = True 
+
+				if exp_id != act_id: 
+					failures.append(
+							f"(NTP) Mismatched Server Key ID | Server IP: {exp_ip} | "
+							f"Expected ID: {exp_id} | Actual ID: {act_id}" 
+						)
+		if not matched: 
+			failures.append(
+					f"Missing NTP Server on Device | Expected IP: {exp_ip} | "
+					f"Actual: {act_ip}"
+				)
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
@@ -1053,6 +1168,101 @@ def configure_ospf(session, device_ip, ospf_data, log):
 							f"Try/Exception Error | OSPF Configuration | "
                 			f"Process ID: {process_id} | "
 						    f"RID: {router_id} | Networks: {network} | Transport: RESTCONF"
+                	),
+				"error": str(e)
+			}
+def configure_ntp(session, device_ip, ntp_data, log): 
+	ntp = ntp_data.get("ntp", {})
+	ntp_keys = ntp.get("keys", [])
+	ntp_servers = ntp.get("servers", [])
+
+	key_log = ",".join(
+		f"ID: {n.get('id', '')} | Trusted: {n.get('trusted', False)}"
+		for n in ntp_keys
+		)
+	server_log = " | ".join(
+		f"Server IP: {n['ip']} | Key ID: {n['key_id']}"
+		for n in ntp_servers
+		)
+	try: 
+		template = template_env.get_template("NTP.j2")
+		commands = template.render(
+				ntp_keys=ntp_keys,
+				ntp_servers=ntp_servers
+			)
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure NTP | "
+						f"{key_log}"
+						f"| {server_log}"
+				)
+			}
+		response = session.edit_config(
+				target="running",
+				config=commands
+			)
+		if not response.ok: 
+			return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": (
+                		f"NTP Configuration Failed | "
+                		f"{key_log}"
+                		f"| {server_log} | Transport: NETCONF"
+                	),
+                "error": str(response)
+            }
+		
+		log.info(
+			"ntp_config"
+            extra={
+                "device_ip": device_ip,
+                "component": "ntp_automation",
+                "event_type": "ntp_config",
+                "status": StepStatus.SUCCESS.value,
+                "key_config": key_log,
+                "server_config": server_log,
+                "message": (
+                		f"NTP Configuration Successful | "
+                		f"{key_log} | "
+                		f"{server_log} | Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"NTP Configuration Successful | "
+                		    f"{key_log} | "
+                		    f"{server_log} | Transport: NETCONF"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "ntp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "ntp_automation",
+                "event_type": "ntp_config",
+                "status": StepStatus.ERROR.value,
+                "key_config": key_log,
+                "server_config": server_log,
+                "message": (f"Try/Exception Error | NTP Configuration | "
+                			f"{key_log} | "
+                		    f"{server_log} | Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | NTP Configuration | "
+                			f"{key_log} | "
+                		    f"{server_log} | Transport: NETCONF"
                 	),
 				"error": str(e)
 			}
