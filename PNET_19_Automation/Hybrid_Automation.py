@@ -260,8 +260,7 @@ def get_netbox():
 			for qos in qos_context_list: 
 				config_data[host_ip]["qos"].append({
 						"policy_name": qos.get("policy_name"),
-						"interface": qos.get("interface", ""),
-						"direction": qos.get("direction", ""),
+						"attachments": qos.get("attachments", ""),
 						"class_maps": qos.get("class_maps", [])
 					})
 	return inventory, config_data
@@ -503,6 +502,133 @@ def build_ntp(netconf_state):
 			"trusted": str(ntp_key_id) == str(ntp_trusted)
 		})
 	return actual_ntp
+#def build_qos1(netconf_state):
+	native = netconf_state.get("native_netconf", {})
+	qos = native.get("policy", {})
+	actual_qos = {
+		"policies": []
+	}
+	class_maps = qos.get("class-map", [])
+	class_map_list = normalize_to_list(class_maps)
+	policy_maps = qos.get("policy-map", {})
+	policy_map = normalize_to_list(policy_maps)
+	interfaces = native.get("interface", {})
+	if isinstance(interfaces, dict): 
+		interfaces = interfaces 
+	else: 
+		intefaces = {}
+	for c in class_map_list:
+		policy["class_maps"].append({
+				"match_type": c.get("prematch", ""),
+				"name": c.get("name", ""),
+				"protocol": (
+						c.get("match",{})
+						.get("protocol", {})
+						.get("protocols-list", {})
+						.get("protocols", {})
+					),
+			})
+	for p in policy_map:
+		policy["policy_name"] = p.get("name", "")
+		qos_classes = p.get("class", [])
+		qos_class = normalize_to_list(qos_classes)
+		policy = {
+			"policy_name": "",
+			"class_maps": [],
+			"attachments": []
+		}
+		for q in qos_class:
+			policy["class_maps"].append({
+					"action_type": q.get("action-list", {}).get("action-type", ""),
+					"bandwidth": q.get("action-list", {}).get("priority", {}).get("kilo-bits", "")
+				})
+
+		for int_type, int_value in interfaces.items():
+			i_value = normalize_to_list(int_value)
+			for i in i_value: 
+				service_policy = i.get("service-policy", {})
+				if not service_policy: 
+					continue 
+				interface_name = f"{int_type}{i.get("name", "")}"
+				if service_policy.get("input"):
+				    policy["attachments"].append({
+				        "interface": interface_name,
+				        "direction": "input"
+				    })
+
+				if service_policy.get("output"):
+				    policy["attachments"].append({
+				        "interface": interface_name,
+				        "direction": "output"
+					})
+    	actual_qos["policies"].append(policy)
+    #return actual_qos
+def build_qos(netconf_state): 
+	native = netconf_state.get("native_netconf", {})
+	qos = native.get("policy", {})
+	actual_qos = {
+		"policies": []
+	}
+	class_maps = qos.get("class-map", [])
+	class_map_list = normalize_to_list(class_maps)
+	class_map_lookup = {}
+	policy_map = qos.get("policy-map", {})
+	policy_map_list = normalize_to_list(policy_map)
+	interfaces = native.get("interface", {})
+	for c in class_map_list: 
+		class_name = c.get("name", "")
+		class_map_lookup[class_name] = {
+			"match_type": c.get("prematch", ""),
+			"name": class_name,
+			"protocol": (
+					c.get("match", {})
+					.get("protocol", {})
+					.get("protocols-list", {})
+					.get("protocols", "")
+				)
+		}
+	for p in policy_map_list:
+		policy_name = p.get("name", "")
+		qos_classes = p.get("class", [])
+		qos_class_list = normalize_to_list(qos_classes)
+
+		policy = {
+			"policy_name": policy_name,
+			"class_maps": [],
+			"attachments": []
+		}
+		for q in qos_class_list: 
+			class_name = q.get("name", "")
+			action_list = q.get("action-list", {})
+			cm = class_map_lookup.get(class_name, {})
+			policy["class_maps"].append({
+					"name": class_name,
+					"match_type": cm.get("match_type", ""),
+					"protocol": cm.get("protocol", ""),
+					"action_type": action_list.get("action-type", ""),
+					"bandwidth": action_list.get("priority", {}).get("kilo-bits", "")
+				})
+		for int_type, int_value in interfaces.items():
+			int_value_list = normalize_to_list(int_value)
+			for i_value in int_value_list:
+				service_policy = i_value.get("service-policy", {})
+				if not service_policy: 
+					continue
+				interface_name = f"{int_type}{i_value.get('name', '')}"
+				if service_policy.get("input") == policy_name:
+					policy["attachments"].append({
+				 			"interface": interface_name,
+				 			"direction": "input"
+				 		})
+				if service_policy.get("output") == policy_name:
+					policy["attachments"].append({
+							"interface": interface_name,
+							"direction": "output"
+						})
+		if policy["class_maps"] or policy["attachments"]: 
+			actual_qos["policies"].append(policy)
+	return actual_qos
+
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -1215,7 +1341,7 @@ def configure_ntp(session, device_ip, ntp_data, log):
             }
 		
 		log.info(
-			"ntp_config"
+			"ntp_config",
             extra={
                 "device_ip": device_ip,
                 "component": "ntp_automation",
