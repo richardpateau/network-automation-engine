@@ -115,7 +115,12 @@ def get_netbox():
 	        "servers": [],
 	        "trusted": []
 	    },
-	    "qos": []
+	    "qos": [],
+	    "stp": {
+	    	"mode": "",
+	    	"root_primary": [],
+	    	"root_secondary": []
+	    }
 			}
 		is_switch = device_name.role.slug == "switch"
 		is_router = device_name.role.slug == "router"
@@ -125,6 +130,7 @@ def get_netbox():
 		acl_binding_context = context.get("acl_binding", {})
 		ntp_context = context.get("ntp", {})
 		qos_context = context.get("qos", {})
+		stp_context = context.get("stp", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -137,7 +143,16 @@ def get_netbox():
 				config_data[host_ip]["interfaces"].append({
 						"device_ip": host_ip,
 						"interface": device_interface.name,
-						"should_be_up": device_interface.custom_fields.get("should_be_up", "")
+						"description": device_interface.description or "",
+						"should_be_up": device_interface.custom_fields.get("should_be_up", ""),
+
+						 "stp": {
+							        "portfast": device_interface.custom_fields.get("stp_portfast", False),
+							        "bpdu_guard": device_interface.custom_fields.get("stp_bpdu_guard", False),
+							        "root_guard": device_interface.custom_fields.get("stp_root_guard", False),
+							        "loop_guard": device_interface.custom_fields.get("stp_loop_guard", False),
+							        "bpdu_filter": device_interface.custom_fields.get("stp_bpdu_filter", False)
+							    }
 					})
 
 			if is_switch: 
@@ -263,6 +278,12 @@ def get_netbox():
 						"attachments": qos.get("attachments", ""),
 						"class_maps": qos.get("class_maps", [])
 					})
+		if stp_context: 
+			config_data[host_ip]["stp"].append({
+					"stp_mode": stp_context.get("mode", ""),
+					"root_primary": stp_context.get("root_primary", []),
+					"root_secondary": stp_context.get("root_secondary", [])
+				})
 	return inventory, config_data
 def collect_device_state(conn): 
 	device_state = {}
@@ -352,17 +373,17 @@ def collect_netconf_state(device_ip, username, password, log):
             if response.ok:
                 netconf_data = xmltodict.parse(response.data_xml)
 
-                state["native_netconf"] = (
-                    netconf_dataf.get("rpc-reply", {})
+                netconf_state["native_netconf"] = (
+                    netconf_data.get("rpc-reply", {})
                           .get("data", {})
                           .get("native", {})
                 )
             else:
-                state["native_netconf"] = {}
+                netconf_state["native_netconf"] = {}
 
     except Exception as e:
         log.info(f"NETCONF collection error | {device_ip} | {e}")
-        state["native_netconf"] = {}
+        netconf_state["native_netconf"] = {}
 
     return netconf_state
 def build_vlan(device_state): 
@@ -502,67 +523,6 @@ def build_ntp(netconf_state):
 			"trusted": str(ntp_key_id) == str(ntp_trusted)
 		})
 	return actual_ntp
-#def build_qos1(netconf_state):
-	native = netconf_state.get("native_netconf", {})
-	qos = native.get("policy", {})
-	actual_qos = {
-		"policies": []
-	}
-	class_maps = qos.get("class-map", [])
-	class_map_list = normalize_to_list(class_maps)
-	policy_maps = qos.get("policy-map", {})
-	policy_map = normalize_to_list(policy_maps)
-	interfaces = native.get("interface", {})
-	if isinstance(interfaces, dict): 
-		interfaces = interfaces 
-	else: 
-		intefaces = {}
-	for c in class_map_list:
-		policy["class_maps"].append({
-				"match_type": c.get("prematch", ""),
-				"name": c.get("name", ""),
-				"protocol": (
-						c.get("match",{})
-						.get("protocol", {})
-						.get("protocols-list", {})
-						.get("protocols", {})
-					),
-			})
-	for p in policy_map:
-		policy["policy_name"] = p.get("name", "")
-		qos_classes = p.get("class", [])
-		qos_class = normalize_to_list(qos_classes)
-		policy = {
-			"policy_name": "",
-			"class_maps": [],
-			"attachments": []
-		}
-		for q in qos_class:
-			policy["class_maps"].append({
-					"action_type": q.get("action-list", {}).get("action-type", ""),
-					"bandwidth": q.get("action-list", {}).get("priority", {}).get("kilo-bits", "")
-				})
-
-		for int_type, int_value in interfaces.items():
-			i_value = normalize_to_list(int_value)
-			for i in i_value: 
-				service_policy = i.get("service-policy", {})
-				if not service_policy: 
-					continue 
-				interface_name = f"{int_type}{i.get("name", "")}"
-				if service_policy.get("input"):
-				    policy["attachments"].append({
-				        "interface": interface_name,
-				        "direction": "input"
-				    })
-
-				if service_policy.get("output"):
-				    policy["attachments"].append({
-				        "interface": interface_name,
-				        "direction": "output"
-					})
-    	actual_qos["policies"].append(policy)
-    #return actual_qos
 def build_qos(netconf_state): 
 	native = netconf_state.get("native_netconf", {})
 	qos = native.get("policy", {})
@@ -575,6 +535,7 @@ def build_qos(netconf_state):
 	policy_map = qos.get("policy-map", {})
 	policy_map_list = normalize_to_list(policy_map)
 	interfaces = native.get("interface", {})
+	attachments_lookup = {}
 	for c in class_map_list: 
 		class_name = c.get("name", "")
 		class_map_lookup[class_name] = {
@@ -587,6 +548,24 @@ def build_qos(netconf_state):
 					.get("protocols", "")
 				)
 		}
+	for int_type, int_value in interfaces.items():
+		for i_value in normalize_to_list(int_value):
+			service_policy = i_value.get("service-policy", {})
+			if not service_policy: 
+				continue
+			interface_name = f"{int_type}{i_value.get('name', '')}"
+			input_policy = service_policy.get("input")
+			output_policy = service_policy.get("output")
+			if input_policy:
+				attachments_lookup.setdefault(input_policy, []).append({
+						"interface": interface_name,
+						"direction": "input"
+					})
+			if output_policy:
+				attachments_lookup.setdefault(output_policy,  []).append({
+						"interface": interface_name,
+						"direction": "output"
+					})
 	for p in policy_map_list:
 		policy_name = p.get("name", "")
 		qos_classes = p.get("class", [])
@@ -595,7 +574,7 @@ def build_qos(netconf_state):
 		policy = {
 			"policy_name": policy_name,
 			"class_maps": [],
-			"attachments": []
+			"attachments": attachments_lookup.get(policy_name, [])
 		}
 		for q in qos_class_list: 
 			class_name = q.get("name", "")
@@ -608,27 +587,9 @@ def build_qos(netconf_state):
 					"action_type": action_list.get("action-type", ""),
 					"bandwidth": action_list.get("priority", {}).get("kilo-bits", "")
 				})
-		for int_type, int_value in interfaces.items():
-			int_value_list = normalize_to_list(int_value)
-			for i_value in int_value_list:
-				service_policy = i_value.get("service-policy", {})
-				if not service_policy: 
-					continue
-				interface_name = f"{int_type}{i_value.get('name', '')}"
-				if service_policy.get("input") == policy_name:
-					policy["attachments"].append({
-				 			"interface": interface_name,
-				 			"direction": "input"
-				 		})
-				if service_policy.get("output") == policy_name:
-					policy["attachments"].append({
-							"interface": interface_name,
-							"direction": "output"
-						})
 		if policy["class_maps"] or policy["attachments"]: 
 			actual_qos["policies"].append(policy)
 	return actual_qos
-
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -790,10 +751,13 @@ def check_ospf(expected_ospf, actual_config):
 				exp_area == act_area
 				):
 				matched = True
-			else:
-
-
-
+			if not matched:
+				failures.append(
+					f"Expected OSPF Network Not Found | "
+					f"Nework Address: {exp_subnet} | "
+					f"Wildcard: {exp_wildcard} | "
+					f"Area: {exp_area}"
+				)
 	return len(failures) == 0, failures
 def check_ntp(expected_ntp, actual_config):
 	failures = []
@@ -845,6 +809,59 @@ def check_ntp(expected_ntp, actual_config):
 					f"Actual: {act_ip}"
 				)
 	return len(failures) == 0, failures
+def check_qos(expected_qos, actual_config): 
+	failures = []
+	exp_policies =normalize_to_list(expected_qos.get("policies", []))
+	act_policies =normalize_to_list(actual_config.get("policies", []))
+
+	act_lookup = {
+		p.get("policy_name"): p
+		for p in act_policies
+	}
+	for exp_policy in exp_policies: 
+		name = exp_policy.get("policy_name", "")
+		act_policy = act_lookup.get(name)
+
+		if not act_policy: 
+			failures.append(
+					f"Missing QOS Policy | Expected: {name}"
+				)
+			continue 
+		exp_classes = exp_policy.get("class_maps", [])
+		act_classes = act_policy.get("class_maps", [])
+		for exp_class in exp_classes: 
+			matched = False
+			for act_class in act_classes:
+				if (
+					exp_class.get("name", "") == act_class.get("name", "") and 
+					exp_class.get("action_type", "") == act_class.get("action_type", "") and 
+					exp_class.get("match_type", "") == act_class.get("match_type", "") and 
+					exp_class.get("bandwidth", "") == act_class.get("bandwidth", "") and 
+					exp_class.get("protocol", "") == act_class.get("protocol", "")
+					):
+					matched = True 
+			if not matched: 
+				failures.append(
+						f"Expected Class Map Missing From Policy | Policy: {name} | "
+						f"Class Config: {exp_class}"
+					)
+			exp_attached = normalize_to_list(exp_policy.get("attachments", []))
+			act_attached = normalize_to_list(act_policy.get("attachments", []))
+			for exp_attach in exp_attached: 
+				matched = False 
+				for act_attach in act_attached: 
+					if (
+						exp_attach.get("interface") == act_attach.get("interface") and 
+						exp_attach.get("direction") == act_attach.get("direction")
+						):
+						matched = True 
+				if not matched: 
+					failures.append(
+							f"Expected Policy Not Assigned to Interface | Policy: {name} | "
+							f"Interface: {exp_attach.get("interface")} | "
+							f"Direction: {exp_attach.get("direction")}"
+						)
+	return len(failures) == 0, failures 
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
@@ -1392,3 +1409,131 @@ def configure_ntp(session, device_ip, ntp_data, log):
                 	),
 				"error": str(e)
 			}
+def configure_qos(session, device_ip, qos_data, log):
+	qos = qos_data.get("qos", {})
+	policy_name = qos.get("policy_name", "")
+	attachments = qos.get("attachments", [])
+	class_maps = qos.get("class_maps", [])
+	attachment_log = " | ".join(
+			f"{a.get('interface')} {a.get('direction')}"
+			for a in attachments
+		)
+	class_map_log = " | ".join(
+			f"{c.get('name')} {c.get('protocol')} {c.get('action_type')} {c.get('bandwidth')}"
+			for c in class_maps
+		)
+	try: 
+		policy_template = template_env.get_template("QOS_NETCONF.j2")
+		policy_commands = policy_template.render(
+				class_maps=class_maps,
+				policy_name=policy_name
+			)
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure QOS | "
+						f"Policy: {policy_name} | "
+						f"Class Map: {class_map_log} | Config: {attachment_log} | "
+						F"Transport: NETCONF"
+				)
+			}
+		policy_response = session.edit_config(
+					target="running",
+					config=policy_commands
+				)
+		
+		if not policy_response.ok:
+			return {
+                "status": OpStatus.CONFIG_FAILED.value,
+                "summary": (
+                		f"QOS Configuration Failed | "
+                		f"Policy: {policy_name} | "
+						f"Class Map: {class_map_log} | Transport: NETCONF"
+                	),
+                "error": str(policy_response)
+            }
+		interface_template = template_env.get_template("INTERFACE_NETCONF.j2")
+		for a in attachments:
+			interface = a.get("interface", "")
+			direction = a.get("direction", "")
+			interface_type = re.split(r'\d', interface, maxsplit=1)[0]
+			attachment_commands = interface_template.render(
+					interface_type=interface_type,
+					interface=interface,
+					direction=direction,
+					policy_name=policy_name
+				)
+			interface_response = session.edit_config(
+					target="running",
+					config=attachment_commands
+				)
+			if not interface_response.ok:
+				return {
+	                "status": OpStatus.CONFIG_FAILED.value,
+	                "summary": (
+	                		f"Interface (QOS) Configuration Failed | "
+	                		f"Policy: {policy_name} | "
+	                		f"Config: {attachment_log} | Transport: NETCONF"
+	                	),
+	                "error": str(interface_response)
+	            }
+		log.info(
+			"qos_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "qos_automation",
+                "event_type": "qos_config",
+                "status": StepStatus.SUCCESS.value,
+                "policy_name": policy_name,
+                "class_maps": class_map_log,
+                "attachments": attachment_log,
+                "message": (
+		                		f"QOS Configuration Successful | "
+		                		f"Policy: {policy_name} | "
+								f"Class Map: {class_map_log} | Config: {attachment_log} | "
+								f"Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+						 		f"QOS Configuration Successful | "
+	                		    f"Policy: {policy_name} | "
+								f"Class Map: {class_map_log} | Config: {attachment_log} | "
+								f"Transport: NETCONF"
+                	)
+			}
+
+	except Exception as e: 
+		log.info(
+            "qos_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "qos_automation",
+                "event_type": "qos_config",
+                "status": StepStatus.ERROR.value,
+                "policy_name": policy_name,
+                "class_maps": class_map_log,
+                "attachments": attachment_log,
+                "error": str(e),
+                "message": (f"Try/Exception Error | QOS Configuration | "
+                			f"Policy: {policy_name} | "
+							f"Class Map: {class_map_log} | Config: {attachment_log} | "
+							f"Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | QOS Configuration | "
+                			f"Policy: {policy_name} | "
+							f"Class Map: {class_map_log} | Transport: NETCONF"
+                	),
+				"error": str(e)
+			}
+		
