@@ -5,6 +5,7 @@ from netmiko import ConnectHandler
 from jinja2 import Environment, FileSystemLoader
 from ncclient import manager 
 import xmltodict
+from ciscoconfparse import CiscoConfParse
 template_env = Environment(
 		loader=FileSystemLoader("/run/media/rich/HDD/Templates/"),
 		trim_blocks=True,
@@ -154,6 +155,17 @@ def get_netbox():
 							        "bpdu_filter": device_interface.custom_fields.get("stp_bpdu_filter", False)
 							    }
 					})
+				for v in device_interface.tagged_vlans:
+				    vlan_id = str(v.vid)
+
+				    if vlan_id in config_data[host_ip]["stp"]["vlans"]:
+				        config_data[host_ip]["stp"]["vlans"][vlan_id]["interfaces"][device_interface.name] = {
+				            "portfast": device_interface.custom_fields.get("stp_portfast", False),
+				            "bpdu_guard": device_interface.custom_fields.get("stp_bpdu_guard", False),
+				            "root_guard": device_interface.custom_fields.get("stp_root_guard", False),
+				            "loop_guard": device_interface.custom_fields.get("stp_loop_guard", False),
+				            "bpdu_filter": device_interface.custom_fields.get("stp_bpdu_filter", False)
+				        }
 
 			if is_switch: 
 				if (device_interface.mode and device_interface.mode.value == "access"
@@ -278,12 +290,12 @@ def get_netbox():
 						"attachments": qos.get("attachments", ""),
 						"class_maps": qos.get("class_maps", [])
 					})
-		if stp_context: 
-			config_data[host_ip]["stp"].append({
-					"stp_mode": stp_context.get("mode", ""),
-					"root_primary": stp_context.get("root_primary", []),
-					"root_secondary": stp_context.get("root_secondary", [])
-				})
+		if stp_context:
+			config_data[host_ip]["stp"]["mode"] = stp_context.get("mode", "")
+			config_data[host_ip]["stp"]["vlan_priorities"] = (
+					stp_context.get("vlan_priorities")
+				)
+
 	return inventory, config_data
 def collect_device_state(conn): 
 	device_state = {}
@@ -307,6 +319,10 @@ def collect_device_state(conn):
 			)
 	except Exception: 
 		device_state["interfaces"] = {}
+	try: 
+		device_state["stp"] = conn.send_command(
+				"show spanning-tree", use_genie=True
+			)
 	return device_state
 def restconf_get(session, url):
 	try: 
@@ -448,6 +464,71 @@ def build_interface(device_state):
 				"is_up": status == "up" and protocol == "up"
 		}
 	return actual_interfaces
+def build_stp_global1(parse):
+    actual_stp = {
+        "mode": "",
+        "vlan_priorities": {}
+    }
+
+    for line in parse.find_objects(r"^spanning-tree"):
+        text = line.text.strip()
+
+        if text.startswith("spanning-tree mode"):
+            stp["mode"] = text.split()[-1]
+
+        elif text.startswith("spanning-tree vlan") and "priority" in text:
+            parts = text.split()
+
+                vlan = safe_int(parts[2])
+                priority = safe_int(parts[4])
+
+                stp["vlan_priorities"][vlan] = priority
+
+    return actual_stp
+def build_stp_global(device_state):
+	stp = device_state.get("stp", {})
+	actual_stp = {
+		"mode": "",
+		"vlan_priorities": {},
+	}
+	mode = stp.get("rapid_pvst", {}) or ("pvst", {})
+	vlans = mode.get("vlans", {})
+
+	stp["mode"] = mode 
+
+	for vlan_id, data in vlans.items():
+		vlan = safe_int(vlan_id)
+
+		priority = data.get("bridge", {}).get("priority", "")
+
+		actual_stp["vlan_priorities"][vlan] = priority
+	return actual_stp
+def build_stp_interfaces(parse):
+	act_stp_int  = {}
+
+	for interface in parse.find_objects(r"^interface"):
+		name = interface.text.split()[1]
+		act_stp_int[name] = {
+			"portfast": False,
+			"bpdu_guard": False,
+			"root_guard": False,
+			"loop_guard": False,
+			"bpdu_filter": False
+		}
+		for config in interface.children:
+			text = config.text.strip()
+
+			if "portfast" in text:
+				act_stp_int[name]["portfast"] = True 
+			if "bpduguard" in text: 
+				act_stp_int[name]["bpdu_guard"] = True
+			if "guard loop" in text: 
+				act_stp_int[name]["loop_guard"] = True
+			if "guard root" in text:
+				act_stp_int[name]["root_guard"] = True
+			if "bpdufilter" in text: 
+				act_stp_int[name]["bpdu_filter"] = True 
+	return act_stp_int
 def build_roas(restconf_state): 
 	restconf_state_roas = restconf_state.get("interface_restconf", {})
 	actual_roas = {}
@@ -686,6 +767,37 @@ def check_interface(expected_int, actual_config):
 			)
 
 	return len(failures) == 0, failures
+def check_stp_global(expected_stp, actual_config): 
+	failures = []
+
+	exp_mode = expected_stp.get("mode", "").lower().strip()
+	act_mode = actual_config.get("mode", "").lower().strip()
+
+	if exp_mode and exp_mode != act_mode: 
+		failures.append(
+				f"Mismatched STP Mode | Expected: {exp_mode} | Actual: {act_mode}"
+			)
+		return False, failures
+	exp_vlans = expected_stp.get("vlan_priorities", {})
+	act_vlans = actual_config.get("vlan_priorities", {})
+
+	exp_keys = set(exp_vlans.keys())
+	act_keys = set(act_vlans.keys())
+
+	if exp_keys != act_keys: 
+		missing = exp_keys - act_keys
+		extra = act_keys - exp_keys
+
+		if missing:
+			failures.append(
+					f"Missing VLAN (STP)"
+				)
+	all_vlans = set(exp_vlans.keys()) | set(act_vlans.keys())
+
+	if exp_vlans.keys() != act_vlans.keys(): 
+		failures.append(
+
+			)
 def check_roas(expected_roas, actual_config): 
 	failures = []
 	exp_interface = expected_roas.get("interface", "")
