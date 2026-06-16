@@ -323,6 +323,14 @@ def collect_device_state(conn):
 		device_state["stp"] = conn.send_command(
 				"show spanning-tree", use_genie=True
 			)
+	except Exception:
+		device_state["stp"] = {}
+	try: device_state["running_config"] = conn.send_command(
+			"show running-config"
+		)
+	except Exception: 
+		device_state["running_config"] = {}
+
 	return device_state
 def restconf_get(session, url):
 	try: 
@@ -464,42 +472,26 @@ def build_interface(device_state):
 				"is_up": status == "up" and protocol == "up"
 		}
 	return actual_interfaces
-def build_stp_global1(parse):
-    actual_stp = {
-        "mode": "",
-        "vlan_priorities": {}
-    }
-
-    for line in parse.find_objects(r"^spanning-tree"):
-        text = line.text.strip()
-
-        if text.startswith("spanning-tree mode"):
-            stp["mode"] = text.split()[-1]
-
-        elif text.startswith("spanning-tree vlan") and "priority" in text:
-            parts = text.split()
-
-                vlan = safe_int(parts[2])
-                priority = safe_int(parts[4])
-
-                stp["vlan_priorities"][vlan] = priority
-
-    return actual_stp
 def build_stp_global(device_state):
 	stp = device_state.get("stp", {})
 	actual_stp = {
 		"mode": "",
 		"vlan_priorities": {},
 	}
-	mode = stp.get("rapid_pvst", {}) or ("pvst", {})
-	vlans = mode.get("vlans", {})
-
-	stp["mode"] = mode 
-
+	if "rapid_pvst" in stp:
+		mode = "rapid_pvst"
+		vlans = stp.get("rapid_pvst", {}).get("vlans", {})
+	elif "pvst" in stp:
+		mode = "pvst"
+		vlans = stp.get("pvst", {}).get("vlans", {})
+	else: 
+		mode = "unknown"
+		vlans = {}
+	actual_stp["mode"] = mode 
 	for vlan_id, data in vlans.items():
 		vlan = safe_int(vlan_id)
 
-		priority = data.get("bridge", {}).get("priority", "")
+		priority = data.get("bridge", {}).get("configured_bridge_priority", 32768)
 
 		actual_stp["vlan_priorities"][vlan] = priority
 	return actual_stp
@@ -790,14 +782,43 @@ def check_stp_global(expected_stp, actual_config):
 
 		if missing:
 			failures.append(
-					f"Missing VLAN (STP)"
+					f"(STP) Missing VLANs | Expected: {exp_keys} | Actual: {act_keys}"
 				)
-	all_vlans = set(exp_vlans.keys()) | set(act_vlans.keys())
-
-	if exp_vlans.keys() != act_vlans.keys(): 
+		if extra:
+			failures.append(
+					f"(STP) Unexpected VLANs | Expected: {exp_keys} | Actual: {act_keys}"
+				)
+		return False, failures
+	for vlan in exp_keys: 
+		exp_priority = exp_vlans.get(vlan)
+		act_priority = act_vlans.get(vlan)
+		if exp_priority != act_priority:
+			failures.append(
+					f"(STP) Mismatched Bridge Priority | "
+					f"VLAN: {vlan_id} | "
+					f"Expected: {exp_priority} | "
+					f"Actual: {act_priority}"
+				)
+	return len(failures) == 0, failures
+def check_stp_interfaces(expected_int, actual_config):
+	failures = []
+	exp_int = expected_int.get("interface", "")
+	exp_stp = expected_int.get("stp", {})
+	actual = actual_config.get(exp_int)
+	if not actual: 
 		failures.append(
-
+				f"(STP) Missing Interface | Interface: {exp_int}"
 			)
+		return False, failures
+	for mode, exp_values in exp_stp.items():
+		act_values = actual.get(mode, False )
+
+		if exp_values != act_values:
+			failures.append(
+					f"(STP) Mismatched STP Mode | Interface: {exp_int} | "
+					f"Feature: {mode} | Expected: {exp_values} | Actual: {act_values}"
+				)
+	return len(failures) == 0, failures
 def check_roas(expected_roas, actual_config): 
 	failures = []
 	exp_interface = expected_roas.get("interface", "")
@@ -1243,6 +1264,148 @@ def configure_interfaces(conn, device_ip, interface_data, log):
 				"summary":(f"Try/Exception Error | Interface Status Configuration | "
                 		   f"Interface: {interface} | "
                 			f"Should Be Up/Up: {should_be_up} | Error: {e}"
+                	),
+				"error": str(e)
+			}
+def configure_global_stp(conn, device_ip, stp_data, log): 
+	mode = stp_data.get("mode", "")
+	vlan_priorities = stp_data.get("vlan_priorities", {})
+	vlan_log = " | ".join(
+			f"VLAN: {v} Priority: {p}" 
+			for v, p in vlan_priorities.items()
+		)
+	try: 
+		template = template_env.get_template("STP_GLOBAL.j2")
+		commands = template.render(
+				mode=mode,
+				vlan_priorities=vlan_priorities
+			).splitlines().strip()
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure STP Gloabally  | "
+						f"Mode: {mode} | "
+						f"VLAN/Priority: {vlan_log}"
+				)
+			}
+		conn.send_config_set(commands)
+
+		log.info(
+            "stp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "stp_automation",
+                "event_type": "stp_config",
+                "status": StepStatus.SUCCESS.value,
+                "stp_mode": mode, 
+                "vlan_priorities": vlan_priorities,
+                "message": (f"STP Successfully Configured | "
+						    f"Mode: {mode} | "
+						    f"VLAN/Priority: {vlan_log}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+						f"STP Successfully Configured | "
+						f"Mode: {mode} | "
+						f"VLAN/Priority: {vlan_log}"
+                	)
+			}
+	except Exception as e: 
+		log.error(
+            "stp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "stp_automation",
+                "event_type": "stp_config",
+                "status": StepStatus.ERROR.value,
+                "stp_mode": mode, 
+                "vlan_priorities": vlan_priorities,
+                "message": (f"Try/Exception Error | STP Global Configuration | "
+                			f"Mode: {mode} | "
+						    f"VLAN/Priority: {vlan_log} | Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(f"Try/Exception Error | STP Global Configuration | "
+                			f"Mode: {mode} | "
+						    f"VLAN/Priority: {vlan_log} | Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+def configure_stp_int(conn, device_ip, stp_data, log): 
+	interface = stp_data.get("interface", "")
+	stp_int = stp_data.get("stp", {})
+	stp_log = " | ".join(
+		f"{s}:{b}"
+			for s, b in stp_int.items()
+		)
+	try: 
+		template = template_env.get_template("STP_INTERFACES.j2")
+		commands = template.render(
+				interface=interface,
+				stp_int=stp_int
+			).splitlines()
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure (STP) Interface Feature | "
+						f"Interface: {interface} | Feature: {stp_log}"
+				)
+			}
+		conn.send_config_set(commands)
+		log.info(
+            "stp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "stp_automation",
+                "event_type": "stp_config",
+                "status": StepStatus.SUCCESS.value,
+                "interface": interface, 
+                "features": stp_log,
+                "message": (f"STP Interface Feature Successfully Configured | "
+						    f"Interface: {interface} | Feature: {stp_log}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+							f"STP Interface Feature Successfully Configured | "
+						    f"Interface: {interface} | Feature: {stp_log}"
+                	)
+			}
+	except Exception as e: 
+		log.error(
+            "stp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "stp_automation",
+                "event_type": "stp_config",
+                "status": StepStatus.ERROR.value,
+                "interface": interface, 
+                "features": stp_log,
+                "message": (f"Try/Exception Error | STP Interface Configuration | "
+                			f"Interface: {interface} | Feature: {stp_log} | "
+                			f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(f"Try/Exception Error | STP Interface Configuration | "
+                			f"Interface: {interface} | Feature: {stp_log} | "
+                			f"Error: {str(e)}"
                 	),
 				"error": str(e)
 			}
