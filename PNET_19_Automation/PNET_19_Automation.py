@@ -414,7 +414,7 @@ def get_netbox():
             config_data["qos"].append({
                 "device": host_ip,
                 "policy_name": qos_context.get("policy_name", ""),
-                "class_mapss": qos_context.get("class_mapss", []),
+                "class_maps": qos_context.get("class_mapss", []),
                 "direction": qos_context.get("direction", ""),
                 "interface": qos_context.get("interface", "")
             })

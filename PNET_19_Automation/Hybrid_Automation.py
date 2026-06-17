@@ -116,12 +116,14 @@ def get_netbox():
 	        "servers": [],
 	        "trusted": []
 	    },
-	    "qos": [],
+	    "qos": {
+	    	"policies": []
+	    },
 	    "stp": {
 	    	"mode": "",
-	    	"root_primary": [],
-	    	"root_secondary": []
-	    }
+	    	"vlan_priorities": {}
+	    },
+	    "hsrp": []
 			}
 		is_switch = device_name.role.slug == "switch"
 		is_router = device_name.role.slug == "router"
@@ -132,6 +134,7 @@ def get_netbox():
 		ntp_context = context.get("ntp", {})
 		qos_context = context.get("qos", {})
 		stp_context = context.get("stp", {})
+		hsrp_context = context.get("hsrp", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -285,7 +288,7 @@ def get_netbox():
 		if qos_context:
 			qos_context_list = normalize_to_list(qos_context)
 			for qos in qos_context_list: 
-				config_data[host_ip]["qos"].append({
+				config_data[host_ip]["qos"]["priorities"].append({
 						"policy_name": qos.get("policy_name"),
 						"attachments": qos.get("attachments", ""),
 						"class_maps": qos.get("class_maps", [])
@@ -295,6 +298,17 @@ def get_netbox():
 			config_data[host_ip]["stp"]["vlan_priorities"] = (
 					stp_context.get("vlan_priorities")
 				)
+		if hsrp_context:
+			for h in hsrp_context: 
+				config_data[host_ip]["hsrp"].append({
+						"interface": h.get("interface", 2),
+						"version": h.get("version", ""),
+						"group": h.get("group", ""),
+						"vip": h.get("ip", ""),
+						"priority": h.get("priority", 100),
+						"preempt": h.get("preempt", False),
+						"router_vlan": h.get("router_vlan", "")
+					})
 
 	return inventory, config_data
 def collect_device_state(conn): 
@@ -663,6 +677,31 @@ def build_qos(netconf_state):
 		if policy["class_maps"] or policy["attachments"]: 
 			actual_qos["policies"].append(policy)
 	return actual_qos
+def build_hsrp(netconf_state): 
+	actual_hsrp = []
+	native = netconf_state.get("native_netconf", {})
+	interfaces = normalize_to_list(native.get("interface", {}))
+
+	for int_type, int_list in interfaces.items():
+		interface_type = str(int_type)
+		for value in int_list: 
+			interface_num = str(value.get("name", "")).strip()
+			full_int = f"{interface_type}{interface_num}"
+			standby_list = value.get("standby", {}).get("standby-list") or {}
+			actual_hsrp.append({
+				"interface": full_int,
+				"version": value.get("standby", {}).get("version", ""),
+				"group": standby_list.get("group-number", ""),
+				"vip": standby_list.get("ip", {}).get("address", ""),
+				"preempt": "preempt" in standby_list,
+				"priority": standby_list.get("priority", 100),
+				"router_vlan": (
+						value.get("encapsulation", {})
+						.get("dot1Q", {})
+						.get("vlan-id", "")
+					)
+			})
+	return actual_hsrp
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -851,6 +890,7 @@ def check_roas(expected_roas, actual_config):
 	return len(failures) == 0, failures
 def check_ospf(expected_ospf, actual_config): 
 	failures = []
+	exp_ospf
 	exp_proc = expected_ospf.get("process_id", "")
 	exp_router_id = expected_ospf.get("router_id", "")
 	exp_net_list = expected_ospf.get("network_list", [])
@@ -944,7 +984,7 @@ def check_ntp(expected_ntp, actual_config):
 	return len(failures) == 0, failures
 def check_qos(expected_qos, actual_config): 
 	failures = []
-	exp_policies =normalize_to_list(expected_qos.get("policies", []))
+	exp_policies = normalize_to_list(expected_qos.get("policies", []))
 	act_policies =normalize_to_list(actual_config.get("policies", []))
 
 	act_lookup = {
@@ -995,6 +1035,67 @@ def check_qos(expected_qos, actual_config):
 							f"Direction: {exp_attach.get("direction")}"
 						)
 	return len(failures) == 0, failures 
+def check_hsrp(expected_hsrp, actual_config): 
+	failures = []
+	actual_hsrp = {
+		(a.get("interface"), a.get("router_vlan"), a.get("group")): a 
+		for a in actual_config
+	}
+	exp_keys = {
+		(	e.get("interface", ""),
+			e.get("router_vlan", ""),
+			e.get("group", "")
+
+			) for e in expected_hsrp
+	}
+	act_keys = set(actual_keys.keys())
+	extra = act_keys - exp_keys
+	if extra:
+		for interface, vlan, group in extra:
+			failures.append(
+	        f"(HSRP) Unexpected Configuration | "
+	        f"Interface: {interface} | VLAN: {vlan} | Group: {group}"
+    	)
+
+	for exp in expected_hsrp:
+		exp_key = (
+				exp.get("interface", ""),
+				exp.get("router_vlan", ""),
+				exp.get("group", "")
+			)
+		actual = actual_hsrp.get(exp_key)
+
+		if not actual: 	
+			failures.append(	
+					f"(HSRP) Missing Configuration | Interface: {exp_key[0]} | "
+					f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"
+				)
+			continue 
+		if exp.get("vip") != actual.get("vip"):
+			failures.append(
+					f"(HSRP) Mismatched Virtual IP | Interface: {exp_key[0]} | "
+					f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"
+					f"Expected: {exp.get('vip')} | Actual: {actual.get('vip')}"
+				)
+		if exp.get("priority") != actual.get("priority"):
+			failures.append(
+					f"(HSRP) Mismatched Priority | Interface: {exp_key[0]} | "
+					f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"
+					f"Expected: {exp.get('priority')} | Actual: {actual.get('priority')}" 
+				)
+		if exp.get("preempt") != actual.get("preempt"):
+		    failures.append(
+		        f"(HSRP) Mismatched Preempt | Interface: {exp_key[0]} | "
+		        f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"
+		        f"Expected: {exp.get('preempt')} | Actual: {actual.get('preempt')}"
+		    )
+		if exp.get("version") != actual.get("version"):
+			failures.append(
+					f"(HSRP) Mismatched Version | Interface: {exp_key[0]} | "
+					f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"
+					f"Expected: {exp.get('version')} | Actual: {actual.get('version')}" 
+				)
+	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
@@ -1811,4 +1912,115 @@ def configure_qos(session, device_ip, qos_data, log):
                 	),
 				"error": str(e)
 			}
+def configure_hsrp(session, device_ip, hsrp_data, log): 
+	interface = hsrp_data.get("interface", "")
+	match = re.match(r"([A-Za-z]+)(.+)", interface)
+	interface_type = match.group(1) if match else ""
+	int_num = match.group(2) if match else ""
+	version = hsrp_data.get("version", "")
+	group = hsrp_data.get("group", "")
+	vip = hsrp_data.get("vip", "")
+	priority = hsrp_data.get("priority", "")
+	preempt = hsrp_data.get("preempt", "")
+	router_vlan = hsrp_data.get("router_vlan", "")
+	try: 
+		template = template_env.get_template("HSRP_NETCONF.j2")
+		commands = template.render(
+				interface_type=interface_type,
+				int_num=int_num,
+				version=version,
+				group=group,
+				vip=vip,
+				preempt=preempt,
+				priority=priority
+			)
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure HSRP | "
+						f"Interface: {interface} | Version: {version} | "
+						f"Group: {group} | VLAN: {router_vlan} | "
+						f"VIP: {vip} | Preempt: {preempt} | Transport: NETCONF"
+				)
+			}
+
 		
+		session.edit_config(
+			target="running",
+			config=commands
+		)
+		
+		log.info(
+			"hsrp_automation",
+            extra={
+                "device_ip": device_ip,
+                "component": "hsrp_config",
+                "event_type": "hsrp_config",
+                "status": StepStatus.SUCCESS.value,
+                "interface": interface,
+                "group": group,
+                "vlan_id": router_vlan,
+                "vip": vip,
+                "version": version,
+                "message": (
+                		f"HSRP Configuration Successful | "
+                		f"Interface: {interface} | Version: {version} | "
+						f"Group: {group} | VLAN: {router_vlan} | "
+						f"VIP: {vip} | Preempt: {preempt} | Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"HSRP Configuration Successful | "
+	                		f"Interface: {interface} | Version: {version} | "
+							f"Group: {group} | VLAN: {router_vlan} | "
+							f"VIP: {vip} | Preempt: {preempt} | Transport: NETCONF"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "hsrp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "hsrp_automation",
+                "event_type": "hsrp_config",
+                "status": StepStatus.ERROR.value,
+                "interface": interface,
+                "group": group,
+                "vlan_id": router_vlan,
+                "vip": vip,
+                "version": version,
+                "error": str(e),
+                "message": (f"Try/Exception Error | HSRP Configuration | "
+                			f"Interface: {interface} | Version: {version} | "
+							f"Group: {group} | VLAN: {router_vlan} | "
+							f"VIP: {vip} | Preempt: {preempt} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | HSRP Configuration | "
+                			f"Interface: {interface} | Version: {version} | "
+							f"Group: {group} | VLAN: {router_vlan} | "
+							f"VIP: {vip} | Preempt: {preempt} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+def configure_nat(session, device_ip, nat_data, log):
+
+    context = {
+        "pat_enabled": bool(nat_data.get("pat")),
+        "static_enabled": bool(nat_data.get("static")),
+        "dynamic_enabled": bool(nat_data.get("dynamic"))
+    }
+
