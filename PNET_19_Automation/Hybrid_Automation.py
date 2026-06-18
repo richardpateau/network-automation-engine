@@ -123,7 +123,17 @@ def get_netbox():
 	    	"mode": "",
 	    	"vlan_priorities": {}
 	    },
-	    "hsrp": []
+	    "hsrp": [],
+
+	    "nat": {
+	    	"dynamic": [],
+	    	"static": [],
+	    	"pat": {},
+	    	"interfaces": {
+	    		"inside": [],
+	    		"outside": []
+	    	}
+	    }
 			}
 		is_switch = device_name.role.slug == "switch"
 		is_router = device_name.role.slug == "router"
@@ -135,6 +145,7 @@ def get_netbox():
 		qos_context = context.get("qos", {})
 		stp_context = context.get("stp", {})
 		hsrp_context = context.get("hsrp", {})
+		nat_context = context.get("ntp", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -309,6 +320,23 @@ def get_netbox():
 						"preempt": h.get("preempt", False),
 						"router_vlan": h.get("router_vlan", "")
 					})
+		if nat_context:
+			#list
+			nat["dynamic"].extend(
+					nat_context.get("dynamic", [])
+				)
+			nat["static"].extend(
+					nat_context.get("static", [])
+				)
+			#vs dicts 
+			if nat_context.get("pat"):
+				nat["pat"] = nat_context.get("pat")
+			nat["interfaces"]["inside"].extend(
+					nat_context.get("interfaces", {}).get("inside", [])
+				)
+			nat["interfaces"]["outside"].extend(
+					nat_context.get("interfaces", {}).get("outside", [])
+				)
 
 	return inventory, config_data
 def collect_device_state(conn): 
@@ -702,6 +730,73 @@ def build_hsrp(netconf_state):
 					)
 			})
 	return actual_hsrp
+def build_nat(netconf_state):
+	actual_nat = []
+	nat_interfaces = {
+		"inside": [],
+		"outside": []
+	}
+	native = netconf_state.get("native_netconf", {})
+	
+	nat = native.get("ip", {}).get("nat", {})
+	inside = nat.get("inside", {})
+	source = inside.get("source", {})
+	nat_list = source.get("list", {})
+	
+	interface_block = nat_list.get("interface", {})
+	pat = "overload" in interface_block
+
+	if pat: 
+		actual_nat.append({
+				"acl": nat_list.get("id", ""),
+				"inside_interface": interface_block.get("name", ""),
+				"overload": True 
+			})
+	static = source.get("static", {})
+	nat_static = normalize_to_list(static.get("nat-static-transport-list", []))
+	if nat_static:
+		for n in nat_static:
+			actual_nat.append({
+					"inside_local": n.get("local-ip", ""),
+					"inside_global": n.get("global-ip", "")
+				})
+	pool = normalize_to_list(nat.get("pool", {}))
+	temp_pool = {}
+	for p in pool: 
+		pool_name = p.get("id", "")
+		temp_pool[pool_name] = {
+			"pool_name": pool_name,
+			"start_ip": p.get("start-address", ""),
+			"end_ip": p.get("end-address", ""),
+			"netmask": p.get("netmask", "")
+		}
+	nat_pool = (
+			nat_list.get("pool-with-vrf", {})
+			.get("pool", {})
+		)
+	if nat_pool:
+		name_of_pool = nat_pool.get("name", "")
+		pn = temp_pool.get(name_of_pool, {})
+		if pn:
+			actual_nat.append({
+					"acl": nat_list.get("id", ""),
+					"pool_name": pn.get("pool_name", ""),
+					"start_ip": pn.get("start_ip", ""),
+					"end_ip": pn.get("end_ip", ""),
+					"netmask": pn.get("netmask", "")
+				})
+
+	# PT2 NAT INTERFACES
+	interfaces = native.get("interface", {})
+	for int_type, int_values in interfaces.items():
+		for i_value in normalize_to_list(int_values):
+			full_interface = f"{int_type}{i_value.get('name', '')}"
+			nat = i_value.get("ip", {}).get("nat", {})
+			if nat.get("outside") is not None:
+				nat_interfaces["outside"].append(full_interface)
+			if nat.get("inside") is not None: 
+				nat_interfaces["inside"].append(full_interface)
+	return actual_nat, nat_interfaces
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -1096,6 +1191,156 @@ def check_hsrp(expected_hsrp, actual_config):
 					f"Expected: {exp.get('version')} | Actual: {actual.get('version')}" 
 				)
 	return len(failures) == 0, failures
+def check_nat(expected_nat, actual_config):
+	failures = []
+	if expected_nat.get("pat"):
+		if not actual_config.get("pat"):
+			failures.append(
+					f"(NAT) Configuration Drift: Missing PAT"
+				)
+			return False, failures
+		else: 
+			exp_pat = expected_nat.get("pat", {})
+			act_pat = actual_config.get("pat", {})
+
+			if exp_pat.get("acl", "") != act_pat.get("acl", ""): 
+				failures.append(
+						f"(PAT) Mismatched ACL Found | Expected: {exp_pat.get('acl')} | "
+						f"Actual: {act_pat.get('acl')}"
+					)
+			if exp_pat.get("inside_interface", "") != act_pat.get("inside_interface", ""):
+				failures.append(
+						f"(PAT) Mismatched Interfaces Found | "
+						f"Expected: {exp_pat.get('inside_interface', '')} "
+
+					)
+			if exp_pat.get("overload") != act_pat.get("overload"): 
+				failures.append(
+						f"(PAT) Mismatched Overload Configuration | "
+						f"Expected: {exp_pat.get('overload')} | "
+						f"Actual: {act_pat.get('overload')}"
+					)
+	else: 
+		if actual_config.get("pat"): 
+			failures.append(
+					f"(PAT) Configuration Drift | Unexpected PAT Configuration"
+				)
+	if expected_nat.get("static"):
+		if not actual_config.get("static"): 
+			failures.append(
+					f"(NAT) Configuration Drift: Missing Static Configuration"
+				)
+			return False, failures
+		exp_static = expected_nat.get("static", "")
+		act_static = actual_config.get("static", "")
+
+		exp_set = {(s["inside_ip"], s["outside_ip"]) for s in exp_static}
+		act_set = {(s["inside_ip"], s["outside_ip"]) for s in act_static}
+
+		missing = exp_set - act_set
+		extra = act_set - exp_set 
+
+		for inside,outside in missing:
+			failures.append(
+					f"(NAT STATIC) Missing Static Configuration | "
+					f"Inside Local: {inside} | Outside Global: {outside}"
+				)
+		for e in extra: 
+			failures.append(
+					"(NAT STATIC) Extra (Drift) Static Configuration | "
+					f"Inside Local: {act_set[0]} | Outside Global: {act_set[1]}"
+				)
+	else: 
+		if actual_config.get("static"): 
+			failures.append(
+					f"(NAT) Configuration Drift: Unexpected Static Configuration Found"
+				)
+	if expected_nat.get("dynamic"):
+		if not actual_config.get("dynamic"):
+			failures.append(
+					f"(NAT) Configuration Drift: Missing Dynamic NAT Configuration"
+				)
+			return False, failures
+		else: 
+			exp_dynamic = expected_nat.get("dynamic", [])
+			act_dynamic = actual_config.get("dynamic", [])
+
+			exp_set = {e["pool_name"]: e for e in exp_dynamic}
+			act_set = {a["pool_name"]: a for a in act_dynamic}
+			for p_name, p_values in exp_set.items():
+				actual = act_set.get(p_name)
+				if not actual:
+					failures.append(
+							f"(Dynamic NAT) Expected Pool Not Found on Device | "
+							f"Expected: {p_name}"
+						)
+					return False, failures
+				if actual.get("acl") != p_values.get("acl"):
+					failures.append(
+							f"(Dynamic NAT) ACL Mismath | Pool: {p_name} | "
+							f"Expected: {p_values.get('acl', '')} | "
+							f"Actual: {actual.get('acl', '')}"
+						)
+				if actual.get("start_ip") != p_values.get("start_ip"):
+					failures.append(
+							f"(Dynamic NAT) Mismatched Pool Beginning IP | Pool: {p_name} |"
+							f"Expected: {p_values.get('start_ip')} | "
+							f"Actual: {actual.get('start_ip')}"
+						)
+				if actual.get("end_ip") != p_values.get("end_ip"):
+					failures.append(
+							f"(Dynamic NAT) Mismatched End IP | Pool: {p_name} |"
+							f"Expected: {p_values.get('end_ip', '')}"
+							f"Actual: {actual.get('end_ip', '')}"
+						)
+				if actual.get("mask") != p_values.get("mask"): 
+					failures.append(
+							f"(Dynamic NAT) Mismatched Mask | Pool: {p_name} |"
+							f" Expected: {p_values.get('mask')} | "
+							f"Actual: {actual.get('mask')}"
+						)
+	else actual_config.get("dynamic"):
+		failures.append(
+				f"(Dynamic NAT) Configuration Drift: Unexpected Dynamic NAT Configuration Found"
+			)
+		return False, failures
+	exp_inside = expected_nat.get("interfaces", {}).get("inside", [])
+	exp_outside = expected_nat.get("interfaces", {}).get("outside", [])
+	if exp_inside:
+		act_inside = actual_config.get("interfaces", {}).get("inside", "") 
+		exp_set = set(exp_inside)
+		act_set = set(act_inside)
+
+		extra = act_set - exp_set
+		missing = exp_set - act_set
+
+		if missing: 
+			failures.append(
+					f"(NAT) Missing Inside Interface: {','.join(missing)} "
+				)
+		if extra: 
+			failures.append(
+					f"(NAT) Extra Inside Interface: {','.join(extra)} "
+				)
+	if exp_outside:
+		act_outside = actual_config.get("interfaces", {}).get("outside", "")
+		exp_set = set(exp_outside)
+		act_set = set(act_outside)
+
+		extra = act_set - exp_set 
+		missing = exp_set - act_set
+
+		if missing: 
+			failures.append(
+					f"(NAT) Missing Outside Interface: {','.join(missing)} "
+				)
+		if extra: 
+			failures.append(
+					f"(NAT) Extra Outside Interface: {','.join(extra)} "
+				)
+
+	return len(failures) == 0, failures
+
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
