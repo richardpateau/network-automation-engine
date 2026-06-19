@@ -749,7 +749,7 @@ def build_nat(netconf_state):
 	if pat: 
 		actual_nat.append({
 				"acl": nat_list.get("id", ""),
-				"inside_interface": interface_block.get("name", ""),
+				"interface": interface_block.get("name", ""),
 				"overload": True 
 			})
 	static = source.get("static", {})
@@ -768,7 +768,7 @@ def build_nat(netconf_state):
 			"pool_name": pool_name,
 			"start_ip": p.get("start-address", ""),
 			"end_ip": p.get("end-address", ""),
-			"netmask": p.get("netmask", "")
+			"mask": p.get("netmask", "")
 		}
 	nat_pool = (
 			nat_list.get("pool-with-vrf", {})
@@ -783,7 +783,7 @@ def build_nat(netconf_state):
 					"pool_name": pn.get("pool_name", ""),
 					"start_ip": pn.get("start_ip", ""),
 					"end_ip": pn.get("end_ip", ""),
-					"netmask": pn.get("netmask", "")
+					"mask": pn.get("netmask", "")
 				})
 
 	# PT2 NAT INTERFACES
@@ -1198,7 +1198,6 @@ def check_nat(expected_nat, actual_config):
 			failures.append(
 					f"(NAT) Configuration Drift: Missing PAT"
 				)
-			return False, failures
 		else: 
 			exp_pat = expected_nat.get("pat", {})
 			act_pat = actual_config.get("pat", {})
@@ -1208,10 +1207,11 @@ def check_nat(expected_nat, actual_config):
 						f"(PAT) Mismatched ACL Found | Expected: {exp_pat.get('acl')} | "
 						f"Actual: {act_pat.get('acl')}"
 					)
-			if exp_pat.get("inside_interface", "") != act_pat.get("inside_interface", ""):
+			if exp_pat.get("interface", "") != act_pat.get("interface", ""):
 				failures.append(
 						f"(PAT) Mismatched Interfaces Found | "
-						f"Expected: {exp_pat.get('inside_interface', '')} "
+						f"Expected: {exp_pat.get('interface', '')} | "
+						f"Actual: {act_pat.get('interface', '')}"
 
 					)
 			if exp_pat.get("overload") != act_pat.get("overload"): 
@@ -1230,9 +1230,8 @@ def check_nat(expected_nat, actual_config):
 			failures.append(
 					f"(NAT) Configuration Drift: Missing Static Configuration"
 				)
-			return False, failures
-		exp_static = expected_nat.get("static", "")
-		act_static = actual_config.get("static", "")
+		exp_static = expected_nat.get("static", [])
+		act_static = actual_config.get("static", [])
 
 		exp_set = {(s["inside_ip"], s["outside_ip"]) for s in exp_static}
 		act_set = {(s["inside_ip"], s["outside_ip"]) for s in act_static}
@@ -1245,10 +1244,10 @@ def check_nat(expected_nat, actual_config):
 					f"(NAT STATIC) Missing Static Configuration | "
 					f"Inside Local: {inside} | Outside Global: {outside}"
 				)
-		for e in extra: 
+		for inside, outside in extra: 
 			failures.append(
 					"(NAT STATIC) Extra (Drift) Static Configuration | "
-					f"Inside Local: {act_set[0]} | Outside Global: {act_set[1]}"
+					f"Inside Local: {inside} | Outside Global: {outside}"
 				)
 	else: 
 		if actual_config.get("static"): 
@@ -1274,10 +1273,10 @@ def check_nat(expected_nat, actual_config):
 							f"(Dynamic NAT) Expected Pool Not Found on Device | "
 							f"Expected: {p_name}"
 						)
-					return False, failures
+					continue
 				if actual.get("acl") != p_values.get("acl"):
 					failures.append(
-							f"(Dynamic NAT) ACL Mismath | Pool: {p_name} | "
+							f"(Dynamic NAT) ACL Mismatch | Pool: {p_name} | "
 							f"Expected: {p_values.get('acl', '')} | "
 							f"Actual: {actual.get('acl', '')}"
 						)
@@ -1290,7 +1289,7 @@ def check_nat(expected_nat, actual_config):
 				if actual.get("end_ip") != p_values.get("end_ip"):
 					failures.append(
 							f"(Dynamic NAT) Mismatched End IP | Pool: {p_name} |"
-							f"Expected: {p_values.get('end_ip', '')}"
+							f"Expected: {p_values.get('end_ip', '')} | "
 							f"Actual: {actual.get('end_ip', '')}"
 						)
 				if actual.get("mask") != p_values.get("mask"): 
@@ -1299,15 +1298,21 @@ def check_nat(expected_nat, actual_config):
 							f" Expected: {p_values.get('mask')} | "
 							f"Actual: {actual.get('mask')}"
 						)
-	else actual_config.get("dynamic"):
-		failures.append(
-				f"(Dynamic NAT) Configuration Drift: Unexpected Dynamic NAT Configuration Found"
-			)
-		return False, failures
+			extra_pools = set(act_set.keys()) - set(exp_set.keys())
+			for e in extra_pools:
+				failures.append(
+						f"(Dynamic NAT) (Drift) Unexpected Pool Found on Device | "
+						f"Pool: {e}"
+					)
+	else:
+		if actual_config.get("dynamic"):
+			failures.append(
+					f"(Dynamic NAT) Configuration Drift: Unexpected Dynamic NAT Configuration Found"
+				)
 	exp_inside = expected_nat.get("interfaces", {}).get("inside", [])
 	exp_outside = expected_nat.get("interfaces", {}).get("outside", [])
 	if exp_inside:
-		act_inside = actual_config.get("interfaces", {}).get("inside", "") 
+		act_inside = actual_config.get("interfaces", {}).get("inside", []) 
 		exp_set = set(exp_inside)
 		act_set = set(act_inside)
 
@@ -1323,7 +1328,7 @@ def check_nat(expected_nat, actual_config):
 					f"(NAT) Extra Inside Interface: {','.join(extra)} "
 				)
 	if exp_outside:
-		act_outside = actual_config.get("interfaces", {}).get("outside", "")
+		act_outside = actual_config.get("interfaces", {}).get("outside", [])
 		exp_set = set(exp_outside)
 		act_set = set(act_outside)
 
@@ -1340,7 +1345,6 @@ def check_nat(expected_nat, actual_config):
 				)
 
 	return len(failures) == 0, failures
-
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
@@ -2064,16 +2068,6 @@ def configure_qos(session, device_ip, qos_data, log):
 					config=policy_commands
 				)
 		
-		if not policy_response.ok:
-			return {
-                "status": OpStatus.CONFIG_FAILED.value,
-                "summary": (
-                		f"QOS Configuration Failed | "
-                		f"Policy: {policy_name} | "
-						f"Class Map: {class_map_log} | Transport: NETCONF"
-                	),
-                "error": str(policy_response)
-            }
 		interface_template = template_env.get_template("INTERFACE_NETCONF.j2")
 		for a in attachments:
 			interface = a.get("interface", "")
@@ -2089,16 +2083,6 @@ def configure_qos(session, device_ip, qos_data, log):
 					target="running",
 					config=attachment_commands
 				)
-			if not interface_response.ok:
-				return {
-	                "status": OpStatus.CONFIG_FAILED.value,
-	                "summary": (
-	                		f"Interface (QOS) Configuration Failed | "
-	                		f"Policy: {policy_name} | "
-	                		f"Config: {attachment_log} | Transport: NETCONF"
-	                	),
-	                "error": str(interface_response)
-	            }
 		log.info(
 			"qos_config",
             extra={
@@ -2262,10 +2246,166 @@ def configure_hsrp(session, device_ip, hsrp_data, log):
 				"error": str(e)
 			}
 def configure_nat(session, device_ip, nat_data, log):
-
-    context = {
-        "pat_enabled": bool(nat_data.get("pat")),
-        "static_enabled": bool(nat_data.get("static")),
-        "dynamic_enabled": bool(nat_data.get("dynamic"))
+	dynamic = nat_data.get("dynamic", [])
+	pat = nat_data.get("pat", {})
+	static = nat_data.get("static", [])
+	nat_interfaces = nat_data.get("interfaces", {})
+	inside_list = nat_interfaces.get("inside", [])
+	outside_list = nat_interfaces.get("outside", [])
+	interface_log = (
+			f"Interfaces | "
+			f"Inside: {','.join(inside_list)} | "
+			f"Outside: {','.join(outside_list)}"
+		)
+	nat_model = {
+        "pat": pat,
+        "dynamic": dynamic,
+        "static": static,
+        "interfaces": {
+            "inside": inside_list,
+            "outside": outside_list
+        }
     }
+	
+	log_parts = []
+	if pat:
+		log_parts.append(
+				f"PAT NAT Overload | "
+				f"ACL: {pat.get('acl', '')} | "
+				f"Interface: {pat.get('interface', '')} | "
+				f"Overload: {pat.get('overload')}"
+			)
+	if dynamic:
+		dynamic_log = " | ".join(
+				f"Dynamic NAT | "
+				f"Pool: {d.get('pool_name','')} | ACL: {d.get('acl', '')} | "
+				f"Start IP: {d.get('start_ip', '')} | End IP: {d.get('end_ip', '')}"
+				for d in dynamic
+			)
+		log_parts.append(dynamic_log)
+	if static: 
+		static_log = " | ".join(
+				f"Static NAT | "
+				f"Inside Local: {s.get('inside_ip')} | "
+				f"Outside Global: {s.get('outside_ip')}"
+				for s in static
+			)
+		log_parts.append(static_log)
+	nat_log = " | ".join(log_parts) if log_parts else "No NAT Configuration"
+	try: 
+		template_dynamic = template_env.get_template("NAT_POOL_NC.j2")
+		template_pat = template_env.get_template("PAT_NC.j2")
+		template_static = template_env.get_template("NAT_STATIC_NC.j2")
+		template_interface = template_env.get_template("NAT_INT_NC.j2")
+		
+		all_commands = []
+		interface_commands = []
 
+		if nat_model.get("pat"):
+			all_commands.append(
+					template_pat.render(nat=nat_model)
+				)
+		if nat_model.get("dynamic"):
+			all_commands.append(
+					template_dynamic.render(
+							nat=nat_model
+						)
+				)
+		if nat_model.get("static"):
+			all_commands.append(
+					template_static.render(
+							nat=nat_model
+						)
+				)
+		for i in nat_model.get("interfaces", {}).get("inside", []):
+			match = re.match(r"([A-Za-z]+)(.+)", i)
+			interface_type = match.group(1) if match else ""
+			interface_num = match.group(2) if match else ""
+		    interface_commands.append(
+		        template_interface.render(
+		            interface_type=interface_type,
+		            interface_num=interface_num,
+		            role="inside"
+		        )
+		    )
+
+		for o in nat_model.get("interfaces", {}).get("outside", []):
+			match = re.match(r"([A-Za-z]+)(.+)", o)
+			interface_type = match.group(1) if match else ""
+			interface_num = match.group(2) if match else ""
+		    interface_commands.append(
+		        template_interface.render(
+		            interface_type=interface_type,
+		            interface_num=interface_num,
+		            role="outside"
+		        )
+		    )
+		if DRY_RUN:
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure NAT | "
+						f"{nat_log} | {interface_log} | Transport: NETCONF"
+				)
+			}	
+		for commands in all_commands:
+			session.edit_config(
+					target="running",
+					config=commands
+				)
+		for c in interface_commands: 
+			session.edit_config(
+					target="running",
+					config=c
+				)
+		log.info(
+			"nat_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "nat_automation",
+                "event_type": "nat_config",
+                "status": StepStatus.SUCCESS.value,
+                "nat": nat_log,
+                "interfaces": interface_log,
+                "message": (
+                		f"NAT Configuration Successful | "
+                		f"{nat_log} | {interface_log} | Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"NAT Configuration Successful | "
+	                		f"{nat_log} | {interface_log} | Transport: NETCONF"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "nat_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "nat_automation",
+                "event_type": "nat_config",
+                "status": StepStatus.ERROR.value,
+                "nat": nat_log,
+                "interfaces": interface_log,
+                "error": str(e),
+                "message": (f"Try/Exception Error | NAT Configuration | "
+                			f"{nat_log} | {interface_log} | Transport: NETCONF"
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | NAT Configuration | "
+                			f"{nat_log} | {interface_log} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
