@@ -133,6 +133,13 @@ def get_netbox():
 	    		"inside": [],
 	    		"outside": []
 	    	}
+	    }, 
+	    "dhcp": {
+	    	"excluded_addresses": [],
+	    	"pools": [],
+	    	"helper": {
+	    		"interfaces": []
+	    	}
 	    }
 			}
 		is_switch = device_name.role.slug == "switch"
@@ -146,6 +153,7 @@ def get_netbox():
 		stp_context = context.get("stp", {})
 		hsrp_context = context.get("hsrp", {})
 		nat_context = context.get("ntp", {})
+		dhcp_context = context.get("dhcp", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -337,6 +345,17 @@ def get_netbox():
 			nat["interfaces"]["outside"].extend(
 					nat_context.get("interfaces", {}).get("outside", [])
 				)
+		if is_router and dhcp_context:
+			config_data[host_ip]["dhcp"]["excluded_addresses"].extend(
+					dhcp_context.get("excluded_addresses", [])
+				)
+			config_data[host_ip]["dhcp"]["pools"].extend(
+					dhcp_context.get("pools")
+				)
+			config_data[host_ip]["dhcp"]["helper"]["interfaces"].extend(
+					dhcp_context.get("helper", {}).get("interfaces", [])
+				)
+
 
 	return inventory, config_data
 def collect_device_state(conn): 
@@ -797,6 +816,51 @@ def build_nat(netconf_state):
 			if nat.get("inside") is not None: 
 				nat_interfaces["inside"].append(full_interface)
 	return actual_nat, nat_interfaces
+def build_dhcp(netconf_state): 
+	actual_dhcp = {
+		"excluded_addresses": [],
+	    "pools": [],
+	    "helper": {
+	    	"interfaces": []
+	    }
+	}
+	native = netconf_state.get("native_netconf", {})
+	dhcp = native.get("ip",  {}).get("dhcp", {})
+	excl = dhcp.get("excluded-address", {}).get("low-high-address-list", [])
+	for e in normalize_to_list(excl):
+		actual_dhcp["excluded_addresses"].append({
+				"start_ip": e.get("low-address", ""),
+				"end_ip": e.get("high-address", "")
+			})
+	dhcp_pool = dhcp.get("pool", [])
+	for d in normalize_to_list(dhcp_pool):
+		lease = d.get("lease", {}).get("lease-value", {})
+		dns_list = normalize_to_list(d.get("dns-server", {}).get("dns-server-list", []))
+		actual_dhcp["pools"].append({
+				"pool_name": d.get("id", ""),
+				"lease_days": safe_int(lease.get("days", 1)),
+				"lease_hours": safe_int(lease.get("hours", 1)),
+				"lease_minutes": safe_int(lease.get("minutes", 10)),
+				"default_router": (
+						d.get("default-router", {})
+						.get("default-router-list", "")
+					),
+				"dns_ip": dns_list,
+				"domain_name": d.get("domain-name", ""),
+				"pool_ip": d.get("network", {}).get("primary-network", {}).get("number", ""),
+				"pool_mask": d.get("network", {}).get("primary-network", {}).get("mask", ""),
+			})
+	interfaces = native.get("interface", {})
+	for gigabit, gig_values in interfaces.items():
+		for g in normalize_to_list(gig_values): 
+			full_interface = f"{gigabit}{g.get('name', '')}"
+			helper = g.get('ip', {}).get('helper-address', {}).get("address", [])
+			for h in normalize_to_list(helper): 
+				actual_dhcp["helper"]["interfaces"].append({
+						"helper_ip": h,
+						"interface": full_interface
+				})	
+	return actual_dhcp 
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -1143,7 +1207,7 @@ def check_hsrp(expected_hsrp, actual_config):
 
 			) for e in expected_hsrp
 	}
-	act_keys = set(actual_keys.keys())
+	act_keys = set(actual_hsrp.keys())
 	extra = act_keys - exp_keys
 	if extra:
 		for interface, vlan, group in extra:
@@ -1345,6 +1409,108 @@ def check_nat(expected_nat, actual_config):
 				)
 
 	return len(failures) == 0, failures
+def check_dhcp(expected_dhcp, actual_config): 
+	failures = []
+	exp_pools = expected_dhcp.get("pools", [])
+	act_pools = actual_config.get("pools", [])
+	exp_key = {
+		(e.get("pool_name")): e
+		for e in exp_pools
+	}
+	act_key = {
+		(a.get("pool_name", "")): a
+		for a in act_pools
+	}
+	extra = act_key.keys() - exp_key.keys()
+	if extra: 
+		failures.append(
+				f"(DHCP) Rogue DHCP Pool | Name: {extra}"
+			)
+	for e in exp_pools: 
+		actual = act_key.get(e.get("pool_name", ""))
+		if not actual: 
+			failures.append(
+					f"(DHCP) Missing DHCP Pool | Name: {e.get('pool_name', '')}"
+				)
+		if e.get("default_gateway") != actual.get("default_gateway"): 
+			failures.append(
+					f"(DHCP) Default Gateway Mismatch | Pool: {e.get('name', '')} | "
+					f"Expected: {e.get('default_gateway', '')} | Actual: "
+					f"{actual.get('default_gateway', '')}"
+				) 
+		if e.get("dns_ip") != actual.get("dns_ip"):
+			failures.append(
+					f"(DHCP) DNS Server IP Mismatch | Pool: {e.get('name', '')} | "
+					f"Expected: {e.get('dns', [])} | Actual: {actual.get('dns', [])}"
+				)
+		if (
+				e.get("lease_days") != actual.get("lease_days")
+				or e.get("lease_hours") != actual.get("lease_days")
+				or e.get("lease_minutes") != actual.get("lease_minutes")
+			): 
+			failures.append(
+					f"(DHCP) Mismatched Lease Duration | Pool: {e.get('pool_name', '')} | "
+					f"Expected(Days/Hours/Min): {e.get('lease_days')}/{e.get("lease_hours")}/"
+					f"{e.get("lease_minutes")} | Actual: {actual.get("lease_days")}/"
+					f"{actual.get("lease_hours")}/{actual.get('lease_minutes')}"
+				)
+		if (
+				e.get("pool_ip") != actual.get("pool_ip")
+				and e.get("pool_mask") != actual.get("pool_mask")
+			):
+			failures.append(
+					f"(DHCP) Mismatched IP or Mask | Pool: {e.get('pool_name', '')} | "
+					f"Expected: {e.get("pool_ip")}/{e.get("pool_mask")} | "
+					f"Actual: {actual.get("pool_ip")}/{actual.get("pool_mask")}"
+				)
+		if e.get("domain_name") != actual.get("domain_name"): 
+			failures.append(
+					f"(DHCP) Mismatched Domain Name | Pool: {e.get('pool_name')} | "
+					f"Expected: {e.get('domain_name')} | Actual: {actual.get('domain_name')}"
+				)
+	exp_excluded = expected_dhcp.get("excluded_address", [])
+	act_excluded = actual_config.get("excluded_address", [])
+	exp_tuple = {(e.get('start_ip', ''), e.get('end_ip')) for e in exp_excluded}
+	act_tuple = {(a.get('start_ip', ''), a.get('end_ip')) for a in act_excluded}
+
+	act_lookup = {a.get("start_ip"): a.get("end_ip") for a in act_excluded}
+	exp_lookup = {e.get("start_ip"): e.get("end_ip") for e in exp_excluded}
+	for e in exp_excluded: 
+		exp_start = e.get("start_ip", "")
+		exp_end = e.get("end_ip", "")
+		actual = act_lookup.get(exp_start)
+		if actual is None:
+			failures.append(f"(DHCP) Missing Excluded Starting IP: {exp_start}")
+		elif actual != exp_end:
+			failures.append(
+					f"(DHCP) Missing Excluded End IP | Start: {exp_start} "
+					f"Expected End: {exp_end} | Actual: {actual}"
+				)
+	extra = act_lookup.keys() - exp_lookup.keys()
+	for start in extra: 
+		act_entry = next((a for a in act_excluded if a.get('start_ip') == start), {})
+		failures.append(
+				f"(DHCP) Unexpected Excluded IP addresses | "
+				f"Start: {start} | End: {act_entry.get('end_ip', '')}"
+			)
+	exp_helpers = expected_dhcp.get("interfaces", [])
+	act_helpers = actual_config.get("interfaces", [])
+
+	exp_tuple = {e.get("helper_ip"): e.get("interface_name")for e in exp_helpers}
+	act_tuple = {a.get("helper_ip"): a.get("interface_name") for a in act_helpers}
+
+	for helper_ip in exp_tuple:
+		actual = act_tuple.get(helper_ip)
+		if not actual: 
+			failures.append(
+					f"(DHCP) Relay Agent IP Not Found | IP: {helper_ip}"
+				)
+		if helper_ip.get("interface_name") != actual.get("interface_name"): 
+			failures.append(
+					f"(DCHP) Relay Agent Not Applied on Interface | "
+					f"Interface: {helper_ip.get("interface_name")}"
+				)
+
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
