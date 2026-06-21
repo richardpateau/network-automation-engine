@@ -858,7 +858,7 @@ def build_dhcp(netconf_state):
 			for h in normalize_to_list(helper): 
 				actual_dhcp["helper"]["interfaces"].append({
 						"helper_ip": h,
-						"interface": full_interface
+						"interface_name": full_interface
 				})	
 	return actual_dhcp 
 def check_vlan(expected_vlans, actual_vlans):
@@ -1432,31 +1432,32 @@ def check_dhcp(expected_dhcp, actual_config):
 			failures.append(
 					f"(DHCP) Missing DHCP Pool | Name: {e.get('pool_name', '')}"
 				)
+			continue 
 		if e.get("default_gateway") != actual.get("default_gateway"): 
 			failures.append(
-					f"(DHCP) Default Gateway Mismatch | Pool: {e.get('name', '')} | "
+					f"(DHCP) Default Gateway Mismatch | Pool: {e.get('pool_name', '')} | "
 					f"Expected: {e.get('default_gateway', '')} | Actual: "
 					f"{actual.get('default_gateway', '')}"
 				) 
 		if e.get("dns_ip") != actual.get("dns_ip"):
 			failures.append(
-					f"(DHCP) DNS Server IP Mismatch | Pool: {e.get('name', '')} | "
-					f"Expected: {e.get('dns', [])} | Actual: {actual.get('dns', [])}"
+					f"(DHCP) DNS Server IP Mismatch | Pool: {e.get('pool_name', '')} | "
+					f"Expected: {e.get('dns_ip', [])} | Actual: {actual.get('dns_ip', [])}"
 				)
 		if (
 				e.get("lease_days") != actual.get("lease_days")
-				or e.get("lease_hours") != actual.get("lease_days")
+				or e.get("lease_hours") != actual.get("lease_hours")
 				or e.get("lease_minutes") != actual.get("lease_minutes")
 			): 
 			failures.append(
 					f"(DHCP) Mismatched Lease Duration | Pool: {e.get('pool_name', '')} | "
-					f"Expected(Days/Hours/Min): {e.get('lease_days')}/{e.get("lease_hours")}/"
-					f"{e.get("lease_minutes")} | Actual: {actual.get("lease_days")}/"
+					f"Expected(Days/Hours/Min): {e.get('lease_days')}/{e.get('lease_hours')}/"
+					f"{e.get('lease_minutes')} | Actual: {actual.get('lease_days')}/"
 					f"{actual.get("lease_hours")}/{actual.get('lease_minutes')}"
 				)
 		if (
 				e.get("pool_ip") != actual.get("pool_ip")
-				and e.get("pool_mask") != actual.get("pool_mask")
+				or e.get("pool_mask") != actual.get("pool_mask")
 			):
 			failures.append(
 					f"(DHCP) Mismatched IP or Mask | Pool: {e.get('pool_name', '')} | "
@@ -1468,10 +1469,8 @@ def check_dhcp(expected_dhcp, actual_config):
 					f"(DHCP) Mismatched Domain Name | Pool: {e.get('pool_name')} | "
 					f"Expected: {e.get('domain_name')} | Actual: {actual.get('domain_name')}"
 				)
-	exp_excluded = expected_dhcp.get("excluded_address", [])
-	act_excluded = actual_config.get("excluded_address", [])
-	exp_tuple = {(e.get('start_ip', ''), e.get('end_ip')) for e in exp_excluded}
-	act_tuple = {(a.get('start_ip', ''), a.get('end_ip')) for a in act_excluded}
+	exp_excluded = expected_dhcp.get("excluded_addresses", [])
+	act_excluded = actual_config.get("excluded_addresses", [])
 
 	act_lookup = {a.get("start_ip"): a.get("end_ip") for a in act_excluded}
 	exp_lookup = {e.get("start_ip"): e.get("end_ip") for e in exp_excluded}
@@ -1493,24 +1492,35 @@ def check_dhcp(expected_dhcp, actual_config):
 				f"(DHCP) Unexpected Excluded IP addresses | "
 				f"Start: {start} | End: {act_entry.get('end_ip', '')}"
 			)
-	exp_helpers = expected_dhcp.get("interfaces", [])
-	act_helpers = actual_config.get("interfaces", [])
+	exp_helpers = expected_dhcp.get("helper", {}).get("interfaces", [])
+	act_helpers = actual_config.get("helper", {}).get("interfaces", [])
 
-	exp_tuple = {e.get("helper_ip"): e.get("interface_name")for e in exp_helpers}
-	act_tuple = {a.get("helper_ip"): a.get("interface_name") for a in act_helpers}
+	exp_lookup = defaultdict(list)
+	for e in exp_helpers:
+		exp_lookup[e.get("interface_name")].append(e.get("helper_ip"))
+	act_lookup = defaultdict(list)
+	for a in act_helpers: 
+		act_lookup[a.get("interface_name")].append(a.get("helper_ip"))
+	all_interfaces = set(exp_lookup.keys()) | set(act_lookup.keys())
 
-	for helper_ip in exp_tuple:
-		actual = act_tuple.get(helper_ip)
-		if not actual: 
+	for interface_name in all_interfaces:
+		exp_ips = set(exp_lookup.get(interface_name, []))
+		act_ips = set(act_lookup.get(interface_name, []))
+
+		missing = exp_ips - act_ips 
+		extra = act_ips - exp_ips 
+
+		for ip in missing: 
 			failures.append(
-					f"(DHCP) Relay Agent IP Not Found | IP: {helper_ip}"
+					f"(DHCP) Missing Helper IP | Interface: {interface_name} | "
+					f"Helper IP: {ip}"
 				)
-		if helper_ip.get("interface_name") != actual.get("interface_name"): 
+		for e in extra: 
 			failures.append(
-					f"(DCHP) Relay Agent Not Applied on Interface | "
-					f"Interface: {helper_ip.get("interface_name")}"
+					f"(DHCP) Drift Detected: Unexpected Helper IP | "
+					f"Interface: {interface_name} | Helper IP: {e}"
 				)
-
+	return len(failures) == 0, failures  
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
@@ -2571,6 +2581,126 @@ def configure_nat(session, device_ip, nat_data, log):
 				"summary":(
 							f"Try/Exception Error | NAT Configuration | "
                 			f"{nat_log} | {interface_log} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+def configure_dhcp(session, device_ip, dhcp_data, log): 
+	excluded_addresses = dhcp_data.get("excluded_addresses", [])
+	pools = dhcp_data.get("pools", [])
+	helper = dhcp_data.get("helper", {}).get("interfaces", [])
+
+	excluded_log = " | ".join(
+			f"Excluded IPs | Start IP: {e.get('start_ip')} | End IP: {e.get('end_ip', '')}"
+			for e in excluded_addresses
+		)
+	pool_log = " | ".join(
+			f"Pool: {p.get('pool_name')} | IP: {p.get('pool_ip')}/{p.get('pool_mask')} |"
+			f"Default Gateway: {p.get('default_gateway')} "
+			for p in pools
+		)
+	helper_log = " | ".join(
+			f"Helper IP: {h.get('helper_ip')} | Interface: {h.get('interface_name')}"
+			for h in helper
+		)
+	try: 
+		template_excl = template_env.get_template("DHCP_EXCL_NC.j2")
+		template_help = template_env.get_template("DHCP_HELP_NC.j2")
+		template_pool = template_env.get_template("DHCP_POOL_NC.j2")
+
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure DHCP | "
+						f"{excluded_log} | {pool_log} | {helper_log}"
+				)
+			}
+		if excluded_addresses:
+			commands = template_excl.render(excluded_addresses=excluded_addresses)
+			session.edit_config(
+					target="running",
+					config=commands
+				)
+		if pools:
+			commands = template_pool.render(pools=pools)
+			session.edit_config(
+						target="running",
+						config=commands
+					)
+		for h in helper:
+			helper_ip = h.get("helper_ip")
+			if not helper_ip:
+				continue
+
+			interface_name = h.get("interface_name", "")
+			match = re.match(r"([A-Za-z]+)(.+)", interface_name)
+			if not match: 
+				continue
+			interface_type = match.group(1) if match else "" 
+			interface_num = match.group(2) if match else ""
+			commands = template_help.render(
+					interface_type=interface_type,
+					interface_num=interface_num,
+					helper_ip=helper_ip
+				)
+			session.edit_config(
+					target="running",
+					config=commands
+				)
+
+		log.info(
+			"dhcp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "dhcp_automation",
+                "event_type": "dhcp_config",
+                "status": StepStatus.SUCCESS.value,
+                "pool": pool_log,
+                "helper": helper_log,
+                "excluded_addresses": excluded_log,
+                "message": (
+                		f"DHCP Configuration Successful | "
+                		f"{excluded_log} | {pool_log} | {helper_log} | "
+                		f"Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"DHCP Configuration Successful | "
+                			f"{excluded_log} | {pool_log} | {helper_log} | "
+                			f"Transport: NETCONF"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "dhcp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "dhcp_automation",
+                "event_type": "dhcp_config",
+                "status": StepStatus.ERROR.value,
+                "pool": pool_log,
+                "helper": helper_log,
+                "excluded_addresses": excluded_log,
+                "error": str(e),
+                "message": (f"Try/Exception Error | DHCP Configuration | "
+                			f"{excluded_log} | {pool_log} | {helper_log} | "
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | DHCP Configuration | "
+                			f"{excluded_log} | {pool_log} | {helper_log} | "
+                			f"Transport: NETCONF | "
 							f"Error: {str(e)}"
                 	),
 				"error": str(e)
