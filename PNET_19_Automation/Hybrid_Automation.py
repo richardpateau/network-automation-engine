@@ -140,7 +140,14 @@ def get_netbox():
 	    	"helper": {
 	    		"interfaces": []
 	    	}
-	    }
+	    },
+	    "snmp": {
+	    	"communitiess": [],
+	    	"hosts": [],
+	    	"traps": [],
+	    	"location": "",
+	    	"contact"
+		}
 			}
 		is_switch = device_name.role.slug == "switch"
 		is_router = device_name.role.slug == "router"
@@ -154,6 +161,7 @@ def get_netbox():
 		hsrp_context = context.get("hsrp", {})
 		nat_context = context.get("ntp", {})
 		dhcp_context = context.get("dhcp", {})
+		snmp_context = context.get("snmp", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -355,7 +363,21 @@ def get_netbox():
 			config_data[host_ip]["dhcp"]["helper"]["interfaces"].extend(
 					dhcp_context.get("helper", {}).get("interfaces", [])
 				)
-
+		if snmp_context:
+			config_data[host_ip]["snmp"]["communities"].extend(
+					snmp_context.get("communities", [])
+				)
+			config_data[host_ip]["snmp"]["contact"] = (
+					snmp_context.get("contact", "")
+				)
+			config_data[host_ip]["snmp"]["hosts"].extend(
+					snmp_context.get("hosts", [])
+				)
+			config_data[host_ip]["snmp"]["location"] = (
+					snmp_context.get("location", "")
+				)
+			if snmp_context.get("traps"):
+				config_data[host_ip]["snmp"]["traps"] = snmp_context.get("traps", {})
 
 	return inventory, config_data
 def collect_device_state(conn): 
@@ -861,6 +883,48 @@ def build_dhcp(netconf_state):
 						"interface_name": full_interface
 				})	
 	return actual_dhcp 
+def build_snmp_nc(netconf_state): 
+	actual_snmp = {
+			"communities": [],
+	    	"hosts": [],
+	    	"traps": {},
+	    	"location": "",
+	    	"contact": ""
+		}
+	native = netconf_state.get("native_netconf", {})
+	snmp = native.get("snmp-server", {})
+	community = snmp.get("community-config", [])
+	if community: 
+		for c in normalize_to_list(community): 
+			actual_snmp["communities"].append({
+					"snmp_name": c.get("name", ""),
+					"permission": c.get("permission", "")
+				})
+	contact = snmp.get("contact", {}).get("#text", "")
+	if contact: 
+		actual_snmp["contact"] = contact 
+	traps = snmp.get("enable", {}).get("enable-choice", {}).get("traps", {})
+	if traps: 
+		actual_snmp["traps"] = {
+				"snmp": bool(traps.get("snmp", {})),
+				"syslog": bool(traps.get("syslog", "")),
+				"config": bool(traps.get("config", ""))
+		}
+
+	hosts = snmp.get("host-config", {}).get("ip-community", {})
+	if hosts: 
+		for h in normalize_to_list(hosts): 
+			actual_snmp["hosts"].append({
+					"community_name": h.get("community-or-user", ""),
+					"snmp_ip": h.get("ip-address", ""),
+					"snmp_version": h.get("version", "")
+
+				})
+	location = snmp.get("location", {}).get("#text", "")
+	if location: 
+		actual_snmp["location"] = location
+	return actual_snmp
+def build_snmp_netmiko(device_state): 
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
