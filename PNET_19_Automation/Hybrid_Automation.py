@@ -100,6 +100,7 @@ def get_netbox():
 				"secret": "ccna",
 				"device_type": device_name.platform.slug,
 				"name": device_name.name,
+				"transport": 
 			})
 
 		config_data[host_ip] = {
@@ -2900,3 +2901,213 @@ def configure_dhcp(session, device_ip, dhcp_data, log):
                 	),
 				"error": str(e)
 			}
+def configure_snmp_netmiko(conn,device_ip,snmp_data, log):
+	communities = snmp_data.get("communities", [])
+	contact = snmp_data.get("contact", "")
+	hosts = snmp_data.get("hosts", [])
+	location = snmp_data.get("location", "")
+	traps = snmp_data.get("traps", {})
+
+	communities_log = " | ".join(
+			f"SNMP Name: {c.get('snmp_name')} | SNMP Permission: {c.get('permission')}"
+			for c in communities
+		)
+	hosts_log = " | ".join(
+			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('version')}"
+			for h in hosts
+		)
+	try: 
+		template = template_env.get_template("SNMP_NETMIKO.j2")
+
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure SNMP | "
+						f"{communities_log} | {hosts_log} | "
+						f"Location: {location} | Contact: {contact} | "
+						f"Traps: {traps} | Transport: NETMIKO"
+				)
+			}
+		commands = template.render(
+				communities=communities,
+				traps=traps,
+				hosts=hosts,
+				contact=contact,
+				location=location
+
+			).splitlines()
+		
+		conn.send_config_set(commands)
+		
+		log.info(
+			"snmp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "snmp_automation",
+                "event_type": "snmp_config",
+                "status": StepStatus.SUCCESS.value,
+                "contact": contact,
+                "location": location,
+                "hosts": hosts_log,
+                "communities": communities_log,
+                "traps": traps,
+                "message": (
+                		f"SNMP (Switch) Configuration Successful | "
+                		f"{communities_log} | {hosts_log} | "
+						f"Location: {location} | Contact: {contact} | "
+						f"Traps: {traps} | Transport: NETMIKO"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"SNMP (Switch) Configuration Successful | "
+                			f"{communities_log} | {hosts_log} | "
+							f"Location: {location} | Contact: {contact} | "
+							f"Traps: {traps} | Transport: NETMIKO"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "snmp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "snmp_automation",
+                "event_type": "snmp_config",
+                "status": StepStatus.ERROR.value,
+                "contact": contact,
+                "location": location,
+                "hosts": hosts_log,
+                "communities": communities_log,
+                "traps": traps,
+                "error": str(e),
+                "message": (f"Try/Exception Error | SNMP (Switch) Configuration | "
+                			f"{communities_log} | {hosts_log} | "
+							f"Location: {location} | Contact: {contact} | "
+							f"Traps: {traps} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | SNMP (Switch) Configuration | "
+                			f"{communities_log} | {hosts_log} | "
+							f"Location: {location} | Contact: {contact} | "
+							f"Traps: {traps} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+def configure_snmp(session, device_ip, snmp_data, log): 
+	communities = snmp_data.get("communities", [])
+	contact = snmp_data.get("contact", "")
+	hosts = snmp_data.get("hosts", [])
+	location = snmp_data.get("location", "")
+	traps = snmp_data.get("traps", {})
+
+	communities_log = " | ".join(
+			f"SNMP Name: {c.get('snmp_name')} | SNMP Permission: {c.get('permission')}"
+			for c in communities
+		)
+	hosts_log = " | ".join(
+			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('snmp_version')}"
+			for h in hosts
+		)
+	try: 
+		template_netconf = template_env.get_template("SNMP_NC.j2")
+
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure SNMP | "
+						f"{communities_log} | {hosts_log} | "
+						f"Location: {location} | Contact: {contact} | "
+						f"Traps: {traps} | Transport: NETCONF"
+				)
+			}
+		commands = template_netconf.render(
+				communities=communities,
+				traps=traps,
+				hosts=hosts,
+				contact=contact,
+				location=location
+
+			)
+		session.edit_config(
+				target="running", 
+				config=commands
+			)
+		log.info(
+			"snmp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "snmp_automation",
+                "event_type": "snmp_config",
+                "status": StepStatus.SUCCESS.value,
+                "contact": contact,
+                "location": location,
+                "hosts": hosts_log,
+                "communities": communities_log,
+                "traps": traps,
+                "message": (
+                		f"SNMP (Router) Configuration Successful | "
+                		f"{communities_log} | {hosts_log} | "
+						f"Location: {location} | Contact: {contact} | "
+						f"Traps: {traps} | Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"SNMP (Router) Configuration Successful | "
+                			f"{communities_log} | {hosts_log} | "
+							f"Location: {location} | Contact: {contact} | "
+							f"Traps: {traps} | Transport: NETCONF"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "snmp_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "snmp_automation",
+                "event_type": "snmp_config",
+                "status": StepStatus.ERROR.value,
+                "contact": contact,
+                "location": location,
+                "hosts": hosts_log,
+                "communities": communities_log,
+                "traps": traps,
+                "error": str(e),
+                "message": (f"Try/Exception Error | SNMP (Router) Configuration | "
+                			f"{communities_log} | {hosts_log} | "
+							f"Location: {location} | Contact: {contact} | "
+							f"Traps: {traps} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | SNMP (Router) Configuration | "
+                			f"{communities_log} | {hosts_log} | "
+							f"Location: {location} | Contact: {contact} | "
+							f"Traps: {traps} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+		
