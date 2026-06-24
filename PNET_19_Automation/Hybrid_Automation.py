@@ -148,6 +148,17 @@ def get_netbox():
 	    	"traps": [],
 	    	"location": "",
 	    	"contact"
+		}, 
+		"syslog": {
+			"hosts": [],
+			"facility": "",
+			"trap_level": "",
+			"source_interface": "",
+			"timestamps": False
+		},
+		"port_security": {
+				"interfaces": {}
+
 		}
 			}
 		is_switch = device_name.role.slug == "switch"
@@ -163,6 +174,8 @@ def get_netbox():
 		nat_context = context.get("ntp", {})
 		dhcp_context = context.get("dhcp", {})
 		snmp_context = context.get("snmp", {})
+		syslog_context = context.get("syslog", {})
+		psecurity_context = context.get("port_security", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -379,7 +392,32 @@ def get_netbox():
 				)
 			if snmp_context.get("traps"):
 				config_data[host_ip]["snmp"]["traps"] = snmp_context.get("traps", {})
-
+		if syslog_context:
+			config_data[host_ip]["syslog"]["facility"] = (
+					syslog_context.get("facility", "local7")
+				)
+			config_data[host_ip]["syslog"]["hosts"].extend(
+					syslog_context.get("hosts", [])
+				)
+			config_data[host_ip]["syslog"]["source_interface"] = (
+					syslog_context.get("source_interface", "")
+				)
+			config_data[host_ip]["syslog"]["timestamps"] = (
+					syslog_context.get("timestamps", False)
+				)
+			config_data[host_ip]["syslog"]["trap_level"] = (
+					syslog_context.get("trap_level", "")
+				)
+		if psecurity_context: 
+			interfaces = psecurity_context.get("interfaces", {})
+			for interface_name, ps_values in interfaces.items():
+				config_data[host_ip]["interfaces"][interface_name] = {
+						"enabled": ps_values.get("enabled", ""),
+						"mac_addresses": ps_values.get("mac_addresses", []),
+						"maximum": ps_values.get("maximum", ""),
+						"sticky": ps_values.get("sticky", ""),
+						"violation": ps_values.get("violation", "")
+					}
 	return inventory, config_data
 def collect_device_state(conn): 
 	device_state = {}
@@ -414,6 +452,12 @@ def collect_device_state(conn):
 		)
 	except Exception: 
 		device_state["running_config"] = {}
+	try: 
+		device_state["syslog"] = (
+				conn.send_command("show logging", use_genie=True)
+			)
+	except Exception: 
+		device_state["syslog"] = {}
 
 	return device_state
 def restconf_get(session, url):
@@ -925,8 +969,8 @@ def build_snmp_nc(netconf_state):
 	if location: 
 		actual_snmp["location"] = location
 	return actual_snmp
-def build_snmp_netmiko(running_config):
-	parse = CiscoConfParse(running_config.splitlines())
+def build_snmp_netmiko(device_state):
+	parse = CiscoConfParse(device_state.splitlines())
 	actual_snmp = {
 			"communities": [],
 	    	"hosts": [],
@@ -966,6 +1010,92 @@ def build_snmp_netmiko(running_config):
 					"snmp_name": parts[5]
 				})
 	return actual_snmp
+def build_syslog_nc(netconf_state): 
+	actual_syslog = {
+			"hosts": [],
+			"facility": "",
+			"trap_level": "",
+			"source_interface": "",
+			"timestamps": False
+		}
+	native = netconf_state.get("native_netconf", {})
+	logging = native.get("logging", {})
+	facility = logging.get("facility", "")
+	if facility: 
+		actual_syslog["facility"] = facility
+	hosts = logging.get("host", {}).get("ipv4-host-list", [])
+	if hosts: 
+		for h in normalize_to_list(hosts): 
+			actual_syslog["hosts"].append(h.get("ipv4-host", ""))
+	source_interface = logging.get("source-interface", {}).get("interface-name", "")
+	if source_interface: 
+		actual_syslog["source_interface"] = source_interface
+	trap_level = logging.get("trap", {}).get("severity", "")
+	if trap_level: 
+		actual_syslog["trap_level"] = trap_level
+	timestamps = (
+			native.get("service", {})
+			.get("timestamps", {})
+			.get("log", {})
+			.get("datetime", {})
+		)
+	if timestamps:
+		actual_syslog["timestamps"] = "msec" in timestamps
+	return actual_syslog
+def build_syslog_netmiko(running_config, device_state): 
+	actual_syslog = {
+			"hosts": [],
+			"trap_level": "",
+			"source_interface": "",
+			"timestamps": False
+		}
+	state_logging = device_state.get("syslog", {})
+	logging = state_logging.get("logging", {})
+	parse = CiscoConfParse(running_config.splitlines())
+	for p in parse.find_objects(r"^service timestamps"):
+		if "log datetime msec" in p.text: 
+			actual_syslog["timestamps"] = True 
+	trap_level = logging.get("trap", {}).get("level", "")
+	if trap_level: 
+		actual_syslog["trap_level"] = trap_level
+	logging_to = logging.get("trap", {}).get("logging_to", {})
+	if logging_to: 
+		for ip in logging_to:
+			actual_syslog["hosts"].append(ip)
+	source_interface = logging.get("trap", {}).get("logging_source_interface", {})
+	if source_interface: 
+		for interface in source_interface:
+			actual_syslog["source_interface"] = interface
+	return actual_syslog
+def build_port_security(running_config): 
+	parse = CiscoConfParse(running_config.splitlines())
+
+	actual_psecurity = {
+			"interfaces": {}
+	}
+	for p in parse.find_objects(r"^interface"):
+		interface_name = p.text.split()[1]
+		ps_config = actual_psecurity["interfaces"].setdefault(interface_name, {
+					"enabled": False,
+					"maximum": None,
+					"violation": "",
+					"sticky": False,
+					"mac_addresses": []
+			})
+		for child in p.children:
+			full_confg = child.text.strip()
+			config = child.text.strip().split()
+			if "switchport port-security" == full_confg: 
+				ps_config["enabled"] = True 
+			if "port-security maximum" in full_confg: 
+				ps_config["maximum"] = safe_int(config[-1])
+			if "port-security violation" in full_confg: 
+				ps_config["violation"] = config[-1]
+			if "port-security mac-address sticky" in full_confg:
+				ps_config["sticky"] = True
+			if "switchport port-security mac-address" in full_confg: 
+				ps_config["mac_addresses"].append(config[-1])
+	return actual_psecurity
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -1626,7 +1756,7 @@ def check_dhcp(expected_dhcp, actual_config):
 					f"Interface: {interface_name} | Helper IP: {e}"
 				)
 	return len(failures) == 0, failures  
-def check_snmp_nc(expected_snmp, actual_config): 
+def check_snmp(expected_snmp, actual_config): 
 	failures = []
 	exp_communities = expected_snmp.get("communities", [])
 	act_communities = actual_config.get("communities", [])
@@ -1716,6 +1846,112 @@ def check_snmp_nc(expected_snmp, actual_config):
 				f"(SNMP) Mismatched Traps | Syslog | Expected: {exp_traps.get('syslog')} | "
 				f"Actual: {act_traps.get('syslog')}"
 			)
+	return len(failures) == 0, failures
+def check_syslog(expected_syslog, actual_config, transport): 
+	failures = []
+	exp_hosts = set(expected_syslog.get("hosts", []))
+	act_hosts = set(actual_config.get("hosts", []))
+
+	missing_hosts = exp_hosts - act_hosts
+	extra_hosts = act_hosts - exp_hosts
+
+	if missing_hosts:
+		for ip in missing_hosts: 
+			failures.append(
+					f"(SYSLOG) Missing Syslog Host | IP: {ip}"
+				)
+	if extra_hosts: 
+		for ip in extra_hosts: 
+			failures.append(
+					f"(SYSLOG) Drift: Extra Syslog Host | IP: {ip}"
+				)
+	if transport == "NETCONF": 
+		if expected_syslog.get("facility") != actual_config.get("facility"): 
+			failures.append(
+					f"(SYSLOG) Mismatched Facility | Expected: {expected_syslog.get('facility')} | "
+					f"Actual: {actual_config.get('facility')}"
+				)
+	if expected_syslog.get("source_interface"): 
+		if expected_syslog.get("source_interface") != actual_config.get("source_interface"):
+			failures.append(
+					f"(SYSLOG) Mismatched Source Interface | "
+					f"Expected: {expected_syslog.get('source_interface')} | "
+					f"Actual: {actual_config.get('source_interface')}"
+				)
+	if expected_syslog.get("timestamps") is True: 
+		if not actual_config.get("timestamps"):
+			failures.append(
+					f"(SYSLOG) Mismatched Timestamps Configuration | service timestamps log datetime msec "
+					f"Expected: {expected_syslog.get('timestamps')} | "
+					f"Actual: {actual_config.get('timestamps')}"
+				)
+	if expected_syslog.get("trap_level") != actual_config.get("trap_level"): 
+		failures.append(
+				f"(SYSLOG) Mismatched Trap Level | "
+				f"Expected: {expected_syslog.get('trap_level')} | "
+				f"Actual: {actual_config.get('trap_level')}"
+			)
+	return len(failures) == 0, failures
+def check_port_security(expected_psecurity, actual_config): 
+	failures = []
+	exp_psecurity = expected_psecurity.get("interfaces", {})
+	act_psecurity = actual_config.get("interfaces", {})
+
+	extra_int = act_psecurity.keys() - exp_psecurity.keys()
+	if extra_int:
+		for e_int in extra_int: 
+			failures.append(
+					f"(Port Security) Drift: Extra Interface Configured with PS | "
+					f"Interface: {e_int}"
+				)
+	for interface, int_value in exp_psecurity.items():
+		actual = act_psecurity.get(interface)
+		if not actual: 
+			failures.append(
+					f"(Port Security) Interface Not Configured with PS | "
+					f"Interface: {interface}"
+				)
+			continue 
+		if actual.get("enabled") != int_value.get("enabled"): 
+			failures.append(
+					f"(Port Security) Port Security Should Be Enabled Mismatch | "
+					f"Expected: {int_value.get('enabled')} | Actual: {actual.get('enabled')}"
+				)
+		if actual.get("maximum") != int_value.get("maximum"): 
+			failures.append(
+					f"(Port Security) Mismatched Maximum Allowed | "
+					f"Expected: {int_value.get('maximum')} | "
+					f"Actual: {actual.get('maximum')}"
+				)
+		if actual.get("sticky") != int_value.get("sticky"): 
+			failures.append(
+					f"(Port Security) Mismatched Sticky Configuration | "
+					f"Expected: {int_value.get('sticky')} | "
+					f"Actual: {actual.get('sticky')}"
+				)
+		if actual.get("violation") != int_value.get("violation"): 
+			failures.append(
+					f"(Port Security) Mismatched Violation Configuration | "
+					f"Expected: {int_value.get('violation')} | "
+					f"Actual: {actual.get('violation')}"
+				)
+		exp_mac = set(int_value.get("mac_addresses", []))
+		act_mac = set(actual.get("mac_addresses", []))
+		missing_mac = exp_mac - act_mac 
+		extra_mac = act_mac - exp_mac 
+
+		if missing_mac: 
+			for m in missing_mac:
+				failures.append(
+						f"(Port Security) Missing MAC Address | "
+						f"MAC: {m}"
+					)
+		if extra_mac: 
+			for e in extra_mac: 
+				failures.append(
+						f"(Port Security) Drift: Extra MAC Address Found | "
+						f"MAC: {e}"
+					)
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
@@ -3110,4 +3346,315 @@ def configure_snmp(session, device_ip, snmp_data, log):
                 	),
 				"error": str(e)
 			}
+def cofnigure_syslog_netmiko(conn, device_ip, syslog_data, log): 
+	facility = syslog_data.get("facility", "")
+	hosts = syslog_data.get("hosts", [])
+	source_interface = syslog_data.get("source_interface", "")
+	timestamps = syslog_data.get("timestamps", False)
+	trap_level = syslog_data.get("trap_level", "")
+
+	hosts_log = " | ".join(
+			f"IP: {h}"
+			for h in hosts
+		)
+
+	try: 
+		template_syslog = template_env.get_template("SYSLOG_NETMIKO.j2")
+
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure SYSLOG | "
+						f"Hosts: {hosts_log} | Facility: {facility} | "
+						f"Source Interface: {source_interface} | "
+						f"service timestamps log datetime msec: {timestamps} | "
+						f"Severity: {trap_level} | Transport: NEMIKO"
+				)
+			}
+
+		commands_syslog = template_syslog.render(
+				facility=facility,
+				trap_level=trap_level,
+				hosts=hosts,
+				source_interface=source_interface,
+				timestamps=timestamps
+			).splitlines()
+
+		conn.send_command(commands_syslog)
 		
+		log.info(
+			"syslog_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "syslog_automation",
+                "event_type": "syslog_config",
+                "status": StepStatus.SUCCESS.value,
+                "timestamps": timestamps,
+                "facility": facility,
+                "source_interface": source_interface,
+                "hosts": hosts_log,
+                "severity": trap_level,
+                "message": (
+                		f"Syslog Configuration Successful | "
+                		f"Hosts: {hosts_log} | Facility: {facility} | "
+						f"Source Interface: {source_interface} | "
+						f"service timestamps log datetime msec: {timestamps} | "
+						f"Severity: {trap_level} | Transport: NETMIKO"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"Syslog Configuration Successful | "
+                			f"Hosts: {hosts_log} | Facility: {facility} | "
+							f"Source Interface: {source_interface} | "
+							f"service timestamps log datetime msec: {timestamps} | "
+							f"Severity: {trap_level} | Transport: NETMIKO"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "syslog_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "syslog_automation",
+                "event_type": "syslog_config",
+                "status": StepStatus.ERROR.value,
+                "timestamps": timestamps,
+                "facility": facility,
+                "source_interface": source_interface,
+                "hosts": hosts_log,
+                "severity": trap_level,
+                "error": str(e),
+                "message": (f"Try/Exception Error | Syslog Configuration | "
+                			f"Hosts: {hosts_log} | Facility: {facility} | "
+							f"Source Interface: {source_interface} | "
+							f"service timestamps log datetime msec: {timestamps} | "
+							f"Severity: {trap_level} | Transport: NETMIKO"
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | Syslog Configuration | "
+                			f"Hosts: {hosts_log} | Facility: {facility} | "
+							f"Source Interface: {source_interface} | "
+							f"service timestamps log datetime msec: {timestamps} | "
+							f"Severity: {trap_level} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+def configure_syslog_nc(session, device_ip, syslog_data, log): 
+	facility = syslog_data.get("facility", "")
+	hosts = syslog_data.get("hosts", [])
+	source_interface = syslog_data.get("source_interface", "")
+	timestamps = syslog_data.get("timestamps", False)
+	trap_level = syslog_data.get("trap_level", "")
+
+	hosts_log = " | ".join(
+			f"IP: {h}"
+			for h in hosts
+		)
+
+	try: 
+		template_timestamps = template_env.get_template("SYS_Time_NC.j2")
+		template_syslog = template_env.get_template("SYSLOG_NC.j2")
+
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure SYSLOG | "
+						f"Hosts: {hosts_log} | Facility: {facility} | "
+						f"Source Interface: {source_interface} | "
+						f"service timestamps log datetime msec: {timestamps} | "
+						f"Severity: {trap_level} | Transport: NETCONF"
+				)
+			}
+
+		commands_syslog = template_syslog.render(
+				facility=facility,
+				trap_level=trap_level,
+				hosts=hosts,
+				source_interface=source_interface,
+			)
+		commands_timestamps = template_timestamps.render()
+		session.edit_config(
+				target="running", 
+				config=commands_syslog
+			)
+		if timestamps: 
+			session.edit_config(
+					target="running",
+					config=commands_timestamps
+				)
+
+		log.info(
+			"syslog_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "syslog_automation",
+                "event_type": "syslog_config",
+                "status": StepStatus.SUCCESS.value,
+                "timestamps": timestamps,
+                "facility": facility,
+                "source_interface": source_interface,
+                "hosts": hosts_log,
+                "severity": trap_level,
+                "message": (
+                		f"Syslog Configuration Successful | "
+                		f"Hosts: {hosts_log} | Facility: {facility} | "
+						f"Source Interface: {source_interface} | "
+						f"service timestamps log datetime msec: {timestamps} | "
+						f"Severity: {trap_level} | Transport: NETCONF"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"Syslog Configuration Successful | "
+                			f"Hosts: {hosts_log} | Facility: {facility} | "
+							f"Source Interface: {source_interface} | "
+							f"service timestamps log datetime msec: {timestamps} | "
+							f"Severity: {trap_level} | Transport: NETCONF"
+                	)
+			}
+	
+	except Exception as e: 
+		log.info(
+            "syslog_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "syslog_automation",
+                "event_type": "syslog_config",
+                "status": StepStatus.ERROR.value,
+                "timestamps": timestamps,
+                "facility": facility,
+                "source_interface": source_interface,
+                "hosts": hosts_log,
+                "severity": trap_level,
+                "error": str(e),
+                "message": (f"Try/Exception Error | Syslog Configuration | "
+                			f"Hosts: {hosts_log} | Facility: {facility} | "
+							f"Source Interface: {source_interface} | "
+							f"service timestamps log datetime msec: {timestamps} | "
+							f"Severity: {trap_level} | Transport: NETCONF"
+							f"Error: {str(e)}"
+                	)
+            }
+
+        )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | Syslog Configuration | "
+                			f"Hosts: {hosts_log} | Facility: {facility} | "
+							f"Source Interface: {source_interface} | "
+							f"service timestamps log datetime msec: {timestamps} | "
+							f"Severity: {trap_level} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+                	),
+				"error": str(e)
+			}
+def configure_psecurity(conn, device_ip, ps_data, log): 
+	interfaces = ps_data.get("interfaces", {})
+	ps_log = " | ".join(
+			f"Interface: {i} | Enabled: {v.get('enabled')} | Maximum: {v.get('maximum')} | "
+			f"Sticky: {v.get('sticky')} | MAC Addresses: {v.get('mac_addresses')}"
+			for i, v in interfaces.items()
+		)
+	interface_list = [
+		{  	"interface": i,
+			"enabled": v.get('enabled'),
+			"maximum": v.get('maximum'),
+			"violation": v.get('violation'),
+			"sticky": v.get('sticky'),
+			"mac_addresses": v.get('mac_addresses'),
+		}
+		for i, v in interfaces.items()
+	]
+
+	try: 
+		template = template_env.get_template("PS_NETMIKO.j2")
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure Port Security | "
+						f"{ps_log}"
+				)
+			}
+		for intf in interface_list: 
+			commands = [ 
+					line.strip()
+					for line in template.render(
+					interface=intf.get("interface"),
+					enabled=intf.get("enabled"),
+					maximum=intf.get("maximum"),
+					violation=intf.get("violation"),
+					sticky=intf.get("sticky"),
+					mac_addresses=intf.get("mac_addresses", [])
+				).splitlines()
+				if line.strip()
+			]
+			conn.send_config_set(commands)
+
+		log.info(
+			"ps_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "ps_automation",
+	            "event_type": "ps_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "interfaces": interface_log,
+	            "message": (
+	            		f"Port Security Configuration Successful | "
+	            		f"{ps_log} | Transport: NETMIKO"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"Port Security Configuration Successful | "
+	            			f"{ps_log} | Transport: NETMIKO"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "ps_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "ps_automation",
+	            "event_type": "ps_config",
+	            "status": StepStatus.ERROR.value,
+	            "interfaces": ps_log,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | Port Security Configuration | "
+	            			f"{ps_log} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | Port Security Configuration | "
+	            		    f"{ps_log} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
