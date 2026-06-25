@@ -159,6 +159,11 @@ def get_netbox():
 		"port_security": {
 				"interfaces": {}
 
+		},
+		"dhcp_snooping": {
+				"enabled_vlans": [],
+				"interfaces": {},
+				"option82": False
 		}
 			}
 		is_switch = device_name.role.slug == "switch"
@@ -176,6 +181,7 @@ def get_netbox():
 		snmp_context = context.get("snmp", {})
 		syslog_context = context.get("syslog", {})
 		psecurity_context = context.get("port_security", {})
+		snooping_context = context.get("dhcp_snooping", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -418,6 +424,19 @@ def get_netbox():
 						"sticky": ps_values.get("sticky", ""),
 						"violation": ps_values.get("violation", "")
 					}
+		if snooping_context:
+			config_data[host_ip]["enabled_vlans"].extend(
+					snooping_context.get("enabled_vlans", [])
+				)
+			config_data[host_ip]["option82"] = (
+					snooping_context.get("option82")
+				)
+			interfaces = snooping_context.get("interfaces", {})
+			for interface_name, int_value in interfaces.items():
+				config_data[host_ip]["interfaces"][interface_name] = {
+					"rate_limit": int_value.get("rate_limit", None),
+					"trusted": int_value.get("trusted", False)
+				}
 	return inventory, config_data
 def collect_device_state(conn): 
 	device_state = {}
@@ -1096,6 +1115,39 @@ def build_port_security(running_config):
 			if "switchport port-security mac-address" in full_confg: 
 				ps_config["mac_addresses"].append(config[-1])
 	return actual_psecurity
+def build_snooping(running_config): 
+	actual_snooping = {
+				"enabled_vlans": [],
+				"interfaces": {},
+				"option82": False
+		}
+	parse = CiscoConfParse(running_config.splitlines())
+	for p in parse.find_objects(r"^ip dhcp snooping"):
+			full_config = p.text.strip()
+			config = p.text.split()
+			vlan = config[-1].split(",")
+			vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
+			if "snooping vlan" in full_config:
+				actual_snooping["enabled_vlans"] = vlan_list
+			if "no ip dhcp snooping information" in full_confg: 
+				actual_snooping["option82"] = False  
+	for p in find_objects(r"^interface"): 
+		part = p.text.split()
+		interface_name = part[-1]
+
+		for child in p.children: 
+			full_config = child.text.strip()
+			config = child.text.split()
+
+			if "snooping limit rate" in full_config:
+				actual_snooping["interfaces"][interface_name] = {
+						"rate_limit": config[-1]
+				}
+			if "snooping trust" in full_config:
+				actual_snooping["interfaces"][interface_name] = {
+						"trusted": True
+				}
+	return actual_snooping
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -1952,6 +2004,61 @@ def check_port_security(expected_psecurity, actual_config):
 						f"(Port Security) Drift: Extra MAC Address Found | "
 						f"MAC: {e}"
 					)
+	return len(failures) == 0, failures
+def check_snooping(expected_snooping, actual_config): 
+	failures = []
+	exp_vlans = set(expected_snooping.get("enabled_vlans", []))
+	act_vlans = set(actual_config.get("enabled_vlans", []))
+	missing_vlans = exp_vlans - act_vlans
+	extra_vlans = act_vlans - exp_vlans
+
+	if missing_vlans: 
+		failures.append(
+				f"(DHCP Snooping) Missing VLAN(s) On Device | VLAN(s): {",".join(map(str,missing_vlans))}"
+			)
+	if extra_vlans: 
+		failures.append(
+				f"(DHCP Snooping) Drift: Extra VLAN on Device | VLAN(s): {",".join(map(set(extra_vlans)))}"
+			)
+	exp_interfaces = expected_snooping.get("interfaces", {})
+	act_interfaces = actual_config.get("interfaces", {})
+
+	exp_int = set(exp_interfaces.keys())
+	act_int = set(act_interfaces.keys())
+
+	extra_int = act_int - exp_int
+	if extra_int:
+		for e in extra_int:  
+			failures.append(
+					f"(DHCP Snooping) Extra Interface Configured with DHCP Snooping | "
+					f"Interface: {e}"
+				)
+	for interface, int_value in exp_interfaces.items():
+		actual = act_interfaces.get(interface)
+		if not actual: 
+			failures.append(
+					f"(DHCP Snooping) Missing Interface Configured w DHCP Snooping | "
+					f"Interface: {interface}"
+				)
+			continue
+		if actual.get("rate_limit") != int_value.get("rate_limit"): 
+			failures.append(
+					f"(DCHP Snooping) Rate Limit Mismatch | "
+					f"Expected: {int_value.get('rate_limit')} | "
+					f"Actual: {actual.get('rate_limit')}"
+				)
+		if actual.get("trusted") != int_value.get("trusted"): 
+			failures.append(
+					f"(DHCP Snooping) Trusted Interface Config Mismatched | "
+					f"Expected: {int_value.get('trusted')} | "
+					f"Actual: {actual.get('trusted')}"
+				)
+	if actual_config.get("option82") != expected_snooping.get("option82"):
+		failures.append(
+				f"(DHCP Snooping) Mismatched Option 82 Config | "
+				f"Expected: {int_value.get('option82')} | "
+				f"Actual: {actual.get('option82')}"
+			)
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
@@ -3654,6 +3761,109 @@ def configure_psecurity(conn, device_ip, ps_data, log):
 				"summary":(
 							f"Try/Exception Error | Port Security Configuration | "
 	            		    f"{ps_log} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
+def configure_snooping(conn, device_ip, snoop_data, log): 
+	enabled_vlans = snoop_data.get("enabled_vlans", [])
+	option82 = snoop_data.get("option82", False)
+	interfaces = snoop_data.get("interfaces", {})
+	interface_list = [
+		{	
+			"interface": i,
+			"rate_limit": v.get("rate_limit", ""),
+			"trusted": v.get("trusted", False)
+
+		} for i, v in interfaces.items()
+	]
+	interface_log = " | ".join(
+			f"Interface: {i} | Rate Limit: {v.get('rate_limit')} | Trusted Interface: "
+			f"{v.get('trusted')}"
+		 	for i, v in interfaces.items()
+		)
+	try: 
+		template = template_env.get_template("SNOOPING_NET.j2")
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure DHCP Snooping | "
+						f"VLANs: {enabled_vlans} | {interface_log} | "
+						f"Option 82: {option82} | Transport: NETMIKO"
+				)
+			}
+		global_commands = template.render(
+				enabled_vlans=enabled_vlans,
+				option82=option82
+			)
+		conn.send_config_set(global_commands)
+
+		for intf in interface_list: 
+			commands = [
+				l.strip()
+				for l in template.render(
+						interface=intf.get("interface"),
+						trusted=intf.get("trusted"),
+						rate_limit=intf.get("rate_limit")
+					).splitlines()
+					if l.strip()
+			]
+			conn.send_config_set(commands)
+
+		log.info(
+			"snooping_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "snooping_automation",
+	            "event_type": "snooping_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "VLANs": enabled_vlans,
+	            "interfaces": interface_log,
+	            "option82": option82,
+	            "message": (
+	            		f"DHCP Snooping Configuration Successful | "
+	            		f"VLANs: {enabled_vlans} | {interface_log} | "
+						f"Option 82: {option82} | Transport: NETMIKO"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"DHCP Snooping Configuration Successful | "
+	            			f"VLANs: {enabled_vlans} | {interface_log} | "
+							f"Option 82: {option82} | Transport: NETMIKO"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "snooping_automation",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "snooping_automation",
+	            "event_type": "snooping_config",
+	            "status": StepStatus.ERROR.value,
+	           	"VLANs": enabled_vlans,
+	            "interfaces": interface_log,
+	            "option82": option82,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | DHCP Snooping Configuration | "
+	            			f"VLANs: {enabled_vlans} | {interface_log} | "
+							f"Option 82: {option82} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | DHCP Snooping Configuration | "
+	            		    f"VLANs: {enabled_vlans} | {interface_log} | "
+							f"Option 82: {option82} | Transport: NETMIKO | "
 							f"Error: {str(e)}"
 	            	),
 				"error": str(e)
