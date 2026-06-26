@@ -164,6 +164,18 @@ def get_netbox():
 				"enabled_vlans": [],
 				"interfaces": {},
 				"option82": False
+		},
+		"dai": {
+			"arp_inspection": true,
+			"enabled_vlans": [],
+			"interfaces": {},
+			"log_buffer": {}
+		}, 
+		"cdp": {
+			"enabled": False,
+			"timer": None,
+			"holdtime": None,
+			"interfaces": {},
 		}
 			}
 		is_switch = device_name.role.slug == "switch"
@@ -182,6 +194,8 @@ def get_netbox():
 		syslog_context = context.get("syslog", {})
 		psecurity_context = context.get("port_security", {})
 		snooping_context = context.get("dhcp_snooping", {})
+		dai_context = context.get("dai", {})
+		cdp_context = context.get("cdp", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -437,6 +451,38 @@ def get_netbox():
 					"rate_limit": int_value.get("rate_limit", None),
 					"trusted": int_value.get("trusted", False)
 				}
+		if dai_context: 
+			config_data[host_ip]["dai"]["arp_inspection"] = (
+					dai_context.get("arp_inspection", "")
+				)
+			config_data[host_ip]["dai"]["enabled_vlans"].extend(
+					dai_context.get("enabled_vlans", [])
+				)
+			interfaces = dai_context.get("interfaces", {})
+			for interface_name, int_value in interfaces.items():
+				config_data[host_ip]["dai"]["interfaces"][interface_name] = {
+						"rate_limit": int_value.get("rate_limit", None),
+						"trusted": int_value.get("trusted", False)
+				}
+			config_data[host_ip]["dai"]["log_buffer"] = (
+					dai_context.get("log_buffer", {})
+				)
+		if cdp_context: 
+			config_data[host_ip]["cdp"]["enabled"] = (
+					cdp_context.get("enabled", False)
+				)
+			config_data[host_ip]["cdp"]["timer"] = (
+					cdp_context.get("timer", None)
+				)
+			config_data[host_ip]["cdp"]["holdtime"] = (
+					cdp_context.get("holdtime", None)
+				)
+			interfaces = cdp_context.get("interfaces", {})
+			for interface_name, int_value in interfaces.items():
+				config_data[host_ip]["cdp"]["interfaces"][interface_name] = {
+						"enabled": int_value.get("enabled", False)
+				}
+
 	return inventory, config_data
 def collect_device_state(conn): 
 	device_state = {}
@@ -1125,9 +1171,9 @@ def build_snooping(running_config):
 	for p in parse.find_objects(r"^ip dhcp snooping"):
 			full_config = p.text.strip()
 			config = p.text.split()
-			vlan = config[-1].split(",")
-			vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
 			if "snooping vlan" in full_config:
+				vlan = config[-1].split(",")
+				vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
 				actual_snooping["enabled_vlans"] = vlan_list
 			if "no ip dhcp snooping information" in full_confg: 
 				actual_snooping["option82"] = False  
@@ -1148,6 +1194,47 @@ def build_snooping(running_config):
 						"trusted": True
 				}
 	return actual_snooping
+def build_dai(running_config):
+	parse = CiscoConfParse(running_config.splitlines())
+	actual_dai = {
+		"arp_inspection": "",
+		"enabled_vlans": [],
+		"interfaces": {},
+		"log_buffer": {}
+	}
+	for p in parse.find_objects(r"^ip arp inspection"): 
+		full_config = p.text.strip()
+		config = p.text.strip().split()
+		actual_dai["arp_inspection"] = True
+		if "inspection vlan" in full_config: 
+			vlans = config[-1].split(",")
+			vlan_list = [safe_int(v) for v in vlans if v.isdigit()]
+			actual_dai["enabled_vlans"] = vlan_list
+		if "inspection log-buffer" in full_config:
+			actual_dai["log_buffer"] = {
+				"enabled": True,
+				"entries": safe_int(config[-1])
+			}
+	for i in parse.find_objects(r"^interface"): 
+		part = i.text.strip().split()
+		interface_name = part[-1]
+
+		intf = actual_dai["interfaces"].setdefault(
+				interface_name,
+				{
+					"trusted": False,
+					"rate_limit": None
+				}
+			)
+		for c in i.children: 
+			full_config = c.text.strip()
+			config = c.text.strip().split()
+			if "inspection trust" in full_config:
+				intf["trusted"] = True
+			if "inspection limit rate" in full_config:
+				intf["rate_limit"] = safe_int(config[-1])
+	return actual_dai
+def build_cdp_
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -2014,11 +2101,11 @@ def check_snooping(expected_snooping, actual_config):
 
 	if missing_vlans: 
 		failures.append(
-				f"(DHCP Snooping) Missing VLAN(s) On Device | VLAN(s): {",".join(map(str,missing_vlans))}"
+				f"(DHCP Snooping) Missing VLAN(s) On Device | VLAN(s): {sorted(missing_vlans)}"
 			)
 	if extra_vlans: 
 		failures.append(
-				f"(DHCP Snooping) Drift: Extra VLAN on Device | VLAN(s): {",".join(map(set(extra_vlans)))}"
+				f"(DHCP Snooping) Drift: Extra VLAN on Device | VLAN(s): {sorted(extra_vlans)}"
 			)
 	exp_interfaces = expected_snooping.get("interfaces", {})
 	act_interfaces = actual_config.get("interfaces", {})
@@ -2059,6 +2146,74 @@ def check_snooping(expected_snooping, actual_config):
 				f"Expected: {int_value.get('option82')} | "
 				f"Actual: {actual.get('option82')}"
 			)
+	return len(failures) == 0, failures
+def check_dai(expected_dai, actual_config): 
+	failures = []
+	exp_arp = expected_dai.get("arp_inspection")
+	if exp_arp is not None:
+	    if exp_arp != actual_config.get("arp_inspection"):
+	        failures.append("(DAI) DAI Operational State Mismatch")
+	exp_vlans = set(expected_dai.get("enabled_vlans", []))
+	act_vlans = set(actual_config.get("enabled_vlans", []))
+	missing_vlans = exp_vlans - act_vlans
+	extra_vlans = act_vlans - exp_vlans
+
+	if missing_vlans:
+			failures.append(
+					f"(DAI) Missing VLAN(s) | VLAN(s): {sorted(missing_vlans)}"
+				)
+	if extra_vlans:
+			failures.append(
+					f"(DAI) Drift: Extra VLAN(s) Found | VLAN: {sorted(extra_vlans)}"
+				)
+	
+	exp_buffer = expected_dai.get("log_buffer", {})
+	act_buffer = actual_config.get("log_buffer", {})
+
+	if exp_buffer.get("enabled") != act_buffer.get("enabled"):
+	    failures.append(
+	        f"(DAI) Log Buffer State Mismatch | "
+	        f"Expected: {exp_buffer.get('enabled')} | "
+	        f"Actual: {act_buffer.get('enabled')}"
+	    )
+	if exp_buffer.get("enabled") and act_buffer.get("enabled"): 
+		if exp_buffer.get("entries") != act_buffer.get("entries"):
+			failures.append(
+					f"(DAI) Log Buffer Entries Mismatch | "
+					f"Expected: {exp_buffer.get('entries')} | "
+					f"Actual: {act_buffer.get('entries')}"
+				)
+	exp_interfaces = expected_dai.get("interfaces", {})
+	act_interfaces = actual_config.get("interfaces", {})
+
+	extra_int = act_interfaces.keys() - exp_interfaces.keys()
+
+	if extra_int:
+		for e in extra_int:
+			failures.append(
+					f"(DAI) Drift: Extra Interface Configured with DAI | "
+					f"Interface: {e}"
+				)
+	for interface_name, int_value in exp_interfaces.items():
+		actual = act_interfaces.get(interface_name)
+		if not actual: 
+			failures.append(
+					f"(DAI) Missing Interface Not Configured with DAI | "
+					f"Interface: {interface_name}"
+				)
+			continue
+		if actual.get("rate_limit") != int_value.get("rate_limit"):
+			failures.append(
+					f"(DAI) Misatched Rate Limit Configuration | "
+					f"Expected: {int_value.get('rate_limit')} | "
+					f"Actual: {actual.get('rate_limit')}"
+				)
+		if actual.get("trusted") != int_value.get("trusted"):
+			failures.append(
+					f"(DAI) Mismatched Trusted Interface Configuration | "
+					f"Expected: {int_value.get('trusted')} | "
+					f"Actual: {actual.get('trusted')}"
+				)	      
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
@@ -3864,6 +4019,98 @@ def configure_snooping(conn, device_ip, snoop_data, log):
 							f"Try/Exception Error | DHCP Snooping Configuration | "
 	            		    f"VLANs: {enabled_vlans} | {interface_log} | "
 							f"Option 82: {option82} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
+def configure_dai(conn, device_ip, dai_data, log): 
+	enabled_vlans = dai_data.get("enabled_vlans", [])
+	interfaces = dai_data.get("interfaces", {})
+	log_buffer = dai_data.get("log_buffer", {})
+
+	interface_log = " | ".join(
+			f"Interface: {i} | Rate Limit: {v.get('rate_limit', None)} | "
+			f"Trusted: {v.get('trusted', '')}"
+			for i, v in interfaces.items()
+		)
+	buffer_log = " | ".join(
+			f"Enabled: {log_buffer.get('enabled')} | Entries: {log_buffer.get('entries')}"
+		)
+	try: 
+		template = template_env.get_template("DAI_NET.j2")
+
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure DAI | "
+						f"VLANs: {enabled_vlans} | {interface_log} | "
+						f"Log Buffer: {buffer_log} | Transport: NETMIKO"
+				)
+			}
+		
+		commands = template.render(
+				enabled_vlans=enabled_vlans,
+				log_buffer=log_buffer,
+				interfaces=interfaces
+			).splitlines()
+		
+		conn.send_config_set(commands)
+
+
+		log.info(
+			"dai_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "dai_automation",
+	            "event_type": "dai_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "VLANs": enabled_vlans,
+	            "interfaces": interface_log,
+	            "buffer_log": buffer_log,
+	            "message": (
+	            		f"DAI Configuration Successful | "
+	            		f"VLANs: {enabled_vlans} | {interface_log} | "
+						f"Log Buffer: {buffer_log} | Transport: NETMIKO"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"DAI Configuration Successful | "
+	            			f"VLANs: {enabled_vlans} | {interface_log} | "
+							f"Log Buffer: {buffer_log} | Transport: NETMIKO"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "dai_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "dai_automation",
+	            "event_type": "dai_config",
+	            "status": StepStatus.ERROR.value,
+	           	"VLANs": enabled_vlans,
+	            "interfaces": interface_log,
+	            "buffer_log": buffer_log,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | DAI Configuration | "
+	            			f"VLANs: {enabled_vlans} | {interface_log} | "
+							f"Log Buffer: {buffer_log} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | DAI Configuration | "
+	            			f"VLANs: {enabled_vlans} | {interface_log} | "
+							f"Log Buffer: {buffer_log} | Transport: NETMIKO | "
 							f"Error: {str(e)}"
 	            	),
 				"error": str(e)
