@@ -523,7 +523,18 @@ def collect_device_state(conn):
 			)
 	except Exception: 
 		device_state["syslog"] = {}
-
+	try: 
+		device_state["cdp"] = (
+				conn.send_command("show cdp")
+			)
+	except Exception:
+		device_state["cdp"] = {}
+	try: 
+		device_state["cdp_interface"] = (
+				conn.send_command("show cdp interface")
+			)
+	except Exception:
+		device_state["cdp_interface"] = {}
 	return device_state
 def restconf_get(session, url):
 	try: 
@@ -1234,7 +1245,60 @@ def build_dai(running_config):
 			if "inspection limit rate" in full_config:
 				intf["rate_limit"] = safe_int(config[-1])
 	return actual_dai
-def build_cdp_
+def build_cdp_nc(netconf_state): 
+	actual_cdp = {
+		"enabled": False,
+		"timer": None,
+		"holdtime": None,
+		"interfaces": {}
+	}
+	native = netconf_state.get("native_netconf", {})
+	cdp_run = native.get("cdp", {}).get("run", {})
+	if cdp_run: 
+		actual_cdp["enabled"] = True
+	cdp_timer = native.get("cdp", {}).get("timer", {}).get("#text", "")
+	if cdp_timer: 
+		actual_cdp["timer"] = safe_int(cdp_timer)
+	cdp_holdtime = native.get("cdp", {}).get("holdtime", {}).get("#text", "")
+	if cdp_holdtime:
+		actual_cdp["holdtime"] = safe_int(cdp_holdtime)
+	interface = native.get("interface", {})
+	for interface_type, int_value in interface.items(): 
+		full_interface = f"{interface_type}{int_value.get('name')}"
+		cdp_enable = int_value.get("cdp", {}).get("enable", False)
+		
+		actual_cdp["interfaces"][full_interface] = {
+				"enabled": cdp_enable
+			}
+	return actual_cdp
+def build_cdp_netimko(run_global, run_interface):
+	actual_cdp = {
+		"enabled": False,
+		"timer": None,
+		"holdtime": None,
+		"interfaces": {}
+	}
+	parse = CiscoConfParse(run_global.splitlines())
+	for p in parse.find_objects(r"^Global CDP information:"):
+		for c in p.children: 
+			config = c.text.strip().split()
+			full_config = c.text.strip()
+
+			if "Sending CDP packets every" in full_config: 
+				actual_cdp["timer"] = safe_int(config[-2])
+			if "Sending a holdtime value" in full_config: 
+				actual_cdp["holdtime"] = safe_int(config[-2])
+			if "enabled" in full_config: 
+				actual_cdp["enabled"] = True 
+	parse_2 = CiscoConfParse(run_interface.splitlines())
+	for p in parse_2.find_objects(r"^\S+"):
+		config = p.text.strip().split()
+		interface_name = config[0]
+
+		actual_cdp["interfaces"][interface_name] = {
+			"enabled": True 
+		}
+	return actual_cdp
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
