@@ -176,6 +176,10 @@ def get_netbox():
 			"timer": None,
 			"holdtime": None,
 			"interfaces": {},
+		}, 
+		"etherchannel": {
+			"enabled": False, 
+			"groups": {}
 		}
 			}
 		is_switch = device_name.role.slug == "switch"
@@ -196,6 +200,7 @@ def get_netbox():
 		snooping_context = context.get("dhcp_snooping", {})
 		dai_context = context.get("dai", {})
 		cdp_context = context.get("cdp", {})
+		ether_context = context.get("etherchannel", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -482,6 +487,13 @@ def get_netbox():
 				config_data[host_ip]["cdp"]["interfaces"][interface_name] = {
 						"enabled": int_value.get("enabled", False)
 				}
+		if ether_context: 
+			config_data[host_ip]["etherchannel"]["enabled"] = (
+					ether_context.get("enabled", False)
+				)
+			config_data[host_ip]["etherchannel"]["groups"] = (
+						ether_context.get("groups", {})
+				)
 
 	return inventory, config_data
 def collect_device_state(conn): 
@@ -1299,6 +1311,54 @@ def build_cdp_netimko(run_global, run_interface):
 			"enabled": True 
 		}
 	return actual_cdp
+def build_etherchannel(running_config): 
+	parse = CiscoConfParse(running_config.splitlines())
+	actual_ether = {
+		"enabled": False,
+		"groups": {}
+	}
+
+	for p in parse.find_objects(r"^interface"): 
+		config = p.text.strip().split()
+		interface_name = config[-1]
+		full_config = p.text.strip()
+		for c in p.children:
+			full_config = c.text.strip()
+			config = c.text.strip().split()
+
+			if "channel-group" in full_config: 
+				group = safe_int(config[-3])
+				mode = config[-1]
+				group_entry = actual_ether["groups"].setdefault(group,{
+						"mode": mode,
+						"interfaces": [], 
+						"description": None,
+						"switchport_mode": None,
+						"type": None, 
+						"enabled": True 
+					})
+				group_entry["interfaces"].append(interface_name)
+
+				if mode in ["active", "passive"]: 
+					group_entry["type"] = "lacp"
+				elif mode in ["desirable", "auto"]: 
+					group_entry["type"] = "pagp"
+				else: 
+					group_entry["type"] = "static"
+	for p in parse.find_objects(r"^interface Port-channel"):
+		config = p.text.strip().split()
+		group = safe_int(config[-1][12:])
+		group_entry = actual_ether["groups"].get(group)
+		if not group_entry:
+			continue
+		for c in p.children:
+			full_config = c.text.strip().lower()
+			config = c.text.strip().split()
+			if full_config.startswith("description"): 
+				group_entry["description"] = " ".join(config[1:])
+			elif full_config.startswith("switchport mode"): 
+				group_entry["switchport_mode"] = config[-1]
+	return actual_ether
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -2216,7 +2276,10 @@ def check_dai(expected_dai, actual_config):
 	exp_arp = expected_dai.get("arp_inspection")
 	if exp_arp is not None:
 	    if exp_arp != actual_config.get("arp_inspection"):
-	        failures.append("(DAI) DAI Operational State Mismatch")
+	        failures.append(
+	        			f"(DAI) DAI Operational State Mismatch"
+	        			f" | Expected: {exp_arp} | Actual: {actual.get('expected')}" 
+	        	)
 	exp_vlans = set(expected_dai.get("enabled_vlans", []))
 	act_vlans = set(actual_config.get("enabled_vlans", []))
 	missing_vlans = exp_vlans - act_vlans
@@ -2278,6 +2341,70 @@ def check_dai(expected_dai, actual_config):
 					f"Expected: {int_value.get('trusted')} | "
 					f"Actual: {actual.get('trusted')}"
 				)	      
+	return len(failures) == 0, failures
+def check_cdp(expected_cdp, actual_config, transport): 
+	failures = []
+	exp_enabled = expected_cdp.get("enabled", False) 
+	act_enabled = actual_config.get("enabled", False)
+
+	if act_enabled is not None: 
+		if exp_enabled != act_enabled: 
+			failures.append(
+					f"(CDP) Operational State Mismatch | "
+					f"Expected: {exp_enabled} | Actual: {act_enabled}"
+				)
+	exp_timer = expected_cdp.get("timer", None)
+	act_timer = actual_config.get("timer", None)
+	if exp_timer != act_timer: 
+		failures.append(
+				f"(CDP) Timer Mismath | Expected: {exp_timer} | "
+				f"Actual: {act_timer}"
+			)
+	exp_hold = expected_cdp.get("holdtime", None)
+	act_hold = actual_config.get("holdtime", None)
+	if exp_hold != act_hold: 
+		failures.append(
+				f"(CDP) HoldTime Mismatch | Expected: {exp_hold} | "
+				f"Actual: {act_hold}"
+			)
+	exp_interfaces = expected_cdp.get("interfaces", {})
+	act_interfaces = actual_config.get("interfaces", {})
+ 
+	for interface, int_value in exp_interfaces.items(): 
+		actual = act_interfaces.get(interface)
+		exp_enabled = int_value.get("enabled", False)
+		if transport == "NETMIKO":
+			if exp_enabled: 
+				if not actual: 
+					failures.append(
+							f"(CDP) Interface Not Configured w/ CDP | Interface: {interface}"
+						)
+					continue
+				if actual.get("enabled") != int_value.get("enabled"):
+					failures.append(
+							f"(CDP) Interface CDP Configuration Mismatch | "
+							f"Expected: {int_value.get('enabled')} | "
+							f"Actual: {actual.get('enabled')}"
+						)
+			else: 
+				if actual: 
+					failures.append(
+							f"(CDP) Interface CDP Operational State Mismatch | "
+							f"Expected: {int_value.get('enabled')} | "
+							f"Actual: {actual.get('enabled')}"
+						)
+		else: 
+			if not actual: 
+				failures.append(
+						f"(CDP) Interface Not Configured w/ CDP | Interface: {interface}"
+					)
+				continue
+			if actual.get("enabled") != int_value.get("enabled"):
+				failures.append(
+						f"(CDP) Interface CDP Configuration Mismatch | "
+						f"Expected: {int_value.get('enabled')} | "
+						f"Actual: {actual.get('enabled')}"
+					)
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
@@ -4175,6 +4302,203 @@ def configure_dai(conn, device_ip, dai_data, log):
 							f"Try/Exception Error | DAI Configuration | "
 	            			f"VLANs: {enabled_vlans} | {interface_log} | "
 							f"Log Buffer: {buffer_log} | Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
+def configure_cdp_netmiko(conn, device_ip, cdp_data, log): 
+	enabled = cdp_data.get("enabled", False)
+	timer = cdp_data.get("timer", None)
+	holdtime = cdp_data.get("holdtime", None)
+	interfaces = cdp_data.get("interfaces", {})
+	int_log = " | ".join(
+	     f"Interface/Enabled: {i}/{v.get('enabled')}" 
+		 for i, v in interfaces.items()
+		)
+	try: 
+		template = template_env.get_template("CDP_NET.j2")
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure CDP | "
+						f"Enabled: {enabled} | Timer: {timer} | "
+						f"HoldTime: {holdtime} | {int_log} | "
+						f"Transport: NETMIKO"
+				)
+			}
+		
+		commands = template.render(
+				timer=timer,
+				holdtime=holdtime,
+				interfaces=interfaces,
+				enabled=enabled
+			).splitlines()
+
+		conn.send_config_set(commands)
+
+		log.info(
+			"cdp_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "cdp_automation",
+	            "event_type": "cdp_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "globally_enabled": enabled,
+	            "timer/holdtime": f"{timer}/{holdtime}",
+	            "interfaces": int_log,
+	            "message": (
+	            		f"CDP Configuration Successful | "
+	            		f"Enabled: {enabled} | Timer: {timer} | "
+						f"HoldTime: {holdtime} | {int_log} | "
+						f"Transport: NETMIKO"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"CDP Configuration Successful | "
+		            		f"Enabled: {enabled} | Timer: {timer} | "
+							f"HoldTime: {holdtime} | {int_log} | "
+							f"Transport: NETMIKO"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "cdp_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "cdp_automation",
+	            "event_type": "cdp_config",
+	            "status": StepStatus.ERROR.value,
+	           	"globally_enabled": enabled,
+	            "timer/holdtime": f"{timer}/{holdtime}",
+	            "interfaces": int_log,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | CDP Configuration | "
+	            			f"Enabled: {enabled} | Timer: {timer} | "
+							f"HoldTime: {holdtime} | {int_log} | "
+							f"Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | CDP Configuration | "
+	            			f"Enabled: {enabled} | Timer: {timer} | "
+							f"HoldTime: {holdtime} | {int_log} | "
+							f"Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
+def configure_cdp_nc(session, device_ip, cdp_data, log): 
+	enabled = cdp_data.get("enabled", False)
+	timer = cdp_data.get("timer", None)
+	holdtime = cdp_data.get("holdtime", None)
+	interfaces = cdp_data.get("interfaces", {})
+	int_log = " | ".join(
+	     f"Interface/Enabled: {i}/{v.get('enabled')}" 
+		 for i, v in interfaces.items()
+		)
+	try: 
+		template_global = template_env.get_template("CDP_NC.j2")
+		template_int = template_env.get_template("CDP_INT_NC.j2")
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure CDP | "
+						f"Enabled: {enabled} | Timer: {timer} | "
+						f"HoldTime: {holdtime} | {int_log} | "
+						f"Transport: NETCONF"
+				)
+			}
+		global_commands = template_global.render(
+				holdtime=holdtime, 
+				timer=timer,
+				enabled=enabled
+			)
+		session.edit_config(
+				target="running",
+				config=global_commands
+			)
+		for interface, int_value in interfaces.items():
+			match = re.match(r"([A-Za-z]+)(.+)", interface)
+			interface_type = match.group(1) if match else ""
+			interface_num = match.group(2) if match else ""
+			enabled = int_value.get("enabled", False)
+
+			int_commands = template_int.render(
+					interface_type=interface_type,
+					interface_num=interface_num,
+					enabled=enabled
+				)
+			session.edit_config(target="running", config=int_commands)
+
+		log.info(
+			"cdp_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "cdp_automation",
+	            "event_type": "cdp_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "globlly_enabled": enabled,
+	            "timer/holdtime": f"{timer}/{holdtime}",
+	            "interfaces": int_log,
+	            "message": (
+	            		f"CDP Configuration Successful | "
+	            		f"Enabled: {enabled} | Timer: {timer} | "
+						f"HoldTime: {holdtime} | {int_log} | "
+						f"Transport: NETCONF"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"CDP Configuration Successful | "
+		            		f"Enabled: {enabled} | Timer: {timer} | "
+							f"HoldTime: {holdtime} | {int_log} | "
+							f"Transport: NETCONF"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "cdp_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "cdp_automation",
+	            "event_type": "cdp_config",
+	            "status": StepStatus.ERROR.value,
+	           	"globlly_enabled": enabled,
+	            "timer/holdtime": f"{timer}/{holdtime}",
+	            "interfaces": int_log,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | CDP Configuration | "
+	            			f"Enabled: {enabled} | Timer: {timer} | "
+							f"HoldTime: {holdtime} | {int_log} | "
+							f"Transport: NETCONF | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | CDP Configuration | "
+	            			f"Enabled: {enabled} | Timer: {timer} | "
+							f"HoldTime: {holdtime} | {int_log} | "
+							f"Transport: NETCONF | "
 							f"Error: {str(e)}"
 	            	),
 				"error": str(e)
