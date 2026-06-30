@@ -180,7 +180,8 @@ def get_netbox():
 		"etherchannel": {
 			"enabled": False, 
 			"groups": {}
-		}
+		}, 
+		"static_routes": []
 			}
 		is_switch = device_name.role.slug == "switch"
 		is_router = device_name.role.slug == "router"
@@ -201,6 +202,7 @@ def get_netbox():
 		dai_context = context.get("dai", {})
 		cdp_context = context.get("cdp", {})
 		ether_context = context.get("etherchannel", {})
+		static_context = context.get("static_routes", {})
 		for v in all_vlans: 
 					config_data[host_ip]["vlans"].append({
 							"name": v.name,
@@ -494,7 +496,10 @@ def get_netbox():
 			config_data[host_ip]["etherchannel"]["groups"] = (
 						ether_context.get("groups", {})
 				)
-
+		if static_context:
+			config_data[host_ip]["static_routes"].extend(
+					static_context.get("static_routes")
+				)
 	return inventory, config_data
 def collect_device_state(conn): 
 	device_state = {}
@@ -1337,6 +1342,7 @@ def build_etherchannel(running_config):
 						"type": None, 
 						"enabled": True 
 					})
+			group_entry["enabled"] = True
 				group_entry["interfaces"].append(interface_name)
 
 				if mode in ["active", "passive"]: 
@@ -1359,6 +1365,14 @@ def build_etherchannel(running_config):
 			elif full_config.startswith("switchport mode"): 
 				group_entry["switchport_mode"] = config[-1]
 	return actual_ether
+def build_static(netconf_state): 
+	actual_static = []
+	native = netconf_state.get("native_netconf", {})
+	route = native.get("ip", {}).get("route", {}).get("ip-route-interface-forwarding-list", [])
+
+	network_address = route.get("prefix", "")
+	mask = route.get("mask", "")
+	next_hop = 
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -2405,6 +2419,74 @@ def check_cdp(expected_cdp, actual_config, transport):
 						f"Expected: {int_value.get('enabled')} | "
 						f"Actual: {actual.get('enabled')}"
 					)
+	return len(failures) == 0, failures
+def check_etherchannel(expected_ether, actual_config): 
+	failures = []
+	exp_enabled = expected_ether.get("enabled", False)
+	act_enabled = actual_config.get("enabled", False)
+
+	if exp_enabled != act_enabled: 
+		failures.append(
+				f"(Etherchannel) Misconfigured Operation Mode | "
+				f"Expected: {exp_enabled} | Actual: {act_enabled}"
+			)
+	exp_groups = expected_ether.get("groups", {})
+	act_groups = actual_config.get("groups", {})
+
+	extra_groups = act_groups.keys() - exp_groups.keys()
+
+	if extra_groups: 
+		failures.append(
+				f"(Etherchannel) Drift: Unexpected Port Channels | "
+				f"{sorted(extra_groups)}"
+			)
+	for group, g_value in exp_groups.items(): 
+		actual = act_groups.get(group)
+		if not actual: 
+			failures.append(
+				f"(Etherchannel) Missing Port Channel Group | "
+				f"{group}"
+			)
+			continue
+		exp_set = set(g_value.get("interfaces", []))
+		act_set = set(actual.get("interfaces", []))
+
+		missing_int = exp_set - act_set
+		extra_int = act_set - exp_set
+
+		if missing_int:
+			for m in missing_int: 
+				failures.append(
+						f"(Etherchannel) Missing Interface | "
+						f"Group: {group} | Interface: {m}"
+					)
+		if extra_int: 
+			for e in extra_int: 
+				failures.append(
+						f"(Etherchannel) Drift: Unexpected Interface | "
+						f"Group: {group} | Interface: {e}"
+					)
+		if actual.get("mode") !=  g_value.get("mode"):
+			failures.append(
+					f"(Etherchannel) Mode Mismatch | Expected: {g_value.get('mode')} | "
+					f"Actual: {actual.get('mode')}"
+				)
+		if actual.get("switchport_mode") != g_value.get("switchport_mode"): 
+			failures.append(
+					f"(Etherchannel) Mismatched Switchport Mode | Expected:"
+					f" {g_value.get('switchport_mode')} | Actual: {actual.get('switchport_mode')}"
+
+				)
+		if actual.get("type") != g_value.get("type"): 
+			failures.append(
+					f"(Etherchannel) Mismatched Etherchannel Type | "
+					f"Expected: {g_value.get('type')} | Actual: {actual.get('type')}"
+				)
+		if actual.get("description") != g_value.get("description"): 
+			failures.append(
+					f"(Etherchannel) Mismatched Description | Expected: "
+					f"{g_value.get('description')} | Actual: {actual.get('description')}"
+				)
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
@@ -4499,6 +4581,89 @@ def configure_cdp_nc(session, device_ip, cdp_data, log):
 	            			f"Enabled: {enabled} | Timer: {timer} | "
 							f"HoldTime: {holdtime} | {int_log} | "
 							f"Transport: NETCONF | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
+def configure_etherchannel(conn, device_ip, eth_data, log): 
+	enabled = eth_data.get("enabled", False)
+	groups = eth_data.get("groups", {})
+	groups_log = " | ".join(
+			f"Group #: {g} | Mode: {v.get('mode')} | Type: {v.get('type')} | "
+			f"Switchport Mode: {v.get('switchport_mode')} | Interfaces: "
+			f"Interfaces: {','.join(v.get('interfaces', []))} | Description: {v.get('description')}"
+			for g, v in groups.items()
+		)
+
+	try: 
+		template = template_env.get_template("etherchannel_net.j2")
+		
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure Etherchannel | "
+						f"Enabled: {enabled} | {groups_log} | "
+						f"Transport: NETMIKO"
+						
+				)
+			}
+		commands = template.render(
+				enabled=enabled,
+				groups=groups
+			).splitlines()
+
+		conn.send_config_set(commands)
+
+		log.info(
+			"ether_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "ether_automation",
+	            "event_type": "ether_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "enabled": enabled,
+	            "message": (
+	            		f"Etherchannel Configuration Successful | "
+	            		f"Enabled: {enabled} | {groups_log} | "
+						f"Transport: NETMIKO"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"Etherchannel Configuration Successful | "
+		            		f"Enabled: {enabled} | {groups_log} | "
+							f"Transport: NETMIKO"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "ether_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "ether_automation",
+	            "event_type": "ether_config",
+	            "status": StepStatus.ERROR.value,
+	           	"enabled": enabled,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | Etherchannel Configuration | "
+	            			f"Enabled: {enabled} | {groups_log} | "
+							f"Transport: NETMIKO | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | Etherchannel Configuration | "
+	            			f"Enabled: {enabled} | {groups_log} | "
+							f"Transport: NETMIKO | "
 							f"Error: {str(e)}"
 	            	),
 				"error": str(e)
