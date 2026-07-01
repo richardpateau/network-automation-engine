@@ -100,7 +100,7 @@ def get_netbox():
 				"secret": "ccna",
 				"device_type": device_name.platform.slug,
 				"name": device_name.name,
-				"transport": 
+				"transport": ""
 			})
 
 		config_data[host_ip] = {
@@ -147,7 +147,7 @@ def get_netbox():
 	    	"hosts": [],
 	    	"traps": [],
 	    	"location": "",
-	    	"contact"
+	    	"contact": ""
 		}, 
 		"syslog": {
 			"hosts": [],
@@ -166,7 +166,7 @@ def get_netbox():
 				"option82": False
 		},
 		"dai": {
-			"arp_inspection": true,
+			"arp_inspection": True,
 			"enabled_vlans": [],
 			"interfaces": {},
 			"log_buffer": {}
@@ -290,52 +290,49 @@ def get_netbox():
 									"network_type": ospf_custom.get("network_type",""),
 									"ospf_hello": ospf_custom.get("ospf_hello", ""),
 									"ospf_dead": ospf_custom.get("ospf_dead", ""),
-									"expected_neighbors": set(),
+									"expected_neighbors": set(
+											ospf_custom.get("ospf_neighbors", {}).get("expected_neighbors", [])
+										),
 									"actual_neighbors": set() 
 							}
-						current_subnet = str(r_ip.network.network_address)
-						ospf_ips = subnet_ip.get(current_subnet, [])
-						for ospf_ip in ospf_ips: 
-							ospf_ip_address = str(ospf_ip.address).split('/')[0]
-							if str(r_ip.ip) != ospf_ip_address:
-								ospf_process[proc_id]["interfaces"][device_interface.name]["expected_neighbors"].add(
-										ospf_ip_address
-										)
 		if ospf_process: 
 			ospf_context = device_name.config_context.get("ospf", {})
 			for proc_id, proc_data in ospf_process.items():
 				interfaces_payload = {}
 
-				for interface_name, interface_data in proc_data["interfaces"].items(): 
-					interfaces_payload[interface_name] = {
-							"interface_name": interface_name,
-							"network_address": interface_data.get("network_address", ""),
-							"wildcard": interface_data.get("wildcard", ""),
-							"area": interface_data.get("area", ""),
-							"network_type": interface_data.get("network_type", ""),
-							"ospf_hello": interface_data.get("ospf_hello", ""),
-							"ospf_dead": interface_data.get("ospf_dead", ""),
-							"expected_dr": interface_data.get("expected_dr", ""),
-							"expected_bdr": interface_data.get("expected_bdr", ""),
-							"expected_neighbors": interface_data.get("expected_neighbors")
-					}
-				config_data[host_ip]["ospf"].append({
-						"device_ip": host_ip,
-						"process_id": safe_int(proc_id),
-						"router_id": ospf_context.get(str(proc_id), {}).get("router_id", ""),
-						"auth_type": proc_data.get("auth_type", ""),
-						"interfaces": interfaces_payload,
-						"network_list": [
-							{
-								"network_address": interface.get("network_address"),
-								"wildcard": interface.get("wildcard", ""),
-								"area": interface.get("area", ""),
-								"interface": interface.get("interface_name")
-							}
-								for interface in interfaces_payload.values()
-						]
+				for interface_name, interface_data in data["interfaces"].items():
+				    interfaces_payload[interface_name] = {
+				        "name": interface_name,
+				        "subnet": interface_data.get("subnet"),
+				        "wildcard": interface_data.get("wildcard"),
+				        "area": interface_data.get("area"),
+				        "network_type": interface_data.get("network_type"),
+				        "hello_interval": interface_data.get("hello_interval"),
+				        "dead_interval": interface_data.get("dead_interval"),
+				        "expected_dr": interface_data.get("expected_dr"),
+				        "expected_bdr": interface_data.get("expected_bdr"),
+				        "expected_neighbors": interface_data.get("expected_neighbors", [])
+				    }
+				config_data["ospf"].append({
+				    "device": host_ip,
+				    "process_id": int(proc_id),
+				    "router_id": context.get(int(proc_id), {}).get("router_id", ""),
+				    "auth_type": data.get("auth_type", "none"),
+				    "hello_interval": data.get("hello_interval", 10),
+				    "dead_interval": data.get("dead_interval", 40),
 
-					})
+				    "interfaces": interfaces_payload,
+
+				    "network_list": [
+				        {
+				            "subnet": i["subnet"],
+				            "wildcard": i["wildcard"],
+				            "area": i["area"],
+				            "interface": i["name"]
+				        }
+				        for i in interfaces_payload.values()
+				    ]
+				})
 		if acl_context: 
 			config_data[host_ip]["acl"] = acl_context
 		for binding in acl_binding_context: 
@@ -1342,7 +1339,7 @@ def build_etherchannel(running_config):
 						"type": None, 
 						"enabled": True 
 					})
-			group_entry["enabled"] = True
+				group_entry["enabled"] = True
 				group_entry["interfaces"].append(interface_name)
 
 				if mode in ["active", "passive"]: 
@@ -1365,14 +1362,47 @@ def build_etherchannel(running_config):
 			elif full_config.startswith("switchport mode"): 
 				group_entry["switchport_mode"] = config[-1]
 	return actual_ether
+def is_ip_address(value): 
+	return bool(re.match(r"^\d+\.\d+\.\d+\.\d+$", value))
 def build_static(netconf_state): 
 	actual_static = []
 	native = netconf_state.get("native_netconf", {})
 	route = native.get("ip", {}).get("route", {}).get("ip-route-interface-forwarding-list", [])
 
-	network_address = route.get("prefix", "")
-	mask = route.get("mask", "")
-	next_hop = 
+	for r in normalize_to_list(route): 
+		AD = None 
+		name = None  
+		next_hop = [] 
+		exit_interface = None  
+
+		network_address = r.get("prefix", "")
+		mask = r.get("mask", {})
+		fwd_list = r.get("fwd-list", {})
+		fwd = fwd_list.get("fwd", "")
+
+		if is_ip_address(fwd): 
+			next_hop = fwd
+			AD = safe_int(fwd_list.get("metric", None))
+			name = fwd_list.get("name", None)
+		else: 
+			exit_interface = fwd
+
+		fully_specified = fwd_list.get("interface-next-hop", [])
+		if fully_specified: 
+			for f in normalize_to_list(fully_specified): 
+				next_hop.append(f.get("ip-address"))
+				AD = safe_int(f.get("metric")) if f.get("metric") is not None else AD 
+				name = f.get("name")
+
+		actual_static.append({
+			"AD": AD,
+			"network_address": network_address,
+			"mask": mask,
+			"next_hop": next_hop,
+			"exit_interface": exit_interface,
+			"name": name 
+		})
+	return actual_static
 def check_vlan(expected_vlans, actual_vlans):
 	failures = []
 
@@ -2486,6 +2516,53 @@ def check_etherchannel(expected_ether, actual_config):
 			failures.append(
 					f"(Etherchannel) Mismatched Description | Expected: "
 					f"{g_value.get('description')} | Actual: {actual.get('description')}"
+				)
+	return len(failures) == 0, failures
+def check_static(expected_static, actual_config): 
+	failures = []
+	exp_network = {(e.get("network_address"), e.get("mask")): e for e in expected_static}
+	act_network = {(a.get("network_address"), a.get("mask")): a for a in actual_config}
+
+	extra_net = act_network.keys() - exp_network.keys()
+
+	if extra_net: 
+		for (add, mask) in extra_net: 
+			failures.append(
+					f"(Static Routing) Drift: Unexpected Static IP | "
+					f"IP: {add} | Mask: {mask}"
+				)
+	for (add, mask), exp_value in exp_network.items(): 
+		actual = act_network.get((add, mask))
+		if not actual: 
+			failures.append(
+					f"(Static Routing) Missing Static Route | "
+					f"IP: {add} | Mask: {mask}"
+				)
+			continue 
+		if actual.get("AD") != exp_value.get("AD"): 
+			failures.append(
+					f"(Static Routing) AD Mismatch | Expected: {exp_value.get('AD')} | "
+					f"Actual: {actual.get('AD')}"
+				)
+		if actual.get("exit_interface") != exp_value.get("exit_interface"): 
+			failures.append(
+					f"(Static Routing) Exit Interface Mismatch | Expected: "
+					f"{exp_value.get('exit_interface')} | Actual: {actual.get('exit_interface')}"
+				)
+		exp_next = set(exp_value.get("next_hop") or [])
+		act_next = set(actual.get("next_hop") or [])
+		missing_next = exp_next - act_next 
+		extra_next = act_next - exp_next 
+
+		if missing_next: 
+			failures.append(
+					f"(Static Routing) Missing Static Routes | "
+					f"Missing: {', '.join(missing_next)}"
+				)
+		if extra_next: 
+			failures.append(
+					f"(Static Routing) Drift: Unexpected Static Routes | "
+					f"Extra: {extra_next}"
 				)
 	return len(failures) == 0, failures
 def configure_vlan(conn, device_ip, vlan_data, log): 
@@ -4668,3 +4745,517 @@ def configure_etherchannel(conn, device_ip, eth_data, log):
 	            	),
 				"error": str(e)
 			}
+def configure_static(session, static_data, log): 
+	static = static_data.get("static", [])
+	static_log = " | ".join(
+			f"Network Address: {s.get('network_address')} | Mask: {s.get('mask')} | "
+			f"AD: {s.get('AD', 'N/A')} | Exit Interface : {s.get('exit_interface', 'N/A')} | "
+			f"Next Hop IP: {s.get('next_hop', 'N/A')}"
+			for s in static
+		)
+	try: 
+		temp_recursive = template_env.get_template("RECURSIVE.j2")
+		temp_exit_int = template_env.get_template("EXIT_INT.j2")
+		temp_full = template_env.get_template("FULLY_SPECIFIC.j2")
+
+		templates = {
+			"recursive": temp_recursive,
+			"exit-interface": temp_exit_int,
+			"fully-specified": temp_full
+		}
+
+		
+		if DRY_RUN: 
+			return {
+				"status": OpStatus.DRY_RUN.value,
+				"summary": (
+						f"[DRY_RUN] Would Configure Static Routes | "
+						f"{static_log} | Transport: NETCONF"
+				)
+			}
+
+		for s in static: 
+			template = templates.get(s.get("type"))
+			if not template: 
+				continue
+			commands = template.render(
+					static=static
+				)
+			
+	        session.edit_config(
+	            target="running",
+	            config=commands
+	        )
+
+		log.info(
+			"static_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "static_automation",
+	            "event_type": "static_config",
+	            "status": StepStatus.SUCCESS.value,
+	            "message": (
+	            		f"Static Routes Configuration Successful | "
+	            		f"{static_log} | Transport: NETCONF"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.SUCCESS.value,
+				"summary": (
+					 		f"Static Route Configuration Successful | "
+		            		f"{static_log} | Transport: NETCONF"
+	            	)
+			}
+
+	except Exception as e: 
+		log.info(
+	        "static_config",
+	        extra={
+	            "device_ip": device_ip,
+	            "component": "static_automation",
+	            "event_type": "static_config",
+	            "status": StepStatus.ERROR.value,
+	            "error": str(e),
+	            "message": (f"Try/Exception Error | Static Route Configuration | "
+	            			f"{static_log} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+	            	)
+	        }
+
+	    )
+		return {
+				"status": OpStatus.ERROR.value,
+				"summary":(
+							f"Try/Exception Error | Static Route Configuration | "
+	            			f"{static_log} | Transport: NETCONF | "
+							f"Error: {str(e)}"
+	            	),
+				"error": str(e)
+			}
+class SessionContext: 
+	def __init__(self, session, base_url, device_ip): 
+		self.session = session
+		self.base_url = base_url 
+		self.device_ip = device_ip 
+def restconf_get(session, url):
+    try:
+        response = session.get(url, verify=False)
+
+        response.raise_for_status()
+
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+    	raise Exception(f"RESTCONF HTTP error: {e} | URL: {url}")
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"RESTCONF request failed: {e} | URL: {url}")
+def collect_restconf_state(session_ctx, log):
+    restconf_state = {}
+
+    try:
+        session = session_ctx.session
+        base_url = session_ctx.base_url
+
+
+        # Interface
+        interface_url = (
+            f"{base_url}/Cisco-IOS-XE-native:native/interface"
+        )
+        restconf_state["interface_restconf"] = restconf_get(session, interface_url)
+
+        # OSPF config
+        ospf_url = (
+            f"{base_url}/Cisco-IOS-XE-native:native/router"
+        )
+        restconf_state["ospf_restconf"] = restconf_get(session, ospf_url)
+
+        # OSPF operational
+        ospf_oper_url = (
+            f"https://{base_url}/Cisco-IOS-XE-ospf_oper:ospf-oper-data"
+        )
+        restconf_state["ospf_oper_restconf"] = restconf_get(session, ospf_oper_url)
+
+    except Exception as e:
+        log.exception(
+            f"Try/Exception Error | collect_restconf_state | {e}"
+        )
+
+    return restconf_state
+ddef get_session(device):
+    transport = device.get("transport")
+
+    if transport == "RESTCONF":
+        return create_restconf_session(device)
+
+    if transport == "NETMIKO":
+        return open_ssh_session(device)
+
+    if transport == "NETCONF":
+        return create_netconf_session(device)
+
+    raise ValueError(f"Unsupported transport: {transport}")
+@contextmanager
+def open_ssh_session(device):
+    connection = {
+        "device_type": "cisco_xe",
+        "ip": device["ip"],
+        "username": device["username"],
+        "password": device["password"],
+        "secret": device.get("secret"),
+    }
+
+    session = ConnectHandler(**connection)
+
+    if device.get("secret"):
+        session.enable()
+
+    return session
+@contextmanager
+def create_restconf_session(device):
+    session = requests.Session()
+
+    session.auth = (device["username"], device["password"])
+    session.headers.update({
+        "Accept": "application/yang-data+json",
+        "Content-Type": "application/yang-data+json"
+    })
+
+    base_url = f"https://{device['ip']}/restconf/data"
+
+    try:
+        yield SessionContext(
+        		session=session,
+        		base_url=base_url,
+        		device_ip=device["ip"]
+        	)
+    finally:
+        session.close()
+@contextmanager
+def create_netconf_session(device):
+    session = manager.connect(
+        host=device["ip"],
+        port=830,
+        username=device["username"],
+        password=device["password"],
+        hostkey_verify=False,
+    )
+
+    try:
+        yield {
+            "session": session,
+            "device_ip": device["ip"]
+        }
+    finally:
+        session.close_session()
+def main_process(task): 
+	device = task["device"]
+	context = task["context"]
+	host_ip = device["device"]
+
+	adapter = logging.LoggerAdapter(logger, {"dev": device["name"]})
+
+	device_result = {
+		"device_name": device["name"],
+        "device_ip": host_ip,
+        "status": "COMPLIANT",
+
+        "actions_taken": [],
+        "events": [],
+        "checks_passed": 0,
+        "checks_failed": 0,
+        "critical_issues": [],
+        "warnings": [],
+
+        "start_time": datetime.utcnow().isoformat(),
+        "end_time": None,
+        "duration_seconds": None,
+
+        "errors": []
+
+	}
+
+	try: 
+		with get_session(device) as sesh: 
+			rest_state = collect_restconf_state(sesh, adapter)
+			device_success = True 
+			roas_updated = False 
+			#ROAS 
+			actual_roas = build_roas(rest_state)
+			expected_roas = context.get("roas", [])
+
+			for roas_data in expected_roas: 
+				ok, failures = check_roas(roas_data, actual_roas)
+				interface = roas_data.get("interface", "")
+				if ok: 
+					adapter.info(
+						"roas_check",
+						extra={
+							"device_ip": sesh.device_ip,
+							"component": "main_process",
+							"event_type": "roas_precheck", 
+							"status": StepStatus.SKIPPED.value,
+							"interface": interface,
+							"message": (
+									f"ROAS Already Compliant | "
+									f"Interface: {interface}"
+								) 
+
+							}
+						)
+					device_result["actions_taken"].append(
+							f"ROAS Compliant | {interface} "
+						)
+					continue 
+
+				device_result["critical_issues"].extend(failures)
+
+				adapter.warning(
+					"roas_drift",
+					 extra= {
+					 	"device_ip": sesh.device_ip,
+					 	"component": "main_process",
+					 	"event_type": "roas_audit", 
+					 	"status": StepStatus.FAILED.value,
+					 	"interface": interface,
+					 	"failures": failures,
+					 	"message": f"ROAS Drift Detected | Interface: {interface}"
+						}
+					)
+
+				result = configure_roas(sesh.session,roas_data,adapter)
+
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					device_success = True 
+					roas_updated = True 
+
+			if roas_success and not DRY_RUN: 
+				new_roas = collect_restconf_state(sesh, adapter)
+				new_state = build_roas(new_roas)
+
+				for roas_data in expected_roas: 
+					ok, failures = check_roas(roas_data, new_state)
+					interface = roas_data.get("interface", "")
+
+					if not ok: 
+						device_result["critical_issues"].extend(failures)
+
+						adapter.error(
+							"roas_post_validation_failed",
+							extra={
+								"device_ip": sesh.device_ip,
+								"component": "main_process",
+								"event_type": "roas_post_check",
+								"status": StepStatus.FAILED.value,
+								"interface": interface,
+								"failures": failures,
+								"message": f"ROAS Post Validation Failed | Interface: "
+										   f"{interface}"
+
+								}
+							)
+					else: 
+						device_result["actions_taken"].append(
+								f"ROAS Validation Successful | Interface: {interface}"
+							)
+
+			#OSPF
+			exp_ospf = context.get("ospf", [])
+			act_ospf = build_ospf(rest_state)
+			ospf_updated = False
+
+			for ospf_data in exp_ospf: 
+				process_id = ospf_data.get("process_id", "")
+				router_id = ospf_data.get("router_id", "")
+				interfaces = ospf_data.get("interfaces", [])
+				interface = [
+					f"{i.get('name')}"
+					for i in interfaces
+				]
+				ok, failures = check_ospf(ospf_data, act_ospf)
+				if ok: 
+					adapter.info(
+						"ospf_check",
+						extra={
+							"device_ip": sesh.device_ip,
+							"component": "main_process",
+							"event_type": "ospf_check",
+							"status": StepStatus.SKIPPED.value, 
+							"interfaces": interface,
+							"process_id": process_id,
+							"router_id": router_id,
+							"message": (
+									f"OSPF Already Compliant | Process ID: {process_id} | "
+									f"RID: {router_id} | Interfaces: {interface}"
+								)
+						 	}
+						)
+					device_result["actions_taken"].append(
+							f"OSPF Already Compliant | Process ID: {process_id} | "
+							f"RID: {router_id} | Interfaces: {interface}"
+						)
+					continue 
+
+				device_result["critical_issues"].extend(failures)
+
+				adapter.warning(
+						"ospf_drift",
+						extra={
+							"device_ip": sesh.device_ip,
+							"component": "main_process",
+							"event_type": "ospf_check",
+							"status": StepStatus.FAILED.value, 
+							"interfaces": interface,
+							"process_id": process_id,
+							"router_id": router_id,
+							"message": (
+									f"OSPF Drift Detected | Process ID: {process_id} | "
+									f"RID: {router_id} | Interfaces: {interface}"
+								)
+						}
+					)
+
+				result = configure_ospf(sesh.session, ospf_data, adapter)
+
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					ospf_updated = True 
+
+		 	if ospf_updated and not DRY_RUN: 
+		 		new_ospf = collect_restconf_state(sesh, adapter)
+		 		new_ospf_state = build_ospf(new_ospf)
+
+		 		for ospf_data in exp_ospf: 
+		 			process_id = ospf_data.get("process_id", "")
+					router_id = ospf_data.get("router_id", "")
+					interfaces = ospf_data.get("interfaces", [])
+					interface = [
+						f"{i.get('name')}"
+						for i in interfaces
+					]
+					ok, failures = check_ospf(ospf_data, new_ospf_state)
+					if not ok:  
+						device_result["critical_issues"].extend(failures)
+						device_success = False 
+
+						adapter.error(
+								"ospf_post_validation_failed",
+								extra={
+									"device_ip": sesh.device_ip,
+									"component": "main_process",
+									"event_type": "ospf_check",
+									"status": StepStatus.SKIPPED.value, 
+									"interfaces": interface,
+									"process_id": process_id,
+									"router_id": router_id,
+									"message": (
+											f"OSPF Validation Failed | Process ID: {process_id} | "
+											f"RID: {router_id} | Interfaces: {interface}"
+										)
+								}
+							)
+
+					else: 
+						device_result["actions_taken"].append(
+								f"OSPF Validation Successful | Process ID: {process_id} | "
+								f"RID: {router_id} | Interfaces: {interface}"
+							)
+
+			ssh_state = collect_device_state(sesh)
+			exp_vlans = context.get("vlans", {})
+			act_vlans = build_vlan(ssh_state)
+			vlan_updated = False 
+			for vlan_data in exp_vlans: 
+				ok, failures = check_vlan(exp_vlans, act_vlans)
+				name = vlan_data.get("name")
+				vlan_id = vlan_data.get("vlan_id")
+
+				if ok: 
+					adapter.info(
+						"vlan_check",
+						extra={
+							"device_ip": host_ip,
+							"component": "main_process",
+							"event_type": "vlan_config", 
+							"status": StepStatus.SKIPPED.value, 
+							"name": name,
+							"vlan_id": vlan_id,
+							"message": (
+									f"VLAN Already Compliant | "
+									f"VLAN: {vlan_id} | Name: {name}"
+								)
+
+							}
+						)
+					device_result["actions_taken"].append(
+							f"VLAN Already Compliant | "
+							f"VLAN: {vlan_id} | Name: {name}"
+						)
+					continue 
+				
+				device_result["critical_issues"].extend(failures)
+
+				adapter.warning(
+						"vlan_drift",
+						extra={
+							"device_ip": host_ip,
+							"component": "main_process",
+							"event_type": "vlan_config", 
+							"status": StepStatus.FAILED.value, 
+							"name": name,
+							"vlan_id": vlan_id,
+							"message": (
+									f"VLAN Drift Detected | "
+									f"VLAN: {vlan_id} | Name: {name}"
+									)
+						}
+					)
+
+				result = configure_vlan(sesh, host_ip, adapter)
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					vlan_updated = True 
+
+				if vlan_updated and not DRY_RUN: 
+					new_state = collect_device_state(sesh, adapter)
+					new_vlan = build_vlan(new_state)
+
+					for vlan_data in exp_vlans: 
+						name = vlan_data.get("name")
+						vlan_id = vlan_data.get("vlan_id")
+						ok, failures = check_vlan(exp_vlans, new_vlan)
+
+						if not ok: 
+							device_result["critical_issues"].extend(failures)
+							device_success = False 
+
+							adapter.error(
+								"vlan_port_validation", 
+								extra={
+									"device_ip": host_ip,
+									"component": "main_process",
+									"event_type": "vlan_post_check", 
+									"status": StepStatus.FAILED.value, 
+									"name": name,
+									"vlan_id": vlan_id,
+									"message": (
+										f"VLAN Post Validation Failed | "
+										f"VLAN: {vlan_id} | Name: {name}"
+										)
+									}
+								)
+						else: 
+							device_result["actions_taken"].append(
+									f"VLAN Validation Successful | "
+									f"VLAN: {vlan_id} | Name: {name}"
+								)
+
