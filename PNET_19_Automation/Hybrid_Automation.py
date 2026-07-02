@@ -4851,7 +4851,7 @@ def restconf_get(session, url):
 
     except requests.exceptions.RequestException as e:
         raise Exception(f"RESTCONF request failed: {e} | URL: {url}")
-def collect_restconf_state(session_ctx, log):
+def collect_restconf_state(session, log):
     restconf_state = {}
 
     try:
@@ -4967,6 +4967,7 @@ def main_process(task):
         "checks_failed": 0,
         "critical_issues": [],
         "warnings": [],
+        "interfaces": [],
 
         "start_time": datetime.utcnow().isoformat(),
         "end_time": None,
@@ -5031,10 +5032,11 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 
 				if result.get("status") == OpStatus.SUCCESS.value: 
-					device_success = True 
 					roas_updated = True 
+				else: 
+					roas_failed = True 
 
-			if roas_success and not DRY_RUN: 
+			if roas_success and not roas_failed and not DRY_RUN: 
 				new_roas = collect_restconf_state(sesh, adapter)
 				new_state = build_roas(new_roas)
 
@@ -5127,8 +5129,10 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					ospf_updated = True 
+				else: 
+					ospf_failed = True 
 
-		 	if ospf_updated and not DRY_RUN: 
+		 	if ospf_updated and not ospf_failed and not DRY_RUN: 
 		 		new_ospf = collect_restconf_state(sesh, adapter)
 		 		new_ospf_state = build_ospf(new_ospf)
 
@@ -5167,13 +5171,15 @@ def main_process(task):
 								f"OSPF Validation Successful | Process ID: {process_id} | "
 								f"RID: {router_id} | Interfaces: {interface}"
 							)
-
+			# INITIAL DEVICE STATE 		
 			ssh_state = collect_device_state(sesh)
-			exp_vlans = context.get("vlans", {})
+
+			# VLAN 
+			exp_vlans = context.get("vlans", [])
 			act_vlans = build_vlan(ssh_state)
 			vlan_updated = False 
 			for vlan_data in exp_vlans: 
-				ok, failures = check_vlan(exp_vlans, act_vlans)
+				ok, failures = check_vlan(vlan_data, act_vlans)
 				name = vlan_data.get("name")
 				vlan_id = vlan_data.get("vlan_id")
 
@@ -5224,38 +5230,245 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					vlan_updated = True 
+				else: 
+					vlan_failed = True 
 
-				if vlan_updated and not DRY_RUN: 
-					new_state = collect_device_state(sesh, adapter)
-					new_vlan = build_vlan(new_state)
+			if vlan_updated and not vlan_failed and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_vlan = build_vlan(new_state)
 
-					for vlan_data in exp_vlans: 
-						name = vlan_data.get("name")
-						vlan_id = vlan_data.get("vlan_id")
-						ok, failures = check_vlan(exp_vlans, new_vlan)
+				for vlan_data in exp_vlans: 
+					name = vlan_data.get("name")
+					vlan_id = vlan_data.get("vlan_id")
+					ok, failures = check_vlan(vlan_data, new_vlan)
 
-						if not ok: 
-							device_result["critical_issues"].extend(failures)
-							device_success = False 
+					if not ok: 
+						device_result["critical_issues"].extend(failures)
+						device_success = False 
 
-							adapter.error(
-								"vlan_port_validation", 
+						adapter.error(
+							"vlan_port_validation", 
+							extra={
+								"device_ip": host_ip,
+								"component": "main_process",
+								"event_type": "vlan_post_check", 
+								"status": StepStatus.FAILED.value, 
+								"name": name,
+								"vlan_id": vlan_id,
+								"message": (
+									f"VLAN Post Validation Failed | "
+									f"VLAN: {vlan_id} | Name: {name}"
+									)
+								}
+							)
+					else: 
+						device_result["actions_taken"].append(
+								f"VLAN Validation Successful | "
+								f"VLAN: {vlan_id} | Name: {name}"
+							)
+			#ACCESS 
+			exp_access = context.get("access_ports", [])
+			act_access = build_access(ssh_state)
+			access_updated = False 
+			for access_data in exp_access: 
+				access_interface = access_data.get("access_interface", None)
+				access_vlan = access_data.get("access_vlan", 10)
+
+				ok, failures = check_access(access_data, act_access)
+				if ok: 
+					adapter.info(
+							"access_interface_compliant", 
+							extra={
+								"device_ip": device_ip,
+								"component": "main_process", 
+								"event_type": "access_interface_compliant",
+								"status": StepStatus.SUCCESS.value, 
+								"interface": access_interface,
+								"vlan_id": access_vlan,
+								"message": (
+										f"Access Interface Already Compliant | "
+										f"Interface: {access_interface} | "
+										f"VLAN: {access_vlan}"
+									)
+							}
+						)
+					device_result["actions_taken"].append(
+							f"Access Interface Already Compliant | "
+							f"Interface: {access_interface} | "
+							f"VLAN: {access_vlan}"
+						)
+					continue 
+
+				device_result["critical_issues"].extend(failures)
+
+				adapter.warning(
+						"access_interface_drift",
+						extra={
+							"device_ip": device_ip,
+							"component": "main_process",
+							"event_type": "access_interface_drift",
+							"interface": access_interface,
+							"vlan_id": access_vlan,
+							"message": (
+										f"Access Interface Drift Detected | "
+										f"Interface: {access_interface} | "
+										f"VLAN: {access_vlan}"
+									)
+
+						}
+					)
+				result = configure_access(sesh, host_ip, adapter)
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					access_updated = True 
+				else: 
+					access_failed = True 
+
+			if access_updated and not access_failed and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_access = build_access(new_state)
+
+				for access_data in exp_access:
+					access_interface = access_data.get("access_interface", None)
+					access_vlan = access_data.get("access_vlan", 10)
+
+					ok, failures = check_access(access_data, new_access)
+
+					if not ok: 
+						device_result["critical_issues"].extend(failures)
+						device_success = False 
+
+						adapter.error(
+							"access_interface_post_validation_failed", 
+							extra={
+								"device_ip": host_ip,
+								"component": "main_process",
+								"event_type": "access_interface_post_validation_failed", 
+								"interface": access_interface,
+								"vlan_id": access_vlan,
+								"message": (
+											f"Access Interface Post Validation Failed | "
+											f"Interface: {access_interface} | "
+											f"VLAN: {access_vlan}"
+										)
+									}
+							)
+					else: 
+						device_result["actions_taken"].append(
+								f"Access Interface Post Validation Successful | "
+								f"Interface: {access_interface} | "
+								f"VLAN: {access_vlan}"
+							)
+			# Interface 
+			exp_interfaces = context.get("interfaces")
+			act_interfaces = build_interface(sesh)
+			interfaces_updated = False
+			interfaces_failed = False 
+
+			for int_data in exp_interfaces: 
+				interface = int_data.get("interface", "")
+				description = int_data.get("description", "")
+				should_be_up = int_data.get("should_be_up", False)
+
+				ok, failures = check_interface(int_data, act_interfaces)
+
+				if ok: 
+					adapter.info(
+						"interface_pre_check",
+						extra={
+							"device_ip": host_ip,
+							"component": "main_process",
+							"event_type": "interface_pre_check",
+							"status": StepStatus.SKIPPED.value,
+							"interface": interface,
+							"description": description,
+							"should_be_up": should_be_up,
+							"message": (
+									f"Interface Already Compliant | "
+									f"Interface: {interface} | Description: {description} | "
+									f"Should Be Up: {should_be_up}" 
+								)
+						}
+					)
+					device_result["actions_taken"].append(
+							f"Interface Already Compliant | "
+							f"Interface: {interface} | Description: {description} | "
+							f"Should Be Up: {should_be_up}" 
+						)
+					continue 
+
+				device_result["critical_issues"].extend(failures)
+
+				adapter.warning(
+						"interface_drift",
+						extra={
+							"device_ip": host_ip,
+							"component": "main_process",
+							"event_type": "interface_drift",
+							"status": StepStatus.FAILED.value,
+							"interface": interface,
+							"description": description,
+							"should_be_up": should_be_up,
+							"message": (
+									f"Interface Drift Detected | "
+									f"Interface: {interface} | Description: {description} | "
+									f"Should Be Up: {should_be_up}" 
+								)
+						}
+					)
+
+				result = configure_interfaces(sesh, host_ip, adapter)
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					interfaces_updated = True 
+
+			if interfaces_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_interface = build_interface(new_state)
+
+				for int_data in exp_interfaces: 
+					interface = int_data.get("interface", "")
+					description = int_data.get("description", "")
+					should_be_up = int_data.get("should_be_up", False)
+
+					ok, failures = check_interface(int_data, new_interface)
+
+					if not ok: 
+						device_result["critical_issues"].extend(failures)
+						device_result["interfaces"].append({
+						    "interface": interface,
+						    "status":"failed",
+						    "failures": failures
+							})
+						adapter.error(
+								"interface_post_validation_failed",
 								extra={
 									"device_ip": host_ip,
 									"component": "main_process",
-									"event_type": "vlan_post_check", 
-									"status": StepStatus.FAILED.value, 
-									"name": name,
-									"vlan_id": vlan_id,
+									"event_type": "interface_drift",
+									"status": StepStatus.FAILED.value,
+									"interface": interface,
+									"description": description,
+									"should_be_up": should_be_up,
 									"message": (
-										f"VLAN Post Validation Failed | "
-										f"VLAN: {vlan_id} | Name: {name}"
-										)
-									}
-								)
-						else: 
-							device_result["actions_taken"].append(
-									f"VLAN Validation Successful | "
-									f"VLAN: {vlan_id} | Name: {name}"
-								)
-
+											f"Interface Post Validation Failed | "
+											f"Interface: {interface} | Description: {description} | "
+											f"Should Be Up: {should_be_up}" 
+							)
+								}
+							)
+					else: 
+						device_result["actions_taken"].append(
+								f"Interface Post Validation Successful | "
+								f"Interface: {interface} | Description: {description} | "
+								f"Should Be Up: {should_be_up}" 
+							)
+						device_result["interfaces"].append({
+						    "interface": interface,
+						    "status": "passed",
+						    "failures": failures
+						})
