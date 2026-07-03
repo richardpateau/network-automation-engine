@@ -1494,7 +1494,8 @@ def check_interface(expected_int, actual_config):
 	actual_is_up = actual.get("is_up", False )
 	if exp_is_up != actual_is_up:
 		failures.append(
-			 f"Mismatched Interface State | Expected Should Be Up/Up: {exp_is_up} "
+			 f"Mismatched Interface State | Interface: {exp_interface} | "
+			 f"Expected Should Be Up/Up: {exp_is_up} | "
 			 f"Actual Should be Up/Up: {actual_is_up}"
 			)
 
@@ -4383,9 +4384,8 @@ def configure_dai(conn, device_ip, dai_data, log):
 			f"Trusted: {v.get('trusted', '')}"
 			for i, v in interfaces.items()
 		)
-	buffer_log = " | ".join(
-			f"Enabled: {log_buffer.get('enabled')} | Entries: {log_buffer.get('entries')}"
-		)
+	buffer_log = f"Enabled: {log_buffer.get('enabled')} | Entries: {log_buffer.get('entries')}"
+	
 	try: 
 		template = template_env.get_template("DAI_NET.j2")
 
@@ -4745,7 +4745,7 @@ def configure_etherchannel(conn, device_ip, eth_data, log):
 	            	),
 				"error": str(e)
 			}
-def configure_static(session, static_data, log): 
+def configure_static(session, device_ip, static_data, log): 
 	static = static_data.get("static", [])
 	static_log = " | ".join(
 			f"Network Address: {s.get('network_address')} | Mask: {s.get('mask')} | "
@@ -4979,9 +4979,13 @@ def main_process(task):
 
 	try: 
 		with get_session(device) as sesh: 
-			rest_state = collect_restconf_state(sesh, adapter)
 			device_success = True 
 			roas_updated = False 
+
+			#COLLECT STATES 
+			restconf_state = collect_restconf_state(sesh, adapter)			
+			netconf_state = collect_netconf_state(sesh)
+			ssh_state = collect_device_state(sesh)
 			#ROAS 
 			actual_roas = build_roas(rest_state)
 			expected_roas = context.get("roas", [])
@@ -5033,10 +5037,8 @@ def main_process(task):
 
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					roas_updated = True 
-				else: 
-					roas_failed = True 
 
-			if roas_success and not roas_failed and not DRY_RUN: 
+			if roas_success and not DRY_RUN: 
 				new_roas = collect_restconf_state(sesh, adapter)
 				new_state = build_roas(new_roas)
 
@@ -5129,10 +5131,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					ospf_updated = True 
-				else: 
-					ospf_failed = True 
 
-		 	if ospf_updated and not ospf_failed and not DRY_RUN: 
+		 	if ospf_updated and not DRY_RUN: 
 		 		new_ospf = collect_restconf_state(sesh, adapter)
 		 		new_ospf_state = build_ospf(new_ospf)
 
@@ -5171,8 +5171,6 @@ def main_process(task):
 								f"OSPF Validation Successful | Process ID: {process_id} | "
 								f"RID: {router_id} | Interfaces: {interface}"
 							)
-			# INITIAL DEVICE STATE 		
-			ssh_state = collect_device_state(sesh)
 
 			# VLAN 
 			exp_vlans = context.get("vlans", [])
@@ -5224,16 +5222,15 @@ def main_process(task):
 						}
 					)
 
-				result = configure_vlan(sesh, host_ip, adapter)
+				result = configure_vlan(sesh, host_ip, vlan_data, adapter)
 				summary = result.get("summary")
 				if summary: 
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					vlan_updated = True 
-				else: 
-					vlan_failed = True 
 
-			if vlan_updated and not vlan_failed and not DRY_RUN: 
+
+			if vlan_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
 				new_vlan = build_vlan(new_state)
 
@@ -5317,16 +5314,14 @@ def main_process(task):
 
 						}
 					)
-				result = configure_access(sesh, host_ip, adapter)
+				result = configure_access(sesh, host_ip, access_data, adapter)
 				summary = result.get("summary")
 				if summary: 
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					access_updated = True 
-				else: 
-					access_failed = True 
 
-			if access_updated and not access_failed and not DRY_RUN: 
+			if access_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
 				new_access = build_access(new_state)
 
@@ -5365,7 +5360,6 @@ def main_process(task):
 			exp_interfaces = context.get("interfaces")
 			act_interfaces = build_interface(sesh)
 			interfaces_updated = False
-			interfaces_failed = False 
 
 			for int_data in exp_interfaces: 
 				interface = int_data.get("interface", "")
@@ -5419,7 +5413,7 @@ def main_process(task):
 						}
 					)
 
-				result = configure_interfaces(sesh, host_ip, adapter)
+				result = configure_interfaces(sesh, host_ip, interface_data, adapter)
 				summary = result.get("summary")
 				if summary: 
 					device_result["actions_taken"].append(summary)
@@ -5439,11 +5433,7 @@ def main_process(task):
 
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
-						device_result["interfaces"].append({
-						    "interface": interface,
-						    "status":"failed",
-						    "failures": failures
-							})
+						
 						adapter.error(
 								"interface_post_validation_failed",
 								extra={
@@ -5467,8 +5457,270 @@ def main_process(task):
 								f"Interface: {interface} | Description: {description} | "
 								f"Should Be Up: {should_be_up}" 
 							)
-						device_result["interfaces"].append({
-						    "interface": interface,
-						    "status": "passed",
-						    "failures": failures
-						})
+						
+			#Trunk 
+			exp_trunk = context.get("trunk_ports", [])
+			act_trunk = build_trunk(sesh)
+			trunk_updated = False 
+
+			for trunk_data in exp_trunk: 
+				trunk_interface = trunk_data.get("trunk_interface", "")
+				allowed_vlans = trunk_data.get("allowed_vlans", "")
+				
+				ok, failures = check_trunk(trunk_data, act_trunk)
+				
+				if ok: 
+					adapter.info(
+							"trunk_interface_comliant", 
+							extra={
+								"device_ip": host_ip,
+								"component": "main_process",
+								"event_type": "trunk_interface_compliant",
+								"status": StepStatus.SKIPPED.value,
+								"trunk_interface": trunk_interface,
+								"allowed_vlans": allowed_vlans,
+								"message": (
+										f"Trunk Interface Already Compliant | "
+										f"Interface: {trunk_interface} | "
+										f"Allowed VLAN(s): {allowed_vlans}"
+									)
+							}
+						)
+					device_result["actions_taken"].append(
+								f"Trunk Interface Already Compliant | "
+								f"Interface: {trunk_interface} | "
+								f"Allowed VLAN(s): {allowed_vlans}"
+						)
+					continue 
+
+				device_result["critical_issues"].extend(failures)
+
+				adapter.warning(
+						"trunk_interface_drift",
+						extra={
+							"device_ip": host_ip,
+							"component": "main_process",
+							"event_type": "trunk_interface_check",
+							"status": StepStatus.FAILED.value,
+							"trunk_interface": trunk_interface,
+							"allowed_vlans": allowed_vlans,
+							"message": (
+									f"Trunk Interface Drift: Misconfiguration | "
+									f"Interface: {trunk_interface} | "
+									f"Allowed VLAN(s): {allowed_vlans}"
+								)
+						}
+					)
+
+				result = configure_trunk(sesh, host_ip, trunk_data, adapter)
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					trunk_updated = True 
+
+			if trunk_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_trunk = build_trunk(new_state)
+
+
+				for trunk_data in exp_trunk: 
+					trunk_interface = trunk_data.get("trunk_interface", "")
+					allowed_vlans = trunk_data.get("allowed_vlans", "")
+					
+					ok, failures = check_trunk(trunk_data, new_trunk)
+
+					if not ok: 
+						device_result["critical_issues"].append(failures)
+						device_success = False 
+
+						adapter.error(
+								"trunk_interface_post_validation_failed",
+								extra={
+									"device_ip": host_ip,
+									"component": "main_process",
+									"event_type": "trunk_interface_check",
+									"status": StepStatus.FAILED.value,
+									"trunk_interface": trunk_interface,
+									"allowed_vlans": allowed_vlans,
+									"message": (
+											f"Trunk Interface Post Validation Failed | "
+											f"Interface: {trunk_interface} | "
+											f"Allowed VLAN(s): {allowed_vlans}"
+							)
+								}
+							)
+					else: 
+						device_result["actions_taken"].append(
+								f"Trunk Interface Post Validation Successful | "
+								f"Interface: {trunk_interface} | "
+								f"Allowed VLAN(s): {allowed_vlans}"
+							)
+			# NTP 
+			exp_ntp = context.get("ntp", {})
+			act_ntp = build_ntp(netconf_state)
+			ntp_updated = False 
+			servers = exp_ntp.get("servers")
+			server_ip = " | ".join(
+					f"{s.get('ip')}"
+					for s in servers
+				)
+			key_id = " | ".join(
+					f"{s.get('key_id')}"
+					for s in servers
+				)
+			authenticated = True
+			if exp_ntp: 
+				ok, failures = check_ntp(exp_ntp, act_ntp)
+
+				log_extra = {
+			        "device_ip": host_ip,
+			        "component": "main_process",
+			        "server_ip": server_ip,
+					"key_id": key_id, 
+					"authenticated": authenticated,
+			        "compliant": ok,
+			        "failure_count": len(failures),
+			        "failures": failures,           
+			    }
+
+
+				if ok: 
+					adapter.info(
+						 "ntp_compliant",
+						 extra={
+						 	**log_extra,
+						 	"status": StepStatus.SUCCESS.value,
+						 	"message": "NTP Already Compliant"
+						 }
+						)
+					device_result["actions_taken"].append(
+							f"NTP Already Compliant | "
+						 	f"Server IP: {server_ip} | Key ID: {key_id} | "
+						 	f"Authenticated: {authenticated}"
+						)
+					continue 
+				device_result["critical_issues"].append(failures)
+
+				adapter.warning(
+						"ntp_drift",
+						extra={
+							**log_extra,
+						 	"status": StepStatus.FAILED.value,
+						 	"message": f"NTP Non-Compliant ({len(failures)} failures)"
+						}
+					)
+				result = configure_ntp(sesh, host_ip, exp_ntp , adapter)
+				summary = result.get("summary")
+
+				if summary: 
+					device_result["summary"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value 
+					ntp_updated = True 
+
+			if ntp_updated and not DRY_RUN: 
+				new_state = collect_netconf_state(sesh)
+				new_ntp = build_ntp(new_state)
+
+				ok, failures = check_ntp(exp_ntp, new_ntp)
+
+				if not ok: 
+					adapter.error(
+						"ntp_post_validation_failed",
+						extra={
+							**log_extra,
+							"status": StepStatus.FAILED.value,
+							"message": "NTP Post Validation Failed"
+							}
+						)
+					device_result["critical_issues"].append(failures)
+					device_success = False 
+
+				else: 
+					device_result["actions_taken"].append(
+							f"NTP Post Validation Successful | "
+						 	f"Server IP: {server_ip} | Key ID: {key_id} | "
+						 	f"Authenticated: {authenticated}"
+						)
+			#QOS 
+			exp_qos = context.get("qos", {})
+			act_qos = build_qos(netconf_state)
+			qos_updated = False 
+			policies = exp_qos.get("policies", [])
+			policy_names = " , ".join(
+					f"{p.get('policy_name')}"
+					for p in policies
+				)
+			classes = [c for p in policies for c in p.get("class_maps", [])]
+			class_names = [c.get("name") for c in classes]
+			
+			if exp_qos: 
+				ok, failures = check_qos(exp_qos, act_qos)
+
+				log_extra = {
+			        "device_ip": host_ip,
+			        "component": "main_process",
+			        "policy_names": policy_names,
+			        "class_names": class_names,
+			        "compliant": ok,
+			        "failure_count": len(failures),
+			        "failures": failures,           
+			    }
+
+
+				if ok: 
+					adapter.info(
+						"qos_compliant",
+						extra={
+							**log_extra, 
+							"status": StepStatus.SUCCESS.value,
+							"message": "QOS Already Compliant" 
+							}
+						)
+					device_result["actions_taken"].append(
+							f"QOS Already Compliant | "
+							f"Policy Name: {policy_names} | "
+							f"Class Name: {class_names}"
+						)
+					continue 
+				device_result["critical_issues"].append(failures)
+				
+				adapter.warning(
+						"qos_non_compliant", 
+						extra={
+							**log_extra,
+							"status": StepStatus.FAILED.value,
+							"message": f"QOS Non-Compliant ({len(failures)} failures)"
+						}
+					)
+				result = configure_qos(sesh, host_ip, exp_qos, adapter)
+				summary = result.get("summary")
+				if summary: 
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value: 
+					qos_updated = True 
+
+			if qos_updated and not DRY_RUN: 
+				new_state = collect_netconf_state(sesh)
+				new_qos = build_qos(new_state)
+
+				if exp_qos: 
+					ok, failures = check_qos(exp_qos, new_qos)
+
+					if not ok: 
+						adapter.error(
+							"qos_post_validation_failed",
+							extra={
+								**log_extra,
+								"status": StepStatus.FAILED.value, 
+								"message": "QOS Post Validation Failed"
+								}
+							)
+						device_result["critical_issues"].append(failures)
+						device_success = False 
+					else: 
+						device_result["actions_taken"].append(
+								f"QOS Post Validation Successful | "
+								f"Policy Name: {policy_names} | "
+								f"Class Name: {class_names}"
+							)
