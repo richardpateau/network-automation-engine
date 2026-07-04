@@ -713,7 +713,8 @@ def build_stp_global(device_state):
 
 		actual_stp["vlan_priorities"][vlan] = priority
 	return actual_stp
-def build_stp_interfaces(running_config):
+def build_stp_interfaces(device_state):
+	running_config = device_state.get("running_config", {})
 	parse = CiscoConfParse(running_config.splitlines())
 	act_stp_int  = {}
 	for interface in parse.find_objects(r"^interface"):
@@ -4993,24 +4994,32 @@ def main_process(task):
 			for roas_data in expected_roas: 
 				ok, failures = check_roas(roas_data, actual_roas)
 				interface = roas_data.get("interface", "")
+				vlan = roas_data.get("router_vlan", None)
+				ip = roas_data.get("ip", "")
+				mask = roas_data.get("mask", "")
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"interface": interface,
+					"vlan_id": vlan,
+					"ip/mask": f"{ip}/{mask}",
+					"comppliant": ok, 
+					"failures": failures
+
+				}
 				if ok: 
 					adapter.info(
 						"roas_check",
 						extra={
-							"device_ip": sesh.device_ip,
-							"component": "main_process",
-							"event_type": "roas_precheck", 
-							"status": StepStatus.SKIPPED.value,
-							"interface": interface,
-							"message": (
-									f"ROAS Already Compliant | "
-									f"Interface: {interface}"
-								) 
-
+							**log_extra,
+							"status": StepStatus.SUCCESS.value,
+							"message": "ROAS Configuration Already Compliant"
 							}
 						)
 					device_result["actions_taken"].append(
-							f"ROAS Compliant | {interface} "
+							f"ROAS Configuration Already Compliant | {interface} | "
+							f"VLAN: {vlan} | IP/Mask: {ip}/{mask}" 
 						)
 					continue 
 
@@ -5019,13 +5028,9 @@ def main_process(task):
 				adapter.warning(
 					"roas_drift",
 					 extra= {
-					 	"device_ip": sesh.device_ip,
-					 	"component": "main_process",
-					 	"event_type": "roas_audit", 
+					 	**log_extra,
 					 	"status": StepStatus.FAILED.value,
-					 	"interface": interface,
-					 	"failures": failures,
-					 	"message": f"ROAS Drift Detected | Interface: {interface}"
+					 	"message": "ROAS Configuration Non-Compliant"
 						}
 					)
 
@@ -5046,26 +5051,40 @@ def main_process(task):
 					ok, failures = check_roas(roas_data, new_state)
 					interface = roas_data.get("interface", "")
 
+					log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"interface": interface,
+					"vlan_id": vlan,
+					"ip/mask": f"{ip}/{mask}",
+					"comppliant": ok, 
+					"failures": failures
+
+						}
+
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
 
 						adapter.error(
 							"roas_post_validation_failed",
 							extra={
-								"device_ip": sesh.device_ip,
-								"component": "main_process",
-								"event_type": "roas_post_check",
+								**log_extra,
 								"status": StepStatus.FAILED.value,
-								"interface": interface,
-								"failures": failures,
-								"message": f"ROAS Post Validation Failed | Interface: "
-										   f"{interface}"
-
-								}
+								"message": "ROAS Configuration Post Validation Failed"
+							  }
 							)
 					else: 
 						device_result["actions_taken"].append(
-								f"ROAS Validation Successful | Interface: {interface}"
+								f"ROAS Configuration Validation Successful | Interface: {interface}"
+								f"VLAN: {vlan} | IP/Mask: {ip}/{mask}" 
+							)
+						adapter.info(
+							  "roas_post_validation_success",
+							  extra={
+							  	**log_extra,
+							  	"status": StepStatus.SUCCESS.value,
+							  	"message": "ROAS Configuration Post Validation Successful"
+							  }
 							)
 
 			#OSPF
@@ -5082,21 +5101,24 @@ def main_process(task):
 					for i in interfaces
 				]
 				ok, failures = check_ospf(ospf_data, act_ospf)
+
+				log_extra = {
+					"device_ip": sesh.device_ip,
+					"component": "main_process",
+					"interfaces": interface,
+					"process_id": process_id,
+					"router_id": router_id,
+					"compliant": ok, 
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+				}
 				if ok: 
 					adapter.info(
 						"ospf_check",
 						extra={
-							"device_ip": sesh.device_ip,
-							"component": "main_process",
-							"event_type": "ospf_check",
-							"status": StepStatus.SKIPPED.value, 
-							"interfaces": interface,
-							"process_id": process_id,
-							"router_id": router_id,
-							"message": (
-									f"OSPF Already Compliant | Process ID: {process_id} | "
-									f"RID: {router_id} | Interfaces: {interface}"
-								)
+							**log_extra,
+							"status": StepStatus.SUCCESS.value,
+							"message": "OSPF Configuration Already Compliant"
 						 	}
 						)
 					device_result["actions_taken"].append(
@@ -5108,19 +5130,11 @@ def main_process(task):
 				device_result["critical_issues"].extend(failures)
 
 				adapter.warning(
-						"ospf_drift",
+						"ospf_non_compliant",
 						extra={
-							"device_ip": sesh.device_ip,
-							"component": "main_process",
-							"event_type": "ospf_check",
-							"status": StepStatus.FAILED.value, 
-							"interfaces": interface,
-							"process_id": process_id,
-							"router_id": router_id,
-							"message": (
-									f"OSPF Drift Detected | Process ID: {process_id} | "
-									f"RID: {router_id} | Interfaces: {interface}"
-								)
+							**log_extra,
+							"status": StepStatus.FAILED.value,
+							"message": "OSPF Configuration Non-Compliant"
 						}
 					)
 
@@ -5145,6 +5159,18 @@ def main_process(task):
 						for i in interfaces
 					]
 					ok, failures = check_ospf(ospf_data, new_ospf_state)
+					
+					log_extra = {
+					"device_ip": sesh.device_ip,
+					"component": "main_process",
+					"interfaces": interface,
+					"process_id": process_id,
+					"router_id": router_id,
+					"compliant": ok, 
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+						}
+
 					if not ok:  
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
@@ -5152,25 +5178,28 @@ def main_process(task):
 						adapter.error(
 								"ospf_post_validation_failed",
 								extra={
-									"device_ip": sesh.device_ip,
-									"component": "main_process",
-									"event_type": "ospf_check",
-									"status": StepStatus.SKIPPED.value, 
-									"interfaces": interface,
-									"process_id": process_id,
-									"router_id": router_id,
+									**log_extra,
+									"status": StepStatus.FAILED.value,
 									"message": (
-											f"OSPF Validation Failed | Process ID: {process_id} | "
-											f"RID: {router_id} | Interfaces: {interface}"
+											f"OSPF Configuration Post Validation Failed | "
+											f"({len(failures)}) failures"
 										)
 								}
 							)
 
 					else: 
 						device_result["actions_taken"].append(
-								f"OSPF Validation Successful | Process ID: {process_id} | "
+								f"OSPF Configuration Post Validation Successful | Process ID: {process_id} | "
 								f"RID: {router_id} | Interfaces: {interface}"
 							)
+						adapter.info(
+							"ospf_post_validation_success",
+							extra={
+							    **log_extra,
+							    "status": StepStatus.SUCCESS.value, 
+							    "message": "OSPF Configuration Post Validation Successful"
+							  }
+						  )
 
 			# VLAN 
 			exp_vlans = context.get("vlans", [])
@@ -5181,20 +5210,22 @@ def main_process(task):
 				name = vlan_data.get("name")
 				vlan_id = vlan_data.get("vlan_id")
 
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"name": name,
+					"vlan_id": vlan_id,
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0, 
+					"failures": failures
+				}
 				if ok: 
 					adapter.info(
 						"vlan_check",
 						extra={
-							"device_ip": host_ip,
-							"component": "main_process",
-							"event_type": "vlan_config", 
-							"status": StepStatus.SKIPPED.value, 
-							"name": name,
-							"vlan_id": vlan_id,
-							"message": (
-									f"VLAN Already Compliant | "
-									f"VLAN: {vlan_id} | Name: {name}"
-								)
+							**log_extra,
+							"status": StepStatus.SUCCESS.value,
+							"message": "VLAN Configuration Already Compliant"
 
 							}
 						)
@@ -5209,16 +5240,9 @@ def main_process(task):
 				adapter.warning(
 						"vlan_drift",
 						extra={
-							"device_ip": host_ip,
-							"component": "main_process",
-							"event_type": "vlan_config", 
+							**log_extra,
 							"status": StepStatus.FAILED.value, 
-							"name": name,
-							"vlan_id": vlan_id,
-							"message": (
-									f"VLAN Drift Detected | "
-									f"VLAN: {vlan_id} | Name: {name}"
-									)
+							"message": "VLAN Configuration Non-Compliant"
 						}
 					)
 
@@ -5239,30 +5263,41 @@ def main_process(task):
 					vlan_id = vlan_data.get("vlan_id")
 					ok, failures = check_vlan(vlan_data, new_vlan)
 
+					log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"name": name,
+					"vlan_id": vlan_id,
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0, 
+					"failures": failures
+						}
+
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
 
 						adapter.error(
-							"vlan_port_validation", 
+							"vlan_post_validation_failed", 
 							extra={
-								"device_ip": host_ip,
-								"component": "main_process",
-								"event_type": "vlan_post_check", 
-								"status": StepStatus.FAILED.value, 
-								"name": name,
-								"vlan_id": vlan_id,
-								"message": (
-									f"VLAN Post Validation Failed | "
-									f"VLAN: {vlan_id} | Name: {name}"
-									)
+								**log_extra,
+								"status": StepStatus.FAILED.value,
+								"message": "VLAN Configuration Post Validation Failed"
 								}
 							)
 					else: 
 						device_result["actions_taken"].append(
-								f"VLAN Validation Successful | "
+								f"VLAN Configuration Post Validation Successful | "
 								f"VLAN: {vlan_id} | Name: {name}"
 							)
+						adapter.info(
+							"vlan_post_validation_success",
+							extra={
+								**log_extra,
+								"status": StepStatus.SUCCESS.value,
+								"message": "VLAN Configuration Post Validation Successful"
+							}
+						  )
 			#ACCESS 
 			exp_access = context.get("access_ports", [])
 			act_access = build_access(ssh_state)
@@ -5272,21 +5307,23 @@ def main_process(task):
 				access_vlan = access_data.get("access_vlan", 10)
 
 				ok, failures = check_access(access_data, act_access)
+
+				log_extra = {
+						"device_ip": device_ip,
+						"component": "main_process", 
+						"interface": access_interface,
+						"vlan_id": access_vlan,
+						"compliant": ok, 
+						"failures": len(failures) if failures else 0,
+						"failures": failures
+				}
 				if ok: 
 					adapter.info(
 							"access_interface_compliant", 
 							extra={
-								"device_ip": device_ip,
-								"component": "main_process", 
-								"event_type": "access_interface_compliant",
-								"status": StepStatus.SUCCESS.value, 
-								"interface": access_interface,
-								"vlan_id": access_vlan,
-								"message": (
-										f"Access Interface Already Compliant | "
-										f"Interface: {access_interface} | "
-										f"VLAN: {access_vlan}"
-									)
+								**log_extra,
+								"status": StepStatus.SUCCESS.value,
+								"message": "Access Interface ALready Compliant"
 							}
 						)
 					device_result["actions_taken"].append(
@@ -5301,16 +5338,10 @@ def main_process(task):
 				adapter.warning(
 						"access_interface_drift",
 						extra={
-							"device_ip": device_ip,
-							"component": "main_process",
-							"event_type": "access_interface_drift",
-							"interface": access_interface,
-							"vlan_id": access_vlan,
-							"message": (
-										f"Access Interface Drift Detected | "
-										f"Interface: {access_interface} | "
-										f"VLAN: {access_vlan}"
-									)
+							**log_extra,
+							"status": StepStatus.FAILED.value,
+							"message": f"Access Port Configuration Non-Compliant "
+
 
 						}
 					)
@@ -5331,6 +5362,16 @@ def main_process(task):
 
 					ok, failures = check_access(access_data, new_access)
 
+					log_extra = {
+						"device_ip": device_ip,
+						"component": "main_process", 
+						"interface": access_interface,
+						"vlan_id": access_vlan,
+						"compliant": ok, 
+						"failures": len(failures) if failures else 0,
+						"failures": failures
+							}
+
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
@@ -5338,16 +5379,9 @@ def main_process(task):
 						adapter.error(
 							"access_interface_post_validation_failed", 
 							extra={
-								"device_ip": host_ip,
-								"component": "main_process",
-								"event_type": "access_interface_post_validation_failed", 
-								"interface": access_interface,
-								"vlan_id": access_vlan,
-								"message": (
-											f"Access Interface Post Validation Failed | "
-											f"Interface: {access_interface} | "
-											f"VLAN: {access_vlan}"
-										)
+								**log_extra,
+								"status": StepStatus.FAILED.value, 
+								"message": "Access Port Configuration Post Validation Failed"
 									}
 							)
 					else: 
@@ -5356,6 +5390,14 @@ def main_process(task):
 								f"Interface: {access_interface} | "
 								f"VLAN: {access_vlan}"
 							)
+						adapter.info(
+								"access_interface_post_validation_success",
+								extra={
+								  **log_extra,
+								  "status": StepStatus.SUCCESS.value,
+								  "message": "Access Interface Post Validation Successful"
+								}
+						    )
 			# Interface 
 			exp_interfaces = context.get("interfaces")
 			act_interfaces = build_interface(sesh)
@@ -5368,21 +5410,24 @@ def main_process(task):
 
 				ok, failures = check_interface(int_data, act_interfaces)
 
-				if ok: 
-					adapter.info(
-						"interface_pre_check",
-						extra={
+				log_extra = {
 							"device_ip": host_ip,
 							"component": "main_process",
-							"event_type": "interface_pre_check",
-							"status": StepStatus.SKIPPED.value,
 							"interface": interface,
 							"description": description,
 							"should_be_up": should_be_up,
+							"compliant": ok,
+							"failure_count": len(failures) if failures else 0,
+							"failures": failures
+					}
+				if ok: 
+					adapter.info(
+						"interface_compliant",
+						extra={
+							**log_extra,
+							"status": StepStatus.SUCCESS.value, 
 							"message": (
-									f"Interface Already Compliant | "
-									f"Interface: {interface} | Description: {description} | "
-									f"Should Be Up: {should_be_up}" 
+									f"Interface Configuration Already Compliant"
 								)
 						}
 					)
@@ -5398,17 +5443,11 @@ def main_process(task):
 				adapter.warning(
 						"interface_drift",
 						extra={
-							"device_ip": host_ip,
-							"component": "main_process",
-							"event_type": "interface_drift",
-							"status": StepStatus.FAILED.value,
-							"interface": interface,
-							"description": description,
-							"should_be_up": should_be_up,
+							**log_extra,
+							"status": StepStatus.SKIPPED.value,
 							"message": (
-									f"Interface Drift Detected | "
-									f"Interface: {interface} | Description: {description} | "
-									f"Should Be Up: {should_be_up}" 
+									f"Interface Configuration Non-Compliant | "
+									f"({len(failures)}) failures"
 								)
 						}
 					)
@@ -5431,31 +5470,42 @@ def main_process(task):
 
 					ok, failures = check_interface(int_data, new_interface)
 
+					log_extra = {
+							"device_ip": host_ip,
+							"component": "main_process",
+							"interface": interface,
+							"description": description,
+							"should_be_up": should_be_up,
+							"compliant": ok,
+							"failure_count": len(failures) if failures else 0,
+							"failures": failures
+						}
+
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
 						
 						adapter.error(
 								"interface_post_validation_failed",
 								extra={
-									"device_ip": host_ip,
-									"component": "main_process",
-									"event_type": "interface_drift",
+									**log_extra,
 									"status": StepStatus.FAILED.value,
-									"interface": interface,
-									"description": description,
-									"should_be_up": should_be_up,
-									"message": (
-											f"Interface Post Validation Failed | "
-											f"Interface: {interface} | Description: {description} | "
-											f"Should Be Up: {should_be_up}" 
-							)
+									"message": "Inreface Configuration Post Validation Failed | "
+									f"({len(failures)}) failures" 
 								}
 							)
 					else: 
 						device_result["actions_taken"].append(
-								f"Interface Post Validation Successful | "
+								f"Interface Configuration Post Validation Successful | "
 								f"Interface: {interface} | Description: {description} | "
 								f"Should Be Up: {should_be_up}" 
+							)
+						adapter.info(
+							 "interface_post_validation_success",
+							 extra={
+							 	**log_extra,
+							 	"status": StepStatus.SUCCESS.value, 
+							 	"message": "Interface Configuration Post Validation Successful"
+							   }
 							)
 						
 			#Trunk 
@@ -5468,22 +5518,23 @@ def main_process(task):
 				allowed_vlans = trunk_data.get("allowed_vlans", "")
 				
 				ok, failures = check_trunk(trunk_data, act_trunk)
-				
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"trunk_interface": trunk_interface,
+					"allowed_vlans": allowed_vlans,
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+				}
 				if ok: 
 					adapter.info(
-							"trunk_interface_comliant", 
-							extra={
-								"device_ip": host_ip,
-								"component": "main_process",
-								"event_type": "trunk_interface_compliant",
-								"status": StepStatus.SKIPPED.value,
-								"trunk_interface": trunk_interface,
-								"allowed_vlans": allowed_vlans,
-								"message": (
-										f"Trunk Interface Already Compliant | "
-										f"Interface: {trunk_interface} | "
-										f"Allowed VLAN(s): {allowed_vlans}"
-									)
+							"trunk_interface_compliant",
+							extra={	
+								**log_extra,
+								"status": StepStatus.SKIPPED.value, 
+								"message": f"Trunk Interface Already Compliant"
 							}
 						)
 					device_result["actions_taken"].append(
@@ -5498,16 +5549,11 @@ def main_process(task):
 				adapter.warning(
 						"trunk_interface_drift",
 						extra={
-							"device_ip": host_ip,
-							"component": "main_process",
-							"event_type": "trunk_interface_check",
-							"status": StepStatus.FAILED.value,
-							"trunk_interface": trunk_interface,
-							"allowed_vlans": allowed_vlans,
+							**log_extra,
+							"status": StepStatus.FAILED.value, 
 							"message": (
-									f"Trunk Interface Drift: Misconfiguration | "
-									f"Interface: {trunk_interface} | "
-									f"Allowed VLAN(s): {allowed_vlans}"
+									f"Trunk Interface Non-Compliant | "
+									f"({len(failures)}) failures"
 								)
 						}
 					)
@@ -5530,6 +5576,16 @@ def main_process(task):
 					
 					ok, failures = check_trunk(trunk_data, new_trunk)
 
+					log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"trunk_interface": trunk_interface,
+					"allowed_vlans": allowed_vlans,
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+						}
+
 					if not ok: 
 						device_result["critical_issues"].append(failures)
 						device_success = False 
@@ -5537,17 +5593,12 @@ def main_process(task):
 						adapter.error(
 								"trunk_interface_post_validation_failed",
 								extra={
-									"device_ip": host_ip,
-									"component": "main_process",
-									"event_type": "trunk_interface_check",
-									"status": StepStatus.FAILED.value,
-									"trunk_interface": trunk_interface,
-									"allowed_vlans": allowed_vlans,
+									**log_extra,
+									"status": StepStatus.FAILED.value, 
 									"message": (
 											f"Trunk Interface Post Validation Failed | "
-											f"Interface: {trunk_interface} | "
-											f"Allowed VLAN(s): {allowed_vlans}"
-							)
+											f"({len(failures)}) failures"
+										)
 								}
 							)
 					else: 
@@ -5555,6 +5606,14 @@ def main_process(task):
 								f"Trunk Interface Post Validation Successful | "
 								f"Interface: {trunk_interface} | "
 								f"Allowed VLAN(s): {allowed_vlans}"
+							)
+						adapter.info(
+								"trunk_interface_post_validation_success",
+								extra={
+								  **log_extra,
+								  "status": StepStatus.SUCCESS.value,
+								  "message": "Trunk Interface Post Validation Successful"
+								}
 							)
 			# NTP 
 			exp_ntp = context.get("ntp", {})
@@ -5599,30 +5658,41 @@ def main_process(task):
 						 	f"Server IP: {server_ip} | Key ID: {key_id} | "
 						 	f"Authenticated: {authenticated}"
 						)
-					continue 
-				device_result["critical_issues"].append(failures)
+				else:  
+					device_result["critical_issues"].append(failures)
 
-				adapter.warning(
-						"ntp_drift",
-						extra={
-							**log_extra,
-						 	"status": StepStatus.FAILED.value,
-						 	"message": f"NTP Non-Compliant ({len(failures)} failures)"
-						}
-					)
-				result = configure_ntp(sesh, host_ip, exp_ntp , adapter)
-				summary = result.get("summary")
+					adapter.warning(
+							"ntp_drift",
+							extra={
+								**log_extra,
+							 	"status": StepStatus.FAILED.value,
+							 	"message": f"NTP Non-Compliant ({len(failures)} failures)"
+							}
+						)
+					result = configure_ntp(sesh, host_ip, exp_ntp , adapter)
+					summary = result.get("summary")
 
-				if summary: 
-					device_result["summary"].append(summary)
-				if result.get("status") == OpStatus.SUCCESS.value 
-					ntp_updated = True 
+					if summary: 
+						device_result["summary"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value 
+						ntp_updated = True 
 
 			if ntp_updated and not DRY_RUN: 
 				new_state = collect_netconf_state(sesh)
 				new_ntp = build_ntp(new_state)
 
 				ok, failures = check_ntp(exp_ntp, new_ntp)
+
+				log_extra = {
+			        "device_ip": host_ip,
+			        "component": "main_process",
+			        "server_ip": server_ip,
+					"key_id": key_id, 
+					"authenticated": authenticated,
+			        "compliant": ok,
+			        "failure_count": len(failures),
+			        "failures": failures,           
+			    }
 
 				if not ok: 
 					adapter.error(
@@ -5641,6 +5711,14 @@ def main_process(task):
 							f"NTP Post Validation Successful | "
 						 	f"Server IP: {server_ip} | Key ID: {key_id} | "
 						 	f"Authenticated: {authenticated}"
+						)
+					adapter.info(
+						"ntp_post_validation_success",
+						extra={
+							**log_extra,
+							"status": StepStatus.SUCCESS.value,
+							"message":"NTP Post Validation Successful"		
+						  }
 						)
 			#QOS 
 			exp_qos = context.get("qos", {})
@@ -5682,23 +5760,23 @@ def main_process(task):
 							f"Policy Name: {policy_names} | "
 							f"Class Name: {class_names}"
 						)
-					continue 
-				device_result["critical_issues"].append(failures)
-				
-				adapter.warning(
-						"qos_non_compliant", 
-						extra={
-							**log_extra,
-							"status": StepStatus.FAILED.value,
-							"message": f"QOS Non-Compliant ({len(failures)} failures)"
-						}
-					)
-				result = configure_qos(sesh, host_ip, exp_qos, adapter)
-				summary = result.get("summary")
-				if summary: 
-					device_result["actions_taken"].append(summary)
-				if result.get("status") == OpStatus.SUCCESS.value: 
-					qos_updated = True 
+				else:  
+					device_result["critical_issues"].append(failures)
+					
+					adapter.warning(
+							"qos_non_compliant", 
+							extra={
+								**log_extra,
+								"status": StepStatus.FAILED.value,
+								"message": f"QOS Non-Compliant ({len(failures)} failures)"
+							}
+						)
+					result = configure_qos(sesh, host_ip, exp_qos, adapter)
+					summary = result.get("summary")
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						qos_updated = True 
 
 			if qos_updated and not DRY_RUN: 
 				new_state = collect_netconf_state(sesh)
@@ -5706,7 +5784,18 @@ def main_process(task):
 
 				if exp_qos: 
 					ok, failures = check_qos(exp_qos, new_qos)
+					
 
+					log_extra = {
+				        "device_ip": host_ip,
+				        "component": "main_process",
+				        "policy_names": policy_names,
+				        "class_names": class_names,
+				        "compliant": ok,
+				        "failure_count": len(failures),
+				        "failures": failures,           
+				    }
+					
 					if not ok: 
 						adapter.error(
 							"qos_post_validation_failed",
@@ -5716,7 +5805,7 @@ def main_process(task):
 								"message": "QOS Post Validation Failed"
 								}
 							)
-						device_result["critical_issues"].append(failures)
+						device_result["critical_issues"].extend(failures)
 						device_success = False 
 					else: 
 						device_result["actions_taken"].append(
@@ -5724,3 +5813,157 @@ def main_process(task):
 								f"Policy Name: {policy_names} | "
 								f"Class Name: {class_names}"
 							)
+						adapter.info(
+								"qos_post_validation_success", 
+								extra={
+								  **log_extra,
+								  "status": StepStatus.SUCCESS.value,
+								  "message": "QOS Post Validation Successful"
+								}
+							)
+			#STP 
+			exp_stp = context.get("stp", {})
+			act_stp = build_stp_global(ssh_state)	
+			stp_updated = False
+			mode = exp_stp.get("mode", "")
+			vlan_priorities = exp_stp.get("vlan_priorities", {})
+			priorities_log = " | ".join(
+					f"{v} {p}"
+					for v, p in vlan_priorities.items()
+				)
+			if exp_stp: 
+				ok, failures = check_stp_global(exp_stp, act_stp)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"stp_mode": mode,
+					"vlan_priorities": vlan_priorities,
+					"vlan_count": len(vlan_priorities),
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+				}
+
+				if ok: 
+					adapter.info(
+						"stp_compliant",
+						extra={
+							**log_extra,
+							"status": StepStatus.SUCCESS.value,
+							"message": "STP Global Configuration Already Compliant"
+							}
+						)
+					device_result["actions_taken"].append(
+							f"STP Global Configuration Already Compliant | "
+							f"Mode: {mode} | VLAN Priorities: {priorities_log}"
+						)
+				else:  
+
+					adapter.warning(
+							"stp_non_compliant",
+							extra={
+								**log_extra,
+								"status": StepStatus.FAILED.value,
+								"message": (
+										f"STP Global Configuration Non-Compliant | "
+										f"({len(failures)}) failures"
+									)
+							}
+						)
+					device_result["critical_issues"].extend(failures)
+
+					result = configure_global_stp(sesh, host_ip, exp_stp, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value:
+						stp_updated = True 
+
+			if stp_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_stp = build_stp_global(new_state)
+				
+				ok, failures = check_stp_global(exp_stp, new_stp)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"stp_mode": mode,
+					"vlan_priorities": vlan_priorities,
+					"vlan_count": len(vlan_priorities),
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+				}
+
+				if not ok: 
+					adapter.error(
+						"stp_global_post_validation_failed",
+						extra={
+							**log_extra,
+							"status": StepStatus.FAILED.value,
+							"message": f"STP Global Configuration Post Validation Failed"
+
+						}
+					)
+					device_result["critical_issues"].extend(failures)
+					device_success = False 
+				else: 
+					device_result["actions_taken"].append(
+							f"STP Global Configuration Post Validation Successful | "
+							f"Mode: {mode} | VLAN Priorities: {priorities_log}"
+						)
+					adapter.info(
+							"stp_global_post_validation_success",
+							extra={
+								**log_extra,
+								"status": StepStatus.SUCCESS.value,
+								"message": "STP Global Configuration Post Validation Successful"
+							}
+						)
+
+			#STP Interfaces 
+			exp_stp_int = context.get("interfaces" {}).get("stp", {})
+			act_stp_int = build_stp_interfaces(ssh_state)
+
+			portfast = exp_stp_int.get("portfast", False)
+			bpdu_guard = exp_stp_int.get("bpdu_guard", False)
+			root_guard = exp_stp_int.get("root_guard", False)
+			loop_guard = exp_stp_int.get("loop_guard", False)
+			bpdu_filter = exp_stp_int.get("bpdu_filter", False)
+
+			if exp_stp_int: 
+				ok, failures = check_stp_interfaces(exp_stp_int, act_stp_int)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"portfast": portfast,
+					"root_guard": root_guard,
+					"loop_guard": loop_guard,
+					"bpdu_guard": bpdu_guard,
+					"bpdu_filter":bpdu_filter
+				}
+
+				if ok: 
+					adapter.info(
+						  "stp_interfaces_compliant",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.SUCCESS.value,
+						  	"message": "STP Interface Configuration Already Compliant"
+						   }
+						)
+					device_result["actions_taken"].append(
+							"STP Interface Configuration Already Compliant"
+							f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
+							f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
+							f"BPDU Filter: {bpdu_filter}"
+						)
+				else: 
+					device_result["critical_issues"].extend(failures)
+
+					adapter.
+
