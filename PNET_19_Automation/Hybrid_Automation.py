@@ -5659,7 +5659,7 @@ def main_process(task):
 						 	f"Authenticated: {authenticated}"
 						)
 				else:  
-					device_result["critical_issues"].append(failures)
+					device_result["critical_issues"].extend(failures)
 
 					adapter.warning(
 							"ntp_drift",
@@ -5925,9 +5925,9 @@ def main_process(task):
 						)
 
 			#STP Interfaces 
-			exp_stp_int = context.get("interfaces" {}).get("stp", {})
+			exp_stp_int = context.get("interfaces", {}).get("stp", {})
 			act_stp_int = build_stp_interfaces(ssh_state)
-
+			stp_int_updated = False 
 			portfast = exp_stp_int.get("portfast", False)
 			bpdu_guard = exp_stp_int.get("bpdu_guard", False)
 			root_guard = exp_stp_int.get("root_guard", False)
@@ -5944,7 +5944,10 @@ def main_process(task):
 					"root_guard": root_guard,
 					"loop_guard": loop_guard,
 					"bpdu_guard": bpdu_guard,
-					"bpdu_filter":bpdu_filter
+					"bpdu_filter":bpdu_filter, 
+					"compliant": ok,
+					"failures_count": len(failures) if failures else 0,
+					"failures": failures
 				}
 
 				if ok: 
@@ -5957,7 +5960,7 @@ def main_process(task):
 						   }
 						)
 					device_result["actions_taken"].append(
-							"STP Interface Configuration Already Compliant"
+							"STP Interface Configuration Already Compliant | "
 							f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
 							f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
 							f"BPDU Filter: {bpdu_filter}"
@@ -5965,5 +5968,486 @@ def main_process(task):
 				else: 
 					device_result["critical_issues"].extend(failures)
 
-					adapter.
+					adapter.warning(
+						  "stp_interfaces_non_compliant",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.FAILED.value,
+						  	"message": "STP Interface Configuration Non-Compliant"
+						  }
+						)
+					result = configure_stp_int(sesh, host_ip, exp_stp_int, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["summary"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						stp_int_updated = True 
+
+			if stp_int_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_stp = build_stp_interfaces(new_state)
+
+				ok, failures = check_stp_interfaces(exp_stp_int, new_stp)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"portfast": portfast,
+					"root_guard": root_guard,
+					"loop_guard": loop_guard,
+					"bpdu_guard": bpdu_guard,
+					"bpdu_filter":bpdu_filter,
+					"compliant": ok,
+					"failures_count": len(failures) if failures else 0,
+					"failures": failures
+				}
+
+				if not ok: 
+					adapter.error(
+						  "stp_interfaces_post_validation_failed",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.FAILED.value,
+						  	"message": "STP Interfaces Post Validation Failed"
+						  }
+						)
+					device_result["critical_issues"].extend(failures)
+					device_success = False 
+				else: 
+					device_result["actions_taken"].append(
+							"STP Interface Configuration Post Validation Successful | "
+							f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
+							f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
+							f"BPDU Filter: {bpdu_filter}"
+						)
+					adapter.info(
+						  "stp_interfaces_post_validation_success",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.SUCCESS.value,
+						  	"message": "STP Interface Configuration Post Validation Successful"
+						  }
+						)
+
+			#HSRP 
+			exp_hsrp = context.get("hsrp", [])
+			act_hsrp = build_hsrp(netconf_state)
+			hsrp_updated = False 
+
+			for hsrp_data in exp_hsrp: 
+				group_num = hsrp_data.get("group", None)
+				interface = hsrp_data.get("interface", "")
+				priority = hsrp_data.get("priority", None)
+				vlan_id = hsrp_data.get("router_vlan", None)
+				version = hsrp_data.get("version", None)
+				vip = hsrp_data.get("vip", "")
+
+				ok, failures = check_hsrp(hsrp_data, act_hsrp)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"group": group_num,
+					"interface": interface,
+					"priority": priority,
+					"vlan_id": vlan_id,
+					"version": version,
+					"vip": vip,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+				}
+
+				if ok: 
+					adapter.info(
+						"hsrp_compliant",
+						extra={
+						  **log_extra,
+						  "status": StepStatus.SUCCESS.value,
+						  "message": "HSRP Configuration Already Compliant"
+						}
+					  )
+					device_result["actions_taken"].append(
+							"HSRP Configuration Already Compliant | "
+							f"Group: {group_num} | Interface: {interface} | "
+							f"Priority: {priority} | VLAN: {vlan_id} | "
+							f"Version: {version} | VIP: {vip}"
+						)
+					continue 
+
+				device_result["critical_issues"].extend(failures)
+				
+				adapter.warning(
+					  "hsrp_non_compliant",
+					  extra={
+					  	**log_extra,
+					  	"status": StepStatus.FAILED.value,
+					  	"message": "HSRP Configuration Non-Compliant"
+					  }
+					)
+				result = configure_hsrp(sesh, host_ip, hsrp_data, adapter)
+				summary = result.get("summary")
+
+				if summary:
+					device_result["actions_taken"].append(summary)
+				if result.get("status") == OpStatus.SUCCESS.value:
+					hsrp_updated = True
+
+			if hsrp_updated and not DRY_RUN: 
+				new_state = collect_netconf_state(sesh)
+				new_hsrp = build_hsrp(new_state)
+
+				for hsrp_data in exp_hsrp: 
+					group_num = hsrp_data.get("group", None)
+					interface = hsrp_data.get("interface", "")
+					priority = hsrp_data.get("priority", None)
+					vlan_id = hsrp_data.get("router_vlan", None)
+					version = hsrp_data.get("version", None)
+					vip = hsrp_data.get("vip", "")
+
+					ok, failures = check_hsrp(hsrp_data, new_hsrp)
+
+					log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"group": group_num,
+						"interface": interface,
+						"priority": priority,
+						"vlan_id": vlan_id,
+						"version": version,
+						"vip": vip,
+						"failure_count": len(failures) if failures else 0,
+						"failures": failures
+					}
+
+					if not ok: 
+						adapter.error(
+							 "hsrp_post_validation_failed",
+							 extra={
+							 	**log_extra,
+							 	"status": StepStatus.FAILED.value,
+							 	"message": "HSRP Configuration Post Validation Failed"
+							  }
+							)
+						device_result["critical_issues"].extend(failures)
+						device_success = False 
+
+					else: 
+						device_result["actions_taken"].append(
+								"HSRP Configuration Post Validation Successful | "
+								f"Group: {group_num} | Interface: {interface} | "
+								f"Priority: {priority} | VLAN: {vlan_id} | "
+								f"Version: {version} | VIP: {vip}"
+							)
+						adapter.info(
+								"hsrp_post_validation_success",
+								extra={
+								  **log_extra,
+								  "status": StepStatus.SUCCESS.value,
+								  "message": "HSRP Configuration Post Validation Successful"
+								}
+							)
+
+
+			#NAT 
+			exp_nat = context.get("nat", {})
+			act_nat = build_nat(netconf_state)
+			nat_updated = False 
+			
+			nat_summary = []
+			if exp_nat.get("interfaces"): 
+				inside = exp_nat.get("interfaces", {}).get("inside", [])
+				outside = exp_nat.get("interfaces", {}).get("outside", [])
+				nat_summary.append(
+						f"NAT Inside Interfaces: {inside} | NAT Outside Interfaces: {outside}"
+					)
+			if exp_nat.get("static"): 
+				for s in exp_nat.get("static"): 
+					nat_summary.append(
+						  f"Static Inside Local/Global: {s.get('inside_ip')} > {s.get('outside_ip')}"
+						)
+			if exp_nat.get("dynamic"): 
+				for d in exp_nat.get("dynamic"): 
+					nat_summary.append(
+							f"Dynamic Pool: {d.get('pool_name')} | "
+							f"IP Range: {d.get('inside_ip')} - {d.get('outside_ip')} | "
+							f"Mask: {d.get('mask')}"
+						)
+			if exp_nat.get("pat"): 
+				nat_summary.append(
+						f"PAT Interface: {exp_nat.get('pat', {}).get('interfaces', '')} | "
+						f"ACL: {exp_nat.get('pat', {}).get('acl', '')}"
+					)
+
+			summary_str = " | ".join(nat_summary)
+
+			if exp_nat: 
+				ok, failures = check_nat(exp_nat, act_nat) 
+
+				log_extra = {
+				"device_ip": host_ip,
+				"component": "main_process",
+				"has_static": bool(exp_nat.get('static')),
+				"has_dynamic": bool(exp_nat.get('dynamic')),
+				"has_pat": bool(exp_nat.get('pat')),
+				"static_count": len(exp_nat.get('static', [])),
+				"dynamic_count": len(exp_nat.get('dynamic', [])),
+				"inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
+				"outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
+				"summary": summary_str,
+				"compliant": ok,
+				"failures_count": len(failures) if failures else 0,
+				"failures": failures
+					}
+
+				if ok: 
+					adapter.info(
+						   "nat_compliant",
+						   extra={
+						   	**log_extra,
+						   	"status": StepStatus.SUCCESS.value,
+						   	"message": "NAT Configuration Compliant"
+						   }
+						)
+					device_result["actions_taken"].append(
+							"NAT Configuration Compliant | "
+							f"{summary_str}"
+						)
+				else: 
+					device_result["critical_issues"].extend(failures)
+
+					adapter.warning(
+						  "nat_non_compliant",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.FAILED.value,
+						  	"message": (
+						  		"NAT Configuration Non-Compliant | "
+						  		f"{len(failures)} failures"
+						  		)
+						  }	
+						)
+
+					result = configure_nat(sesh, host_ip, exp_nat, adapter)
+					summary = result.get("summary")
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						nat_updated = True 
+
+			if nat_updated and not DRY_RUN: 
+				new_state = collect_netconf_state(sesh)
+				new_nat = build_nat(new_state)
+
+				if exp_nat: 
+					ok, failures = check_nat(exp_nat, new_nat)
+
+					log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"has_static": bool(exp_nat.get('static')),
+						"has_dynamic": bool(exp_nat.get('dynamic')),
+						"has_pat": bool(exp_nat.get('pat')),
+						"static_count": len(exp_nat.get('static')),
+						"dynamic_count": len(exp_nat.get('dynamic')),
+						"inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
+						"outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
+						"summary": summary_str,
+						"compliant": ok,
+						"failures_count": len(failures) if failures else 0,
+						"failures": failures
+							}
+
+					if not ok: 
+						adapter.error(
+							  "nat_post_validation_failed",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.FAILED.value,
+							    "message": "NAT Post Validation Failed | "
+							    		   f"{len(failures)} failures"
+							  }
+							)
+
+						device_result["critical_issues"].extend(failures)
+				    else: 
+				    	adapter.info(
+				    		  "nat_post_validation_success",
+				    		  extra={
+				    		  	 **log_extra,
+				    		  	 "status": StepStatus.SUCCESS.value,
+				    		  	 "message": "NAT Post Validation Successful"
+				    		  }
+				    		)
+						device_result["actions_taken"].append(
+				    			"NAT Post Validation Successful | "
+				    			f"{summary_str}"
+				    		)
+			#DHCP 
+			exp_dhcp = context.get("dhcp", {})
+			act_dhcp = build_dhcp(netconf_state)
+			dhcp_updated = False 
+			dhcp_log = []
+
+			if exp_dhcp.get("excluded_addresses", []):
+				for d in exp_dhcp.get("excluded_addresses", []):
+					dhcp_log.append(
+							f"Excluded IP Ranges: {d.get('start')} - {d.get('end')}"
+						)
+			if exp_dhcp.get("helper"): 
+				for i in exp_dhcp.get("helper", {}).get("interfaces"):
+					dhcp_log.append(
+						   f"Helper IP: {i.get('helper_ip')} | "
+						   f"Helper Int: {i.get('interface_name')}"
+						)
+			if exp_dhcp.get("pools"): 
+				for p in exp_dhcp.get("pools"):
+					dhcp_log.append(
+						  f"Pool Name: {p.get('name')} | Default Gateway: {p.get('default_gateway')} | "
+						  f"IP/Mask: {p.get('network')}/{p.get('mask')}"
+						)
+			summary_str = " | ".join(dhcp_log)
+
+			if exp_dhcp: 
+				ok, failures = check_dhcp(exp_dhcp, act_dhcp)
+
+				log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"pool_count": len(exp_dhcp.get('pools', [])),
+						"excluded_count": len(exp_dhcp.get('excluded_addresses', [])),
+						"helper_count": len(exp_dhcp.get('helper', {}).get('interfaces', [])),
+						"pool_names": [p.get('name') for p in exp_dhcp.get('pool', [])],
+						"excluded_ranges": [
+							f"{e.get('start')} - {e.get('end')}"
+							for e in exp_dhcp.get('excluded_addresses', [])
+						],
+						"helper_interfaces": [
+						h.get('interface_name') 
+						for h in exp_dhcp.get("helper", {}).get("interfaces")
+						],
+						"summary": summary_str,
+						"compliant": ok,
+						"failure_count": len(failures) if failures else 0, 
+						"failures": failures
+					}
+
+				if ok: 
+					adapter.info(
+						  **log_extra,
+						  "status": StepStatus.SUCCESS.value,
+						  "message": "DHCP Configuration Compliant"
+						)
+					device_result["actions_taken"].append(
+							"DHCP Configuration Compliant | "
+							f"{summary_str}"
+						)
+				else: 
+					adapter.warning(
+						 "dhcp_non_compliant",
+						 extra={
+						   **log_extra,
+						   "status": StepStatus.FAILED.value,
+						   "message": (
+						   		 "DHCP Configuration Non-Compliant | "
+						   	)
+						}
+					  )
+					device_result["critical_issues"].extend(failures)
+					result = configure_dhcp(sesh, host_ip, exp_dhcp, adapter)
+					summary = result.get("summary")
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						dhcp_updated = True 
+
+			if dhcp_updated and not DRY_RUN: 
+				new_state = collect_netconf_state(sesh)
+				new_dhcp = build_dhcp(new_state)
+
+				if exp_dhcp: 
+					ok, failures = check_dhcp(exp_dhcp, new_dhcp)
+
+					log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"pool_count": len(exp_dhcp.get('pools', [])),
+						"excluded_count": len(exp_dhcp.get('excluded_addresses', [])),
+						"helper_count": len(exp_dhcp.get('helper', {}).get('interfaces', [])),
+						"pool_names": [p.get('name') for p in exp_dhcp.get('pool', [])],
+						"excluded_ranges": [
+							f"{e.get('start')} - {e.get('end')}"
+							for e in exp_dhcp.get('excluded_addresses', [])
+						],
+						"helper_interfaces": [
+						h.get('interface_name') 
+						for h in exp_dhcp.get("helper", {}).get("interfaces")
+						],
+						"summary": summary_str,
+						"compliant": ok,
+						"failure_count": len(failures) if failures else 0, 
+						"failures": failures
+							}
+
+					if not ok: 
+						adapter.error(
+							  "dhcp_post_validation_failed", 
+							  extra={
+								  **log_extra,
+								  "status": StepStatus.FAILED.value, 
+								  "message": (
+								  	   "DHCP Configuration Post Validation Failed | "
+								
+								  	)	
+								}
+							)
+						device_result["critical_issues"].extend(failures)
+
+					else: 
+						adapter.info(
+							  "dhcp_post_validation_success", 
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.SUCCESS.value,
+							    "message": "DHCP Configuration Post Validation Successful"
+							  }
+							)
+						device_result["actions_taken"].append(
+								 "DHCP Configuration Post Validation Successful | "
+								 f"{summary_str}"
+							)
+
+			#SNMP NETCONF 
+			exp_snmp = context.get("snmp", {})
+			act_snmp = build_snmp(sesh)
+			snmp_nc_updated = False 
+			snmp_log = []
+			if exp_snmp.get("communities"): 
+				for c in exp_snmp.get("communities"):
+					snmp_log.append(
+						   f"Community Name: Permission: {c.get('name')}: {c.get('permission')}"
+						)
+			if exp_snmp.get("hosts"): 
+				for h in exp_snmp.get("hosts"):
+					snmp_log.append(
+						  f"SNMP IP: {g.get('snmp_ip')} ({g.get('community')}) "
+						)
+			if exp_snmp.get("traps"):
+				traps = exp_snmp.get("traps")
+				snmp_log.append(
+ 					   f"Traps: {traps.get("config")},{traps.get('snmp')},{traps.get('syslog')}"
+					)
+			community_str = " | ".join(snmp_log)
+
+			log_extra = {
+				"device_ip": host_ip,
+				"component": "main_process",
+				"community_count": len(exp_snmp.get("communities", [])),
+				"host_count": len(exp_snmp.get("hosts", [])),
+				"contact": exp_snmp.get("contact", ""),
+				"location": exp_snmp.get("location", ""),
+				"community_names": [c.get('name') for c in exp_snmp.get("communities")],
+				"smnp_hosts": [h.get('snmp_ip') for h in exp_snmp.get("hosts")],
+				"enabled_traps": [t for t, v in exp_snmp.get('traps').items()]
+			}
 
