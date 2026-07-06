@@ -1061,7 +1061,8 @@ def build_snmp_nc(netconf_state):
 		actual_snmp["location"] = location
 	return actual_snmp
 def build_snmp_netmiko(device_state):
-	parse = CiscoConfParse(device_state.splitlines())
+	running_config = device_state.get("running_config")
+	parse = CiscoConfParse(running_config.splitlines())
 	actual_snmp = {
 			"communities": [],
 	    	"hosts": [],
@@ -3855,7 +3856,7 @@ def configure_snmp_netmiko(conn,device_ip,snmp_data, log):
                 	),
 				"error": str(e)
 			}
-def configure_snmp(session, device_ip, snmp_data, log): 
+def configure_snmp_nc(session, device_ip, snmp_data, log): 
 	communities = snmp_data.get("communities", [])
 	contact = snmp_data.get("contact", "")
 	hosts = snmp_data.get("hosts", [])
@@ -4986,7 +4987,7 @@ def main_process(task):
 			#COLLECT STATES 
 			restconf_state = collect_restconf_state(sesh, adapter)			
 			netconf_state = collect_netconf_state(sesh)
-			ssh_state = collect_device_state(sesh)
+			device_state = collect_device_state(sesh)
 			#ROAS 
 			actual_roas = build_roas(rest_state)
 			expected_roas = context.get("roas", [])
@@ -5203,7 +5204,7 @@ def main_process(task):
 
 			# VLAN 
 			exp_vlans = context.get("vlans", [])
-			act_vlans = build_vlan(ssh_state)
+			act_vlans = build_vlan(device_state)
 			vlan_updated = False 
 			for vlan_data in exp_vlans: 
 				ok, failures = check_vlan(vlan_data, act_vlans)
@@ -5300,7 +5301,7 @@ def main_process(task):
 						  )
 			#ACCESS 
 			exp_access = context.get("access_ports", [])
-			act_access = build_access(ssh_state)
+			act_access = build_access(device_state)
 			access_updated = False 
 			for access_data in exp_access: 
 				access_interface = access_data.get("access_interface", None)
@@ -5823,7 +5824,7 @@ def main_process(task):
 							)
 			#STP 
 			exp_stp = context.get("stp", {})
-			act_stp = build_stp_global(ssh_state)	
+			act_stp = build_stp_global(device_state)	
 			stp_updated = False
 			mode = exp_stp.get("mode", "")
 			vlan_priorities = exp_stp.get("vlan_priorities", {})
@@ -5926,7 +5927,7 @@ def main_process(task):
 
 			#STP Interfaces 
 			exp_stp_int = context.get("interfaces", {}).get("stp", {})
-			act_stp_int = build_stp_interfaces(ssh_state)
+			act_stp_int = build_stp_interfaces(device_state)
 			stp_int_updated = False 
 			portfast = exp_stp_int.get("portfast", False)
 			bpdu_guard = exp_stp_int.get("bpdu_guard", False)
@@ -6419,7 +6420,7 @@ def main_process(task):
 
 			#SNMP NETCONF 
 			exp_snmp = context.get("snmp", {})
-			act_snmp = build_snmp(sesh)
+			act_snmp = build_snmp_nc(netconf_state)
 			snmp_nc_updated = False 
 			snmp_log = []
 			if exp_snmp.get("communities"): 
@@ -6430,24 +6431,625 @@ def main_process(task):
 			if exp_snmp.get("hosts"): 
 				for h in exp_snmp.get("hosts"):
 					snmp_log.append(
-						  f"SNMP IP: {g.get('snmp_ip')} ({g.get('community')}) "
+						  f"SNMP IP: {h.get('snmp_ip')} ({h.get('community')}) "
 						)
 			if exp_snmp.get("traps"):
-				traps = exp_snmp.get("traps")
+				traps = exp_snmp.get("traps", {})
 				snmp_log.append(
- 					   f"Traps: {traps.get("config")},{traps.get('snmp')},{traps.get('syslog')}"
+ 					   f"Traps: {traps.get('config')}, {traps.get('snmp')}, {traps.get('syslog')}"
 					)
 			community_str = " | ".join(snmp_log)
 
+			if exp_snmp: 
+				ok, failures = check_snmp(exp_snmp, act_snmp)
+				
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"community_count": len(exp_snmp.get("communities", [])),
+					"host_count": len(exp_snmp.get("hosts", [])),
+					"contact": exp_snmp.get("contact", ""),
+					"location": exp_snmp.get("location", ""),
+					"community_names": [c.get('name') for c in exp_snmp.get("communities", [])],
+					"snmp_hosts": [h.get('snmp_ip') for h in exp_snmp.get("hosts", [])],
+					"enabled_traps": [t for t, v in exp_snmp.get('traps', {}).items() if v],
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+
+						}
+				if ok: 
+					adapter.info(
+						 "snmp_nc_compliant",
+						 extra={
+						   **log_extra,
+						   "status": StepStatus.SUCCESS.value,
+						   "message": "SNMP (NETCONF) Configuration Already Compliant"
+						 }
+					  )
+					device_result["actions_taken"].append(
+							"SNMP (NETCONF) Configuration Already Compliant | "
+							f"{community_str}"
+						)
+				else: 
+					adapter.warning(
+						  "snmp_nc_non_compliant",
+						  extra={
+						    **log_extra,
+						    "status": StepStatus.FAILED.value,
+						    "message": "SNMP (NETCONF) Configuration Non-Compliant"  
+						  }
+						)
+					device_result["critical_issues"].append(failures)
+					result = configure_snmp(sesh, host_ip, exp_snmp, adapter)
+					summary = result.get("summary")
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value:
+						snmp_nc_updated = True 
+			
+			if snmp_nc_updated and not DRY_RUN: 
+				new_state = collect_netconf_state(sesh)
+				new_snmp = build_snmp_nc(new_state)
+				
+				if exp_snmp: 
+					ok, failures = check_snmp(exp_snmp, new_snmp)
+
+					log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"community_count": len(exp_snmp.get("communities", [])),
+					"host_count": len(exp_snmp.get("hosts", [])),
+					"contact": exp_snmp.get("contact", ""),
+					"location": exp_snmp.get("location", ""),
+					"community_names": [c.get('name') for c in exp_snmp.get("communities", [])],
+					"snmp_hosts": [h.get('snmp_ip') for h in exp_snmp.get("hosts", [])],
+					"enabled_traps": [t for t, v in exp_snmp.get('traps', {}).items()],
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+
+						}
+				    
+				    if not ok: 
+				    	adapter.error(
+				    		 "snmp_nc_post_validation_failed", 
+				    		 extra={
+				    		   **log_extra,
+				    		   "status": StepStatus.FAILED.value,
+				    		   "message": "SNMP (NETCONF) Configuration Post Validation Failed"
+				    		 }
+				    	  )
+				    	device_result["critical_issues"].extend(failures)
+				    	device_success = False 
+				    else: 
+				    	adapter.info(
+				    		  "snmp_nc_post_validation_success", 
+				    		  extra={
+				    		  	  **log_extra,
+				    		  	  "status": StepStatus.SUCCESS.value,
+				    		  	  "message": "SNMP (NETCONF) Configuration Post Validation Successful"
+				    		    }
+				    		)
+				    	device_result["actions_taken"].append(
+				    			"SNMP (NETCONF) Configuration Post Validation Successful | "
+				    			f"{community_str}" 
+				    		)
+
+
+			#SNMP NETMIKO 
+			exp_net_snmp = context.get("snmp", {})
+			act_net_snmp = build_snmp_netmiko(device_state)
+			snmp_net_updated = False 
+			snmp_net_log = []
+			if exp_net_snmp.get("communities"): 
+				for c in exp_net_snmp.get("communities"):
+					snmp_net_log.append(
+						   f"Community Name: Permission: {c.get('name')}: {c.get('permission')}"
+						)
+			if exp_net_snmp.get("hosts"): 
+				for h in exp_net_snmp.get("hosts"):
+					snmp_net_log.append(
+						  f"SNMP IP: {h.get('snmp_ip')} ({h.get('community')}) "
+						)
+			if exp_net_snmp.get("traps"):
+				traps = exp_net_snmp.get("traps", {})
+				snmp_net_log.append(
+ 					   f"Traps: {traps.get('config')}, {traps.get('snmp')}, {traps.get('syslog')}"
+					)
+			snmp_net_str = " | ".join(snmp_net_log) or "No SNMP (NETMIKO) Configurations"
+
+			if exp_net_snmp: 
+				ok, failures = check_snmp(exp_net_snmp, act_net_snmp)
+				
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"community_count": len(exp_net_snmp.get("communities", [])),
+					"host_count": len(exp_net_snmp.get("hosts", [])),
+					"contact": exp_net_snmp.get("contact", ""),
+					"location": exp_net_snmp.get("location", ""),
+					"community_names": [c.get('name') for c in exp_net_snmp.get("communities", [])],
+					"snmp_hosts": [h.get('snmp_ip') for h in exp_net_snmp.get("hosts", [])],
+					"enabled_traps": [t for t, v in exp_net_snmp.get('traps', {}).items() if v],
+					"summary": snmp_net_str,
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+
+						}
+				if ok: 
+					adapter.info(
+						 "snmp_net_compliant",
+						 extra={
+						   **log_extra,
+						   "status": StepStatus.SUCCESS.value,
+						   "message": "SNMP (NETMIKO) Configuration Already Compliant"
+						 }
+					  )
+					device_result["actions_taken"].append(
+							"SNMP (NETMIKO) Configuration Already Compliant | "
+							f"{snmp_net_str}"
+						)
+				else: 
+					adapter.warning(
+						  "snmp_net_non_compliant",
+						  extra={
+						    **log_extra,
+						    "status": StepStatus.FAILED.value,
+						    "message": "SNMP (NETMIKO) Configuration Non-Compliant"  
+						  }
+						)
+					device_result["critical_issues"].extend(failures)
+					result = configure_snmp(sesh, host_ip, exp_net_snmp, adapter)
+					summary = result.get("summary")
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value:
+						snmp_net_updated = True 
+			
+			if snmp_net_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_net_snmp = build_snmp_netmiko(new_state)
+				
+				if exp_net_snmp: 
+					ok, failures = check_snmp(exp_net_snmp, new_net_snmp)
+
+					log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"community_count": len(exp_net_snmp.get("communities", [])),
+					"host_count": len(exp_net_snmp.get("hosts", [])),
+					"contact": exp_net_snmp.get("contact", ""),
+					"location": exp_net_snmp.get("location", ""),
+					"community_names": [c.get('name') for c in exp_net_snmp.get("communities", [])],
+					"snmp_hosts": [h.get('snmp_ip') for h in exp_net_snmp.get("hosts", [])],
+					"enabled_traps": [t for t, v in exp_net_snmp.get('traps', {}).items() if v],
+					"summary": snmp_net_str,
+					"compliant": ok,
+					"failure_count": len(failures) if failures else 0,
+					"failures": failures
+
+						}
+				    
+				    if not ok: 
+				    	adapter.error(
+				    		 "snmp_net_post_validation_failed", 
+				    		 extra={
+				    		   **log_extra,
+				    		   "status": StepStatus.FAILED.value,
+				    		   "message": "SNMP (NETMIKO) Configuration Post Validation Failed"
+				    		 }
+				    	  )
+				    	device_result["critical_issues"].extend(failures)
+				    	device_success = False 
+				    else: 
+				    	adapter.info(
+				    		  "snmp_net_post_validation_success", 
+				    		  extra={
+				    		  	  **log_extra,
+				    		  	  "status": StepStatus.SUCCESS.value,
+				    		  	  "message": "SNMP (NETMIKO) Configuration Post Validation Successful"
+				    		    }
+				    		)
+				    	device_result["actions_taken"].append(
+				    			"SNMP (NETMIKO) Configuration Post Validation Successful | "
+				    			f"{snmp_net_str}" 
+				    		)
+
+			#SYSLOG NETCONF 
+			exp_syslog = context.get("syslog", {})
+			act_syslog = build_syslog_nc(netconf_state)
+			syslog_nc_updated = False 
+
+			syslog_log = []
+
+			if exp_syslog.get("facility"): 
+				syslog_log.append(
+					  f"Facility: {exp_syslog.get('facility')}"
+					)
+			if exp_syslog.get("hosts"): 
+				for h in exp_syslog.get("hosts", []): 
+					syslog_log.append(
+						   f"SYSLOG HOST IP: {h}"
+						)
+			if exp_syslog.get("source_interface"):
+				syslog_log.append(
+					   f"Source Interface: {exp_syslog.get('source_interface')}"
+					)
+			if exp_syslog.get("timestamps"): 
+				syslog_log.append(
+						f"Service Timestamps (msec): {exp_syslog.get('timestamps')}"
+					)
+			if exp_syslog.get("trap_level"):
+				syslog_log.append(
+					  f"Severity: {exp_syslog.get('trap_level')}" 
+					)
+			syslog_str = " | ".join(syslog_log) or "No Syslog Configuration"
+
+			if exp_syslog: 
+				ok, failures = check_syslog(exp_syslog, act_syslog)
+
+				log_extra = {
+	   				"device_ip": host_ip,
+	   				"component": "main_process",
+	   				"protocol": "syslog",
+	   				"transport": "NETCONF",
+	   				"host_count": len(exp_syslog.get('hosts', [])),
+	   				"hosts": [h for h in exp_syslog.get('hosts', [])],
+	   				"facility": exp_syslog.get("facility", ""),
+	   				"source_interface": exp_syslog.get("source_interface", ""),
+	   				"service_timestamps": exp_syslog.get("timestamps", False),
+	   				"severity": exp_syslog.get("severity", ""),
+	   				"summary": syslog_str,
+	   				"compliant": ok,
+	   				"failures_count": len(failures) if failures else 0, 
+	   				"failures": failures
+				  }
+
+				if ok: 
+					adapter.info(
+						"syslog_compliant",
+						extra={
+						  **log_extra,
+						  "status": StepStatus.SUCCESS.value,
+						  "message": "Syslog (NETCONF) Configuration Already Compliant"
+						}
+					  )
+					device_result["actions_taken"].append(
+						    "Syslog (NETCONF) Configuration Already Compliant | "
+						    f"{summary_str}"
+						)
+				else: 
+					adapter.warning(
+    					  "syslog_non_compliant",
+    					  extra={
+    					  	**log_extra,
+    					  	"status": StepStatus.FAILED.value,
+    					  	"message": "Syslog (NETCONF) Configuration Non-Compliant"
+    					  }
+						)
+					device_result["critical_issues"].extend(failures)
+					result = configure_syslog_nc(sesh, host_ip, exp_syslog, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						syslog_nc_updated = True 
+			
+			if syslog_nc_updated and not DRY_RUN:
+				new_state = collect_netconf_state(sesh)
+				new_syslog = build_syslog_nc(new_state)
+
+				if exp_syslog: 
+					ok, failures = check_syslog(exp_syslog, new_syslog)
+
+					log_extra = {
+		   				"device_ip": host_ip,
+		   				"component": "main_process",
+		   				"protcol": "syslog",
+		   				"transport": "NETCONF",
+		   				"host_count": len(exp_syslog.get('hosts', [])),
+		   				"hosts": [h for h in exp_syslog.get('hosts', [])],
+		   				"facility": exp_syslog.get("facility", ""),
+		   				"source_interface": exp_syslog.get("source_interface", ""),
+		   				"service_timestamps": exp_syslog.get("timestamps", False),
+		   				"severity": exp_syslog.get("severity", ""),
+		   				"summary": community_str,
+		   				"compliant": ok,
+		   				"failures_count": len(failures) if failures else 0, 
+		   				"failures": failures
+					  }
+
+					if not ok: 
+						adapter.error(
+							  "syslog_post_validation_failed",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.FAILED.value,
+							    "message": "Syslog (NETCONF) Configuration Post Validation Failed"
+							  }
+						  	)
+						device_result["critical_issues"].extend(failures)
+						device_success = False
+					else: 
+						adapter.info(
+							   "syslog_post_validation_success",
+							   extra={
+							     **log_extra,
+							     "status": StepStatus.SUCCESS.value,
+							     "message": "Syslog (NETCONF) Configuration Post Validation Successful"
+							   }
+							)
+						device_result["actions_taken"].append(
+							   "Syslog (NETCONF) Configuration Post Validation Successful | "
+							   f"{summary_str}"
+							)
+			#SYSLOG NETMIKO 
+			exp_syslog = context.get("syslog", {})
+			act_syslog = build_syslog_netmiko(device_state)
+			syslog_net_updated = False 
+
+			syslog_net_log = []
+
+			if exp_syslog.get("facility"): 
+				syslog_net_log.append(
+					  f"Facility: {exp_syslog.get('facility')}"
+					)
+			if exp_syslog.get("hosts"): 
+				for h in exp_syslog.get("hosts", []): 
+					syslog_net_log.append(
+						   f"SYSLOG HOST IP: {h}"
+						)
+			if exp_syslog.get("source_interface"):
+				syslog_net_log.append(
+					   f"Source Interface: {exp_syslog.get('source_interface')}"
+					)
+			if exp_syslog.get("timestamps"): 
+				syslog_net_log.append(
+						f"Service Timestamps (msec): {exp_syslog.get('timestamps')}"
+					)
+			if exp_syslog.get("trap_level"):
+				syslog_net_log.append(
+					  f"Severity: {exp_syslog.get('trap_level')}" 
+					)
+			syslog_net_str = " | ".join(syslog_net_log) or "No Syslog Configuration"
+
+			if exp_syslog: 
+				ok, failures = check_syslog(exp_syslog, act_syslog)
+
+				log_extra = {
+	   				"device_ip": host_ip,
+	   				"component": "main_process",
+	   				"protocol": "syslog",
+	   				"transport": "NETMIKO",
+	   				"host_count": len(exp_syslog.get('hosts', [])),
+	   				"hosts": [h for h in exp_net_syslog.get('hosts', [])],
+	   				"facility": exp_syslog.get("facility", ""),
+	   				"source_interface": exp_syslog.get("source_interface", ""),
+	   				"service_timestamps": exp_syslog.get("timestamps", False),
+	   				"severity": exp_syslog.get("trap_level", ""),
+	   				"summary": syslog_net_str,
+	   				"compliant": ok,
+	   				"failures_count": len(failures) if failures else 0, 
+	   				"failures": failures
+				  }
+
+				if ok: 
+					adapter.info(
+						"syslog_compliant",
+						extra={
+						  **log_extra,
+						  "status": StepStatus.SUCCESS.value,
+						  "message": "Syslog (NETMIKO) Configuration Already Compliant"
+						}
+					  )
+					device_result["actions_taken"].append(
+						    "Syslog (NETMIKO) Configuration Already Compliant | "
+						    f"{syslog_net_str}"
+						)
+				else: 
+					adapter.warning(
+    					  "syslog_non_compliant",
+    					  extra={
+    					  	**log_extra,
+    					  	"status": StepStatus.FAILED.value,
+    					  	"message": "Syslog (NETMIKO) Configuration Non-Compliant"
+    					  }
+						)
+					device_result["critical_issues"].extend(failures)
+					result = configure_syslog_netmiko(sesh, host_ip, exp_syslog, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						syslog_net_updated = True 
+			
+			if syslog_net_updated and not DRY_RUN:
+				new_state = collect_device_state(sesh)
+				new_syslog = build_syslog_netmiko(new_state)
+
+				if exp_syslog: 
+					ok, failures = check_syslog(exp_syslog, new_syslog)
+
+					log_extra = {
+		   				"device_ip": host_ip,
+		   				"component": "main_process",
+		   				"protocol": "syslog",
+		   				"transport": "NETMIKO",
+		   				"host_count": len(exp_syslog.get('hosts', [])),
+		   				"hosts": [h for h in exp_syslog.get('hosts', [])],
+		   				"facility": exp_syslog.get("facility", ""),
+		   				"source_interface": exp_syslog.get("source_interface", ""),
+		   				"service_timestamps": exp_syslog.get("timestamps", False),
+		   				"severity": exp_syslog.get("trap_level", ""),
+		   				"summary": syslog_net_str,
+		   				"compliant": ok,
+		   				"failures_count": len(failures) if failures else 0, 
+		   				"failures": failures
+					  }
+
+					if not ok: 
+						adapter.error(
+							  "syslog_post_validation_failed",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.FAILED.value,
+							    "message": "Syslog (NETMIKO) Configuration Post Validation Failed"
+							  }
+						  	)
+						device_result["critical_issues"].extend(failures)
+						device_success = False
+					else: 
+						adapter.info(
+							   "syslog_post_validation_success",
+							   extra={
+							     **log_extra,
+							     "status": StepStatus.SUCCESS.value,
+							     "message": "Syslog (NETMIKO) Configuration Post Validation Successful"
+							   }
+							)
+						device_result["actions_taken"].append(
+							   "Syslog (NETMIKO) Configuration Post Validation Successful | "
+							   f"{syslog_net_str}"
+							)
+
+			#Port Security 
+			exp_ps = context.get("port_security", {})
+			act_ps = build_port_security(device_state)
+			ps_updated = False 
+			interfaces = exp_ps.get("interfaces", {})
+			ps_log = []
+			if interfaces: 
+				for interface, int_value in interfaces.items(): 
+					ps_log.append(
+						  f"Interface: {interface} | PS Enabled: {int_value.get('enabled')} | "
+						  f"MAC Addresses:  {int_value.get('mac_addresses')} | "
+						  f"Maximum: {int_value.get('maximum')} | "
+						  f"Sticky Enabled: {int_value.get('sticky')} | "
+						  f"Violation: {int_value.get('violation')}"
+
+						)
+			ps_str = " | ".join(ps_log)
+
+			if exp_ps: 
+				ok, failures = check_port_security(exp_ps, act_ps)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"protocol": "port_security",
+					"transport": "NETMIKO",
+					"interface_count": len(interfaces or {}),
+					"enabled_count": sum(1 for c in interfaces.values() if c.get("enabled")),
+					"violation_modes": [c.get('violation') for c in interfaces.values() if c.get('violation', '')],
+					"summary": ps_str,
+					"failures_count": len(failures),
+					"failures": failures
+				}
+
+				if ok: 
+					adapter.info(
+ 						"port_security_compliant",
+ 						extra={
+ 						   **log_extra,
+ 						   "status": StepStatus.SUCCESS.value,
+ 						   "message": "Port Security Configuration Already Compliant"
+ 						}
+					  )
+					device_result["actions_taken"].append(
+								"Port Security Configuration Already Compliant"
+								f" | {ps_str}"
+						)
+				else: 
+					adapter.warning(
+						  "port_security_non_compliant",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.FAILED.value,
+						  	"message": "Port Security Configuration Non-Compliant"
+						  }
+						)
+					device_result["critical_issues"].extend(failures)
+					result = configure_psecurity(sesh, host_ip, exp_ps, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value:
+						ps_updated = True 
+
+			if ps_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_ps = build_port_security(new_state)
+
+				if exp_ps: 
+
+					ok, failures = check_port_security(exp_ps, new_ps)
+
+					log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"protocol": "port_security",
+						"transport": "NETMIKO",
+						"interface_count": len(interfaces or {}),
+						"enabled_count": sum(1 for c in interfaces.values() if c.get("enabled", False)),
+						"violation_modes": [ c.get('violation') for c in interfaces.values() if c.get('violation', '')],
+						"summary": ps_str,
+						"failures_count": len(failures),
+						"failures": failures
+					}
+
+					if not ok: 
+						adapter.error(
+						     "port_security_post_validation_failed",
+						     extra={
+						       **log_extra,
+						       "status": StepStatus.FAILED.value,
+						       "message": "Port Security Configuration Post Validation Failed"						     }
+						  )
+						device_result["critical_issues"].extend(failures)
+					else: 
+						adapter.info(
+							  "port_security_post_validation_success",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.SUCCESS.value,
+							    "message": "Port Security Configuration Post Validation Successful"
+							  }
+							)
+						device_result["actions_taken"].append(
+								"Port Security Configuration Post Validation Successful"
+								f" | {ps_str}"
+							)
+			#DHCP 
+			exp_snooping = context.get("dhcp", {})
+			act_snooping = build_dhcp(netconf_state)
+			dhcp_updated = False
+			s_interfaces = exp_snooping.get("interfaces")
+			snooping_log = []
+			trusted_interfaces = sum(
+					1 for i,v in interfaces.items() if v.get("trusted")
+				)
+			if exp_snooping.get("enabled_vlans"): 
+				snooping_log.append(
+						sorted(exp_snooping.get('enabled_vlans'))
+					)
+			if s_interfaces:
+				for i,v in s_interfaces.items():
+					if v.get("trusted"): 
+						snooping_log.append(f"Trusted Interface: {i}")
+			if exp_snooping.get("option82"): 
+				snooping_log.append(
+						f"Option 82 Enabled: {exp_snooping.get('option82')}"
+					)
 			log_extra = {
 				"device_ip": host_ip,
 				"component": "main_process",
-				"community_count": len(exp_snmp.get("communities", [])),
-				"host_count": len(exp_snmp.get("hosts", [])),
-				"contact": exp_snmp.get("contact", ""),
-				"location": exp_snmp.get("location", ""),
-				"community_names": [c.get('name') for c in exp_snmp.get("communities")],
-				"smnp_hosts": [h.get('snmp_ip') for h in exp_snmp.get("hosts")],
-				"enabled_traps": [t for t, v in exp_snmp.get('traps').items()]
+				"protocol": "dhcp",
+				"enabled_vlan_count": len(s_interfaces or {}),
+				"trusted_interface_count": trusted_interfaces,
+				""
 			}
-
