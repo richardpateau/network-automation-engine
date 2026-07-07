@@ -7027,7 +7027,7 @@ def main_process(task):
 			#DHCP 
 			exp_snooping = context.get("dhcp", {})
 			act_snooping = build_dhcp(netconf_state)
-			dhcp_updated = False
+			snooping_updated = False
 			s_interfaces = exp_snooping.get("interfaces")
 			snooping_log = []
 			trusted_interfaces = sum(
@@ -7045,11 +7045,47 @@ def main_process(task):
 				snooping_log.append(
 						f"Option 82 Enabled: {exp_snooping.get('option82')}"
 					)
-			log_extra = {
+			if exp_snooping:
+				ok, failures = check_snooping(exp_snooping, act_snooping)
+
+				log_extra = {
 				"device_ip": host_ip,
 				"component": "main_process",
 				"protocol": "dhcp",
 				"enabled_vlan_count": len(s_interfaces or {}),
 				"trusted_interface_count": trusted_interfaces,
-				""
-			}
+				"compliant": ok,
+				"failures_count": len(failures),
+				"failures": failures
+					}
+
+				if ok: 
+					adapter.info(
+					     "snooping_compliant",
+					     extra={
+					       **log_extra,
+					       "status": StepStatus.SUCCESS.value,
+					       "message": "DHCP Snooping Configuration Already Compliant"
+					     }
+					  )
+					device_result["actions_taken"].append(summary)
+				else: 
+					adapter.warning(
+						  "snooping_non_compliant",
+						  extra={
+						    **log_extra,
+						    "status": StepStatus.FAILED.value,
+						    "message": "DHCP Snooping Configuration Non-Compliant"
+						  }
+						)
+					device_result["critical_issues"].extend(failures)
+					result = configure_snooping(sesh, host_ip, exp_snooping, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value: 
+						snooping_updated = True
+
+			if snooping_updated and not DRY_RUN: 
+				
