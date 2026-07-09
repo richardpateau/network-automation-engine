@@ -6,6 +6,7 @@ from jinja2 import Environment, FileSystemLoader
 from ncclient import manager 
 import xmltodict
 from ciscoconfparse import CiscoConfParse
+from datetime import datetime, UTC
 template_env = Environment(
 		loader=FileSystemLoader("/run/media/rich/HDD/Templates/"),
 		trim_blocks=True,
@@ -4836,6 +4837,2851 @@ def configure_static(session, device_ip, static_data, log):
 	            	),
 				"error": str(e)
 			}
+def compliance_roas(sesh, device_ip, context, device_state, device_result, log): 
+	actual_roas = build_roas(device_state)
+    expected_roas = context.get("roas", [])
+    roas_updated = False
+    for roas_data in expected_roas:
+        ok, failures = check_roas(roas_data, actual_roas)
+        interface = roas_data.get("interface", "")
+        vlan = roas_data.get("router_vlan", None)
+        ip = roas_data.get("ip", "")
+        mask = roas_data.get("mask", "")
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "roas",
+            "transport": "RESTCONF",
+            "interface": interface,
+            "vlan_id": vlan,
+            "ip/mask": f"{ip}/{mask}",
+            "compliant": ok,
+            "failures_count": len(failures) if failures else 0,
+            "failures": failures
+    
+        }
+        if ok:
+            log.info(
+                "roas_check",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "ROAS Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                f"ROAS Configuration Already Compliant | {interface} | "
+                f"VLAN: {vlan} | IP/Mask: {ip}/{mask}"
+            )
+            continue
+    
+        device_result["initial_issues"].extend(failures)
+    
+        log.warning(
+            "roas_drift",
+            extra={
+                **log_extra,
+                "status": StepStatus.FAILED.value,
+                "message": "ROAS Configuration Non-Compliant"
+            }
+        )
+    
+        result = configure_roas(device_ip, roas_data, log)
+    
+        summary = result.get("summary")
+        if summary:
+            device_result["actions_taken"].append(summary)
+    
+        if result.get("status") == OpStatus.SUCCESS.value:
+            roas_updated = True
+        else:
+            device_result["status"] = "FAILED"
+    
+    if roas_updated and not DRY_RUN:
+        new_roas = collect_restconf_state(sesh)
+        new_state = build_roas(new_roas)
+    
+        for roas_data in expected_roas:
+            ok, failures = check_roas(roas_data, new_state)
+            interface = roas_data.get("interface", "")
+	        vlan = roas_data.get("router_vlan", None)
+	        ip = roas_data.get("ip", "")
+	        mask = roas_data.get("mask", "")
+            
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "roas",
+                "transport": "RESTCONF",
+                "interface": interface,
+                "vlan_id": vlan,
+                "ip/mask": f"{ip}/{mask}",
+                "compliant": ok,
+                "failures_count": len(failures) if failures else 0,
+                "failures": failures
+    
+            }
+            if not ok:
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+                log.error(
+                    "roas_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "ROAS Configuration Post Validation Failed"
+                    }
+                )
+            else:
+                device_result["actions_taken"].append(
+                    f"ROAS Configuration Validation Successful | Interface: {interface} | "
+                    f"VLAN: {vlan} | IP/Mask: {ip}/{mask}"
+                )
+                log.info(
+                    "roas_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": "ROAS Configuration Post Validation Successful"
+                    }
+                )
+    return device_result
+def compliance_ospf(sesh, device_ip, context, device_state, device_result, log):
+	exp_ospf = context.get("ospf", [])
+	act_ospf = build_ospf(device_state)
+	ospf_updated = False
+
+	for ospf_data in exp_ospf:
+	    process_id = ospf_data.get("process_id", "")
+	    router_id = ospf_data.get("router_id", "")
+	    interfaces = ospf_data.get("interfaces", [])
+	    interface = [
+	        i.get('name')
+	        for i in interfaces
+	    ]
+	    ok, failures = check_ospf(ospf_data, act_ospf)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "ospf",
+	        "transport": "RESTCONF",
+	        "interfaces": interface,
+	        "process_id": process_id,
+	        "router_id": router_id,
+	        "compliant": ok,
+	        "failure_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+	    if ok:
+	        log.info(
+	            "ospf_check",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "OSPF Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            f"OSPF Already Compliant | Process ID: {process_id} | "
+	            f"RID: {router_id} | Interfaces: {interface}"
+	        )
+	        continue
+
+	    device_result["initial_issues"].extend(failures)
+
+	    log.warning(
+	        "ospf_non_compliant",
+	        extra={
+	            **log_extra,
+	            "status": StepStatus.FAILED.value,
+	            "message": "OSPF Configuration Non-Compliant"
+	        }
+	    )
+
+	    result = configure_ospf(device_ip, ospf_data, log)
+
+	    summary = result.get("summary")
+	    if summary:
+	        device_result["actions_taken"].append(summary)
+	    if result.get("status") == OpStatus.SUCCESS.value:
+	        ospf_updated = True
+	    else:
+	        device_result["status"] = "FAILED"
+
+	if ospf_updated and not DRY_RUN:
+	    new_ospf = collect_restconf_state(sesh)
+	    new_ospf_state = build_ospf(new_ospf)
+
+	    for ospf_data in exp_ospf:
+	        process_id = ospf_data.get("process_id", "")
+	        router_id = ospf_data.get("router_id", "")
+	        interfaces = ospf_data.get("interfaces", [])
+	        interface = [
+	            i.get('name')
+	            for i in interfaces
+	        ]
+	        ok, failures = check_ospf(ospf_data, new_ospf_state)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "ospf",
+	            "transport": "RESTCONF",
+	            "interfaces": interface,
+	            "process_id": process_id,
+	            "router_id": router_id,
+	            "compliant": ok,
+	            "failure_count": len(failures) if failures else 0,
+	            "failures": failures
+	        }
+
+	        if not ok:
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+
+	            log.error(
+	                "ospf_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": (
+	                        f"OSPF Configuration Post Validation Failed | "
+	                        f"({len(failures)}) failures"
+	                    )
+	                }
+	            )
+
+	        else:
+	            device_result["actions_taken"].append(
+	                f"OSPF Configuration Post Validation Successful | Process ID: {process_id} | "
+	                f"RID: {router_id} | Interfaces: {interface}"
+	            )
+	            log.info(
+	                "ospf_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "OSPF Configuration Post Validation Successful"
+	                }
+	            )
+	return device_result 
+def compliance_vlans(sesh, device_ip, context, device_state, device_result, log):
+	exp_vlans = context.get("vlans", [])
+    act_vlans = build_vlan(device_state)
+    vlan_updated = False
+    for vlan_data in exp_vlans:
+        ok, failures = check_vlan(vlan_data, act_vlans)
+        name = vlan_data.get("name", )
+        vlan_id = vlan_data.get("vlan_id", None)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "vlan",
+            "transport": "NETMIKO",
+            "name": name,
+            "vlan_id": vlan_id,
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+        if ok:
+            log.info(
+                "vlan_check",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "VLAN Configuration Already Compliant"
+    
+                }
+            )
+            device_result["actions_taken"].append(
+                f"VLAN Already Compliant | "
+                f"VLAN: {vlan_id} | Name: {name}"
+            )
+            continue
+    
+        device_result["initial_issues"].extend(failures)
+    
+        log.warning(
+            "vlan_drift",
+            extra={
+                **log_extra,
+                "status": StepStatus.FAILED.value,
+                "message": "VLAN Configuration Non-Compliant"
+            }
+        )
+    
+        result = configure_vlan(sesh, vlan_data, log)
+        summary = result.get("summary")
+        if summary:
+            device_result["actions_taken"].append(summary)
+        if result.get("status") == OpStatus.SUCCESS.value:
+            vlan_updated = True
+        else:
+            device_result["status"] = "FAILED" 
+    
+    if vlan_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_vlan = build_vlan(new_state)
+    
+        for vlan_data in exp_vlans:
+            name = vlan_data.get("name", "")
+            vlan_id = vlan_data.get("vlan_id", None)
+            ok, failures = check_vlan(vlan_data, new_vlan)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "vlan",
+                "transport": "NETMIKO",
+                "name": name,
+                "vlan_id": vlan_id,
+                "compliant": ok,
+                "failure_count": len(failures) if failures else 0,
+                "failures": failures
+            }
+    
+            if not ok:
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+                log.error(
+                    "vlan_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "VLAN Configuration Post Validation Failed"
+                    }
+                )
+            else:
+                device_result["actions_taken"].append(
+                    f"VLAN Configuration Post Validation Successful | "
+                    f"VLAN: {vlan_id} | Name: {name}"
+                )
+                log.info(
+                    "vlan_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": "VLAN Configuration Post Validation Successful"
+                    }
+                )
+    return device_result
+def compliance_access(sesh, device_ip, context, device_state, device_result, log):
+	exp_access = context.get("access_ports", [])
+	act_access = build_access(device_state)
+	access_updated = False
+	for access_data in exp_access:
+	    access_interface = access_data.get("access_interface", None)
+	    access_vlan = access_data.get("access_vlan", 10)
+
+	    ok, failures = check_access(access_data, act_access)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "access_interface",
+	        "transport": "NETMIKO",
+	        "interface": access_interface,
+	        "vlan_id": access_vlan,
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+	    if ok:
+	        log.info(
+	            "access_interface_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "Access Interface Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            f"Access Interface Already Compliant | "
+	            f"Interface: {access_interface} | "
+	            f"VLAN: {access_vlan}"
+	        )
+	        continue
+
+	    device_result["initial_issues"].extend(failures)
+
+	    log.warning(
+	        "access_interface_drift",
+	        extra={
+	            **log_extra,
+	            "status": StepStatus.FAILED.value,
+	            "message": f"Access Port Configuration Non-Compliant "
+
+	        }
+	    )
+	    result = configure_access(sesh, device_ip, access_data, log)
+	    summary = result.get("summary")
+	    if summary:
+	        device_result["actions_taken"].append(summary)
+	    if result.get("status") == OpStatus.SUCCESS.value:
+	        access_updated = True
+	    else:
+	        device_result["status"] = "FAILED"
+
+	if access_updated and not DRY_RUN:
+	    new_state = collect_device_state(sesh)
+	    new_access = build_access(new_state)
+
+	    for access_data in exp_access:
+	        access_interface = access_data.get("access_interface", None)
+	        access_vlan = access_data.get("access_vlan", 10)
+
+	        ok, failures = check_access(access_data, new_access)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "access_interface",
+	            "transport": "NETMIKO",
+	            "interface": access_interface,
+	            "vlan_id": access_vlan,
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+	        }
+	        if not ok:
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+	            log.error(
+	                "access_interface_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "Access Port Configuration Post Validation Failed"
+	                }
+	            )
+	        else:
+	            device_result["actions_taken"].append(
+	                f"Access Interface Post Validation Successful | "
+	                f"Interface: {access_interface} | "
+	                f"VLAN: {access_vlan}"
+	            )
+	            log.info(
+	                "access_interface_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "Access Interface Post Validation Successful"
+	                }
+	            )
+	return device_result
+def compliance_interface(sesh, device_ip, context, device_state, device_result, log):
+	exp_interfaces = context.get("interfaces")
+	act_interfaces = build_interface(device_state)
+	interfaces_updated = False
+
+	for int_data in exp_interfaces:
+	    interface = int_data.get("interface", "")
+	    description = int_data.get("description", "")
+	    should_be_up = int_data.get("should_be_up", False)
+
+	    ok, failures = check_interface(int_data, act_interfaces)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "interface",
+	        "transport": "NETMIKO",
+	        "interface": interface,
+	        "description": description,
+	        "should_be_up": should_be_up,
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+	    if ok:
+	        log.info(
+	            "interface_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": (
+	                    f"Interface Configuration Already Compliant"
+	                )
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            f"Interface Already Compliant | "
+	            f"Interface: {interface} | Description: {description} | "
+	            f"Should Be Up: {should_be_up}"
+	        )
+	        continue
+
+	    device_result["initial_issues"].extend(failures)
+
+	    log.warning(
+	        "interface_drift",
+	        extra={
+	            **log_extra,
+	            "status": StepStatus.FAILED.value,
+	            "message": (
+	                f"Interface Configuration Non-Compliant"
+	            )
+	        }
+	    )
+
+	    result = configure_interfaces(sesh, int_data, log)
+	    summary = result.get("summary")
+	    if summary:
+	        device_result["actions_taken"].append(summary)
+	    if result.get("status") == OpStatus.SUCCESS.value:
+	        interfaces_updated = True
+	    else:
+	        device_result["status"] = "FAILED" 
+
+	if interfaces_updated and not DRY_RUN:
+	    new_state = collect_device_state(sesh)
+	    new_interface = build_interface(new_state)
+
+	    for int_data in exp_interfaces:
+	        interface = int_data.get("interface", "")
+	        description = int_data.get("description", "")
+	        should_be_up = int_data.get("should_be_up", False)
+
+	        ok, failures = check_interface(int_data, new_interface)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "interface",
+	            "transport": "NETMIKO",
+	            "interface": interface,
+	            "description": description,
+	            "should_be_up": should_be_up,
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+	        }
+
+	        if not ok:
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+	            log.error(
+	                "interface_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "Interface Configuration Post Validation Failed | "
+	                               f"({len(failures)}) failures"
+	                }
+	            )
+	        else:
+	            device_result["actions_taken"].append(
+	                f"Interface Configuration Post Validation Successful | "
+	                f"Interface: {interface} | Description: {description} | "
+	                f"Should Be Up: {should_be_up}"
+	            )
+	            log.info(
+	                "interface_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "Interface Configuration Post Validation Successful"
+	                }
+	            )
+	return device_result
+def compliance_trunk(sesh, device_ip, context, device_state, device_result, log):
+	exp_trunk = context.get("trunk_ports", [])
+	act_trunk = build_trunk(device_state)
+	trunk_updated = False
+
+	for trunk_data in exp_trunk:
+	    trunk_interface = trunk_data.get("trunk_interface", "")
+	    allowed_vlans = trunk_data.get("allowed_vlans", "")
+
+	    ok, failures = check_trunk(trunk_data, act_trunk)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "trunk_interface",
+	        "transport": "NETMIKO",
+	        "trunk_interface": trunk_interface,
+	        "allowed_vlans": allowed_vlans,
+	        "compliant": ok,
+	        "failure_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+	    if ok:
+	        log.info(
+	            "trunk_interface_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": f"Trunk Interface Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            f"Trunk Interface Already Compliant | "
+	            f"Interface: {trunk_interface} | "
+	            f"Allowed VLAN(s): {allowed_vlans}"
+	        )
+	        continue
+
+	    device_result["initial_issues"].extend(failures)
+
+	    log.warning(
+	        "trunk_interface_drift",
+	        extra={
+	            **log_extra,
+	            "status": StepStatus.FAILED.value,
+	            "message": (
+	                f"Trunk Interface Non-Compliant"
+	            )
+	        }
+	    )
+
+	    result = configure_trunk(sesh, trunk_data, log)
+	    summary = result.get("summary")
+	    if summary:
+	        device_result["actions_taken"].append(summary)
+	    if result.get("status") == OpStatus.SUCCESS.value:
+	        trunk_updated = True
+	    else:
+	        device_result["status"] = "FAILED" 
+
+	if trunk_updated and not DRY_RUN:
+	    new_state = collect_device_state(sesh)
+	    new_trunk = build_trunk(new_state)
+
+	    for trunk_data in exp_trunk:
+	        trunk_interface = trunk_data.get("trunk_interface", "")
+	        allowed_vlans = trunk_data.get("allowed_vlans", "")
+
+	        ok, failures = check_trunk(trunk_data, new_trunk)
+
+	        log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "trunk_interface",
+	        "transport": "NETMIKO",
+	        "trunk_interface": trunk_interface,
+	        "allowed_vlans": allowed_vlans,
+	        "compliant": ok,
+	        "failure_count": len(failures) if failures else 0,
+	        "failures": failures
+	    		}
+
+	        if not ok:
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED" 
+	            log.error(
+	                "trunk_interface_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": (
+	                        f"Trunk Interface Configuration Post Validation Failed"
+	                    )
+	                }
+	            )
+	        else:
+	            device_result["actions_taken"].append(
+	                f"Trunk Interface Post Validation Successful | "
+	                f"Interface: {trunk_interface} | "
+	                f"Allowed VLAN(s): {allowed_vlans}"
+	            )
+	            log.info(
+	                "trunk_interface_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "Trunk Interface Configuration Post Validation Successful"
+	                }
+	            )
+	return device_result
+def compliance_ntp(sesh, device_ip, context, device_state, device_result, log):
+	exp_ntp = context.get("ntp", {})
+	act_ntp = build_ntp(device_state)
+	ntp_updated = False
+	servers = exp_ntp.get("servers", [])
+	server_ip = " | ".join(
+	    f"{s.get('ip')}"
+	    for s in servers
+	)
+	key_id = " | ".join(
+	    f"{s.get('key_id')}"
+	    for s in servers
+	)
+	authenticated = True
+	if exp_ntp:
+	    ok, failures = check_ntp(exp_ntp, act_ntp)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "ntp",
+	        "transport": "NETCONF",
+	        "server_ip": server_ip,
+	        "key_id": key_id,
+	        "authenticated": authenticated,
+	        "compliant": ok,
+	        "failure_count": len(failures),
+	        "failures": failures,
+	    }
+
+	    if ok:
+	        log.info(
+	            "ntp_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "NTP Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            f"NTP Already Compliant | "
+	            f"Server IP: {server_ip} | Key ID: {key_id} | "
+	            f"Authenticated: {authenticated}"
+	        )
+	    else:
+	        device_result["initial_issues"].extend(failures)
+
+	        log.warning(
+	            "ntp_drift",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": f"NTP Non-Compliant"
+	            }
+	        )
+	        result = configure_ntp(sesh, exp_ntp, log)
+	        summary = result.get("summary")
+
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            ntp_updated = True
+	        else:
+	            device_result["status"] = "FAILED" 
+
+	if ntp_updated and not DRY_RUN:
+	    new_state = collect_netconf_state(sesh)
+	    new_ntp = build_ntp(new_state)
+
+	    ok, failures = check_ntp(exp_ntp, new_ntp)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "ntp",
+	        "transport": "NETCONF",
+	        "server_ip": server_ip,
+	        "key_id": key_id,
+	        "authenticated": authenticated,
+	        "compliant": ok,
+	        "failure_count": len(failures),
+	        "failures": failures,
+	    }
+
+	    if not ok:
+	        log.error(
+	            "ntp_post_validation_failed",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "NTP Post Validation Failed"
+	            }
+	        )
+	        device_result["critical_issues"].extend(failures)
+	        device_result["status"] = "FAILED"
+	    else:
+	        device_result["actions_taken"].append(
+	            f"NTP Post Validation Successful | "
+	            f"Server IP: {server_ip} | Key ID: {key_id} | "
+	            f"Authenticated: {authenticated}"
+	        )
+	        log.info(
+	            "ntp_post_validation_success",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "NTP Post Validation Successful"
+	            }
+	        )
+	return device_result
+def compliance_qos(sesh, device_ip, context, device_state, device_result, log):
+	exp_qos = context.get("qos", {})
+	act_qos = build_qos(device_state)
+	qos_updated = False
+	policies = exp_qos.get("policies", [])
+	policy_names = " , ".join(
+	    f"{p.get('policy_name', '')}"
+	    for p in policies
+	)
+	classes = [c for p in policies for c in p.get("class_maps", [])]
+	class_name = [c.get("name") for c in classes]
+	class_names =  ", ".join(class_name)
+	if exp_qos:
+	    ok, failures = check_qos(exp_qos, act_qos)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "qos",
+	        "transport": "NETCONF",
+	        "policy_names": policy_names,
+	        "class_names": class_names,
+	        "compliant": ok,
+	        "failure_count": len(failures),
+	        "failures": failures,
+	    }
+
+	    if ok:
+	        log.info(
+	            "qos_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "QOS Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            f"QOS Already Compliant | "
+	            f"Policy Name: {policy_names} | "
+	            f"Class Name: {class_names}"
+	        )
+	    else:
+	        device_result["initial_issues"].extend(failures)
+
+	        log.warning(
+	            "qos_non_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": f"QOS Non-Compliant"
+	            }
+	        )
+	        result = configure_qos(sesh, device_ip, exp_qos, log)
+	        summary = result.get("summary")
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            qos_updated = True
+	        else:
+	            device_result["status"] = "FAILED"
+
+	if qos_updated and not DRY_RUN:
+	    new_state = collect_netconf_state(sesh)
+	    new_qos = build_qos(new_state)
+
+	    if exp_qos:
+	        ok, failures = check_qos(exp_qos, new_qos)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "qos",
+	            "transport": "NETCONF",
+	            "policy_names": policy_names,
+	            "class_names": class_names,
+	            "compliant": ok,
+	            "failure_count": len(failures),
+	            "failures": failures,
+	        }
+
+	        if not ok:
+	            log.error(
+	                "qos_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "QOS Post Validation Failed"
+	                }
+	            )
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED" = False
+	        else:
+	            device_result["actions_taken"].append(
+	                f"QOS Post Validation Successful | "
+	                f"Policy Name: {policy_names} | "
+	                f"Class Name: {class_names}"
+	            )
+	            log.info(
+	                "qos_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "QOS Post Validation Successful"
+	                }
+	            )
+	return device_result
+def compliance_stp_global(sesh, device_ip, context, device_state, device_result, log):
+    exp_stp = context.get("stp", {})
+    act_stp = build_stp_global(device_state)
+    stp_updated = False
+    mode = exp_stp.get("mode", "")
+    vlan_priorities = exp_stp.get("vlan_priorities", {})
+    priorities_log = " | ".join(
+        f"VLAN: {v} Priority: {p}"
+        for v, p in vlan_priorities.items()
+    )
+    if exp_stp:
+        ok, failures = check_stp_global(exp_stp, act_stp)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "stp",
+            "transport": "NETMIKO",
+            "stp_mode": mode,
+            "vlan_priorities": vlan_priorities,
+            "vlan_count": len(vlan_priorities),
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+    
+        if ok:
+            log.info(
+                "stp_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "STP Global Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                f"STP Global Configuration Already Compliant | "
+                f"Mode: {mode} | VLAN Priorities: {priorities_log}"
+            )
+        else:
+    
+            log.warning(
+                "stp_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": (
+                        f"STP Global Configuration Non-Compliant | "
+                        f"({len(failures)}) failures"
+                    )
+                }
+            )
+            device_result["initial_issues"].extend(failures)
+    
+            result = configure_global_stp(sesh, exp_stp, log)
+            summary = result.get("summary")
+    
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                stp_updated = True
+            else:
+                device_result["status"] = "FAILED" 
+    
+    if stp_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_stp = build_stp_global(new_state)
+    
+        ok, failures = check_stp_global(exp_stp, new_stp)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "stp",
+            "transport": "NETMIKO",
+            "stp_mode": mode,
+            "vlan_priorities": vlan_priorities,
+            "vlan_count": len(vlan_priorities),
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+    
+        if not ok:
+            log.error(
+                "stp_global_post_validation_failed",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": f"STP Global Configuration Post Validation Failed"
+    
+                }
+            )
+            device_result["critical_issues"].extend(failures)
+            device_result["status"] = "FAILED"
+        else:
+            device_result["actions_taken"].append(
+                f"STP Global Configuration Post Validation Successful | "
+                f"Mode: {mode} | VLAN Priorities: {priorities_log}"
+            )
+            log.info(
+                "stp_global_post_validation_success",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "STP Global Configuration Post Validation Successful"
+                }
+            )
+    return device_result
+def compliance_stp_int(sesh, device_ip, context, device_state, device_result, log):
+	exp_stp_int = context.get("interfaces", {}).get("stp", {})
+    act_stp_int = build_stp_interfaces(device_state)
+    stp_int_updated = False
+    portfast = exp_stp_int.get("portfast", False)
+    bpdu_guard = exp_stp_int.get("bpdu_guard", False)
+    root_guard = exp_stp_int.get("root_guard", False)
+    loop_guard = exp_stp_int.get("loop_guard", False)
+    bpdu_filter = exp_stp_int.get("bpdu_filter", False)
+    
+    if exp_stp_int:
+        ok, failures = check_stp_interfaces(exp_stp_int, act_stp_int)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "stp_interfaces",
+            "transport": "NETMIKO",
+            "portfast": portfast,
+            "root_guard": root_guard,
+            "loop_guard": loop_guard,
+            "bpdu_guard": bpdu_guard,
+            "bpdu_filter": bpdu_filter,
+            "compliant": ok,
+            "failures_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+    
+        if ok:
+            log.info(
+                "stp_interfaces_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "STP Interface Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "STP Interface Configuration Already Compliant | "
+                f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
+                f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
+                f"BPDU Filter: {bpdu_filter}"
+            )
+        else:
+            device_result["initial_issues"].extend(failures)
+    
+            log.warning(
+                "stp_interfaces_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "STP Interface Configuration Non-Compliant"
+                }
+            )
+            result = configure_stp_int(sesh, exp_stp_int, log)
+            summary = result.get("summary")
+    
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                stp_int_updated = True
+            else:
+                device_result["status"] = "FAILED" 
+    
+    if stp_int_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_stp = build_stp_interfaces(new_state)
+    
+        ok, failures = check_stp_interfaces(exp_stp_int, new_stp)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "stp_interfaces",
+            "transport": "NETMIKO",
+            "portfast": portfast,
+            "root_guard": root_guard,
+            "loop_guard": loop_guard,
+            "bpdu_guard": bpdu_guard,
+            "bpdu_filter": bpdu_filter,
+            "compliant": ok,
+            "failures_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+    
+        if not ok:
+            log.error(
+                "stp_interfaces_post_validation_failed",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "STP Interfaces Post Validation Failed"
+                }
+            )
+            device_result["critical_issues"].extend(failures)
+            device_result["status"] = "FAILED"
+        else:
+            device_result["actions_taken"].append(
+                "STP Interface Configuration Post Validation Successful | "
+                f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
+                f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
+                f"BPDU Filter: {bpdu_filter}"
+            )
+            log.info(
+                "stp_interfaces_post_validation_success",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "STP Interface Configuration Post Validation Successful"
+                }
+            )
+    return device_result
+def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log):
+	exp_hsrp = context.get("hsrp", [])
+	act_hsrp = build_hsrp(device_state)
+	hsrp_updated = False
+
+	for hsrp_data in exp_hsrp:
+	    group_num = hsrp_data.get("group", None)
+	    interface = hsrp_data.get("interface", "")
+	    priority = hsrp_data.get("priority", None)
+	    vlan_id = hsrp_data.get("router_vlan", None)
+	    version = hsrp_data.get("version", None)
+	    vip = hsrp_data.get("vip", "")
+
+	    ok, failures = check_hsrp(hsrp_data, act_hsrp)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "hsrp",
+	        "transport": "NETCONF",
+	        "group": group_num,
+	        "interface": interface,
+	        "priority": priority,
+	        "vlan_id": vlan_id,
+	        "version": version,
+	        "vip": vip,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+
+	    if ok:
+	        log.info(
+	            "hsrp_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "HSRP Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "HSRP Configuration Already Compliant | "
+	            f"Group: {group_num} | Interface: {interface} | "
+	            f"Priority: {priority} | VLAN: {vlan_id} | "
+	            f"Version: {version} | VIP: {vip}"
+	        )
+	        continue
+
+	    device_result["initial_issues"].extend(failures)
+
+	    log.warning(
+	        "hsrp_non_compliant",
+	        extra={
+	            **log_extra,
+	            "status": StepStatus.FAILED.value,
+	            "message": "HSRP Configuration Non-Compliant"
+	        }
+	    )
+	    result = configure_hsrp(sesh, device_ip, hsrp_data, log)
+	    summary = result.get("summary")
+
+	    if summary:
+	        device_result["actions_taken"].append(summary)
+	    if result.get("status") == OpStatus.SUCCESS.value:
+	        hsrp_updated = True
+	    else:
+	        device_result["status"] = "FAILED" 
+
+	if hsrp_updated and not DRY_RUN:
+	    new_state = collect_netconf_state(sesh)
+	    new_hsrp = build_hsrp(new_state)
+
+	    for hsrp_data in exp_hsrp:
+	        group_num = hsrp_data.get("group", None)
+	        interface = hsrp_data.get("interface", "")
+	        priority = hsrp_data.get("priority", None)
+	        vlan_id = hsrp_data.get("router_vlan", None)
+	        version = hsrp_data.get("version", None)
+	        vip = hsrp_data.get("vip", "")
+
+	        ok, failures = check_hsrp(hsrp_data, new_hsrp)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "hsrp",
+	            "transport": "NETCONF",
+	            "group": group_num,
+	            "interface": interface,
+	            "priority": priority,
+	            "vlan_id": vlan_id,
+	            "version": version,
+	            "vip": vip,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+	        }
+
+	        if not ok:
+	            log.error(
+	                "hsrp_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "HSRP Configuration Post Validation Failed"
+	                }
+	            )
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+
+	        else:
+	            device_result["actions_taken"].append(
+	                "HSRP Configuration Post Validation Successful | "
+	                f"Group: {group_num} | Interface: {interface} | "
+	                f"Priority: {priority} | VLAN: {vlan_id} | "
+	                f"Version: {version} | VIP: {vip}"
+	            )
+	            log.info(
+	                "hsrp_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "HSRP Configuration Post Validation Successful"
+	                }
+	            )
+	return device_result
+def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
+	exp_nat = context.get("nat", {})
+    act_nat = build_nat(device_state)
+    nat_updated = False
+    
+    nat_summary = []
+    if exp_nat.get("interfaces"):
+        inside = exp_nat.get("interfaces", {}).get("inside", [])
+        outside = exp_nat.get("interfaces", {}).get("outside", [])
+        nat_summary.append(
+            f"NAT Inside Interfaces: {inside} | NAT Outside Interfaces: {outside}"
+        )
+    if exp_nat.get("static"):
+        for s in exp_nat.get("static"):
+            nat_summary.append(
+                f"Static Inside Local/Global: {s.get('inside_ip')} > {s.get('outside_ip')}"
+            )
+    if exp_nat.get("dynamic"):
+        for d in exp_nat.get("dynamic"):
+            nat_summary.append(
+                f"Dynamic Pool: {d.get('pool_name')} | "
+                f"IP Range: {d.get('inside_ip')} - {d.get('outside_ip')} | "
+                f"Mask: {d.get('mask')}"
+            )
+    if exp_nat.get("pat"):
+        nat_summary.append(
+            f"PAT Interface: {exp_nat.get('pat', {}).get('interfaces', '')} | "
+            f"ACL: {exp_nat.get('pat', {}).get('acl', '')}"
+        )
+    
+    summary_str = " | ".join(nat_summary)
+    
+    if exp_nat:
+        ok, failures = check_nat(exp_nat, act_nat)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "nat",
+            "transport": "NETCONF",
+            "has_static": bool(exp_nat.get('static')),
+            "has_dynamic": bool(exp_nat.get('dynamic')),
+            "has_pat": bool(exp_nat.get('pat')),
+            "static_count": len(exp_nat.get('static', [])),
+            "dynamic_count": len(exp_nat.get('dynamic', [])),
+            "inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
+            "outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
+            "summary": summary_str,
+            "compliant": ok,
+            "failures_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+    
+        if ok:
+            log.info(
+                "nat_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "NAT Configuration Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "NAT Configuration Compliant | "
+                f"{summary_str}"
+            )
+        else:
+            device_result["initial_issues"].extend(failures)
+    
+            log.warning(
+                "nat_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": (
+                        "NAT Configuration Non-Compliant"
+                    )
+                }
+            )
+    
+            result = configure_nat(sesh, exp_nat, log)
+            summary = result.get("summary")
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                nat_updated = True
+            else: 
+            	device_result["status"] == "FAILED"
+    
+    if nat_updated and not DRY_RUN:
+        new_state = collect_netconf_state(sesh)
+        new_nat = build_nat(new_state)
+    
+        if exp_nat:
+            ok, failures = check_nat(exp_nat, new_nat)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "nat",
+           	    "transport": "NETCONF",
+                "has_static": bool(exp_nat.get('static', [])),
+                "has_dynamic": bool(exp_nat.get('dynamic', [])),
+                "has_pat": bool(exp_nat.get('pat')),
+                "static_count": len(exp_nat.get('static')),
+                "dynamic_count": len(exp_nat.get('dynamic')),
+                "inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
+                "outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
+                "summary": summary_str,
+                "compliant": ok,
+                "failures_count": len(failures) if failures else 0,
+                "failures": failures
+            }
+    
+            if not ok:
+                log.error(
+                    "nat_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "NAT Post Validation Failed"
+                    }
+                )
+    
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+	        else:
+	            log.info(
+	                "nat_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "NAT Post Validation Successful"
+	                }
+	            )
+	            device_result["actions_taken"].append(
+	                "NAT Post Validation Successful | "
+	                f"{summary_str}"
+	            )
+    return device_result
+def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
+    exp_dhcp = context.get("dhcp", {})
+    act_dhcp = build_dhcp(device_state)
+    dhcp_updated = False
+    dhcp_log = []
+    
+    if exp_dhcp.get("excluded_addresses", []):
+        for d in exp_dhcp.get("excluded_addresses", []):
+            dhcp_log.append(
+                f"Excluded IP Ranges: {d.get('start')} - {d.get('end')}"
+            )
+
+    if exp_dhcp.get("helper"):
+        for i in exp_dhcp.get("helper", {}).get("interfaces", []):
+            dhcp_log.append(
+                f"Helper IP: {i.get('helper_ip')} | "
+                f"Helper Int: {i.get('interface_name')}"
+            )
+
+    if exp_dhcp.get("pools"):
+        for p in exp_dhcp.get("pools", []):
+            dhcp_log.append(
+                f"Pool Name: {p.get('name')} | "
+                f"Default Gateway: {p.get('default_gateway')} | "
+                f"IP/Mask: {p.get('network')}/{p.get('mask')}"
+            )
+
+    summary_str = " | ".join(dhcp_log)
+
+    if exp_dhcp:
+        ok, failures = check_dhcp(exp_dhcp, act_dhcp)
+
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "dhcp",
+            "transport": "NETCONF",
+            "pool_count": len(exp_dhcp.get("pools", [])),
+            "excluded_count": len(exp_dhcp.get("excluded_addresses", [])),
+            "helper_count": len(
+                exp_dhcp.get("helper", {}).get("interfaces", [])
+            ),
+            "pool_names": [
+                p.get("name")
+                for p in exp_dhcp.get("pools", [])
+            ],
+            "excluded_ranges": [
+                f"{e.get('start')} - {e.get('end')}"
+                for e in exp_dhcp.get("excluded_addresses", [])
+            ],
+            "helper_interfaces": [
+                h.get("interface_name")
+                for h in exp_dhcp.get("helper", {}).get("interfaces", [])
+            ],
+            "summary": summary_str,
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+
+        if ok:
+            log.info(
+                "dhcp_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "DHCP Configuration Compliant"
+                }
+            )
+
+            device_result["actions_taken"].append(
+                "DHCP Configuration Compliant | "
+                f"{summary_str}"
+            )
+
+        else:
+            log.warning(
+                "dhcp_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "DHCP Configuration Non-Compliant"
+                }
+            )
+
+            device_result["initial_issues"].extend(failures)
+
+            result = configure_dhcp(
+                sesh,
+                exp_dhcp,
+                log
+            )
+
+            summary = result.get("summary")
+
+            if summary:
+                device_result["actions_taken"].append(summary)
+
+            if result.get("status") == OpStatus.SUCCESS.value:
+                dhcp_updated = True
+            else:
+                device_result["status"] = "FAILED"
+
+    if dhcp_updated and not DRY_RUN:
+        new_state = collect_netconf_state(sesh)
+        new_dhcp = build_dhcp(new_state)
+
+        ok, failures = check_dhcp(exp_dhcp, new_dhcp)
+
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "dhcp",
+            "transport": "NETCONF",
+            "pool_count": len(exp_dhcp.get("pools", [])),
+            "excluded_count": len(exp_dhcp.get("excluded_addresses", [])),
+            "helper_count": len(
+                exp_dhcp.get("helper", {}).get("interfaces", [])
+            ),
+            "pool_names": [
+                p.get("name")
+                for p in exp_dhcp.get("pools", [])
+            ],
+            "excluded_ranges": [
+                f"{e.get('start')} - {e.get('end')}"
+                for e in exp_dhcp.get("excluded_addresses", [])
+            ],
+            "helper_interfaces": [
+                h.get("interface_name")
+                for h in exp_dhcp.get("helper", {}).get("interfaces", [])
+            ],
+            "summary": summary_str,
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+
+        if not ok:
+            log.error(
+                "dhcp_post_validation_failed",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "DHCP Configuration Post Validation Failed"
+                }
+            )
+
+            device_result["critical_issues"].extend(failures)
+            device_result["status"] = "FAILED"
+
+        else:
+            log.info(
+                "dhcp_post_validation_success",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "DHCP Configuration Post Validation Successful"
+                }
+            )
+
+            device_result["actions_taken"].append(
+                "DHCP Configuration Post Validation Successful | "
+                f"{summary_str}"
+            )
+
+    return device_result
+def compliance_snmp_nc(sesh, device_ip, context, device_state, device_result, log):
+	exp_snmp = context.get("snmp", {})
+	act_snmp = build_snmp_nc(device_state)
+	snmp_nc_updated = False
+	snmp_log = []
+	if exp_snmp.get("communities"):
+	    for c in exp_snmp.get("communities"):
+	        snmp_log.append(
+	            f"Community Name: {c.get('name')} Permission: {c.get('permission')}"
+	        )
+	if exp_snmp.get("hosts"):
+	    for h in exp_snmp.get("hosts"):
+	        snmp_log.append(
+	            f"SNMP IP: {h.get('snmp_ip')} ({h.get('community')}) "
+	        )
+	if exp_snmp.get("traps"):
+	    traps = exp_snmp.get("traps", {})
+	    snmp_log.append(
+	        f"Traps: {traps.get('config')}, {traps.get('snmp')}, {traps.get('syslog')}"
+	    )
+	community_str = " | ".join(snmp_log)
+
+	if exp_snmp:
+	    ok, failures = check_snmp(exp_snmp, act_snmp)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "snmp",
+	        "transport": "NETCONF",
+	        "community_count": len(exp_snmp.get("communities", [])),
+	        "host_count": len(exp_snmp.get("hosts", [])),
+	        "contact": exp_snmp.get("contact", ""),
+	        "location": exp_snmp.get("location", ""),
+	        "community_names": [c.get('name') for c in exp_snmp.get("communities", [])],
+	        "snmp_hosts": [h.get('snmp_ip') for h in exp_snmp.get("hosts", [])],
+	        "enabled_traps": [t for t, v in exp_snmp.get('traps', {}).items() if v],
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+
+	    }
+	    if ok:
+	        log.info(
+	            "snmp_netconf_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "SNMP (NETCONF) Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "SNMP (NETCONF) Configuration Already Compliant | "
+	            f"{community_str}"
+	        )
+	    else:
+	        log.warning(
+	            "snmp_netconf_non_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "SNMP (NETCONF) Configuration Non-Compliant"
+	            }
+	        )
+	        device_result["initial_issues"].extend(failures)
+	        result = configure_snmp(sesh, exp_snmp, log)
+	        summary = result.get("summary")
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            snmp_nc_updated = True
+	        else: 
+	        	device_result["status"] = "FAILED"
+
+	if snmp_nc_updated and not DRY_RUN:
+	    new_state = collect_netconf_state(sesh)
+	    new_snmp = build_snmp_nc(new_state)
+
+	    if exp_snmp:
+	        ok, failures = check_snmp(exp_snmp, new_snmp)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "snmp",
+	        	"transport": "NETCONF",
+	            "community_count": len(exp_snmp.get("communities", [])),
+	            "host_count": len(exp_snmp.get("hosts", [])),
+	            "contact": exp_snmp.get("contact", ""),
+	            "location": exp_snmp.get("location", ""),
+	            "community_names": [c.get('name') for c in exp_snmp.get("communities", [])],
+	            "snmp_hosts": [h.get('snmp_ip') for h in exp_snmp.get("hosts", [])],
+	            "enabled_traps": [t for t, v in exp_snmp.get('traps', {}).items() if v],
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+
+	        }
+
+	    if not ok:
+	        log.error(
+	            "snmp_netconf_post_validation_failed",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "SNMP (NETCONF) Configuration Post Validation Failed"
+	            }
+	        )
+	        device_result["critical_issues"].extend(failures)
+	        device_result["status"] = "FAILED"
+	    else:
+	        log.info(
+	            "snmp_netconf_post_validation_success",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "SNMP (NETCONF) Configuration Post Validation Successful"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "SNMP (NETCONF) Configuration Post Validation Successful | "
+	            f"{community_str}"
+	        )
+    return device_result
+def compliance_snmp_net(sesh, device_ip, context, device_state, device_result, log):
+	exp_net_snmp = context.get("snmp", {})
+    act_net_snmp = build_snmp_netmiko(device_state)
+    snmp_net_updated = False
+    snmp_net_log = []
+    if exp_net_snmp.get("communities"):
+        for c in exp_net_snmp.get("communities"):
+            snmp_net_log.append(
+                f"Community Name: {c.get('name')} Permission: {c.get('permission')}"
+            )
+    if exp_net_snmp.get("hosts"):
+        for h in exp_net_snmp.get("hosts"):
+            snmp_net_log.append(
+                f"SNMP IP: {h.get('snmp_ip')} ({h.get('community')}) "
+            )
+    if exp_net_snmp.get("traps"):
+        traps = exp_net_snmp.get("traps", {})
+        snmp_net_log.append(
+            f"Traps: {traps.get('config')}, {traps.get('snmp')}, {traps.get('syslog')}"
+        )
+    snmp_net_str = " | ".join(snmp_net_log) or "SNMP (NETMIKO) Configuration Empty"
+    
+    if exp_net_snmp:
+        ok, failures = check_snmp(exp_net_snmp, act_net_snmp)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "snmp",
+            "transport": "NETMIKO",
+            "community_count": len(exp_net_snmp.get("communities", [])),
+            "host_count": len(exp_net_snmp.get("hosts", [])),
+            "contact": exp_net_snmp.get("contact", ""),
+            "location": exp_net_snmp.get("location", ""),
+            "community_names": [c.get('name') for c in exp_net_snmp.get("communities", [])],
+            "snmp_hosts": [h.get('snmp_ip') for h in exp_net_snmp.get("hosts", [])],
+            "enabled_traps": [t for t, v in exp_net_snmp.get('traps', {}).items() if v],
+            "summary": snmp_net_str,
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures
+    
+        }
+        if ok:
+            log.info(
+                "snmp_netmiko_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "SNMP (NETMIKO) Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "SNMP (NETMIKO) Configuration Already Compliant | "
+                f"{snmp_net_str}"
+            )
+        else:
+            log.warning(
+                "snmp_netmiko_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "SNMP (NETMIKO) Configuration Non-Compliant"
+                }
+            )
+            device_result["initial_issues"].extend(failures)
+            result = configure_snmp(sesh, exp_net_snmp, log)
+            summary = result.get("summary")
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                snmp_net_updated = True
+            else: 
+            	device_result["status"] = "FAILED"
+    
+    if snmp_net_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_net_snmp = build_snmp_netmiko(new_state)
+    
+        if exp_net_snmp:
+            ok, failures = check_snmp(exp_net_snmp, new_net_snmp)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "snmp",
+                "transport": "NETMIKO",
+                "community_count": len(exp_net_snmp.get("communities", [])),
+                "host_count": len(exp_net_snmp.get("hosts", [])),
+                "contact": exp_net_snmp.get("contact", ""),
+                "location": exp_net_snmp.get("location", ""),
+                "community_names": [c.get('name') for c in exp_net_snmp.get("communities", [])],
+                "snmp_hosts": [h.get('snmp_ip') for h in exp_net_snmp.get("hosts", [])],
+                "enabled_traps": [t for t, v in exp_net_snmp.get('traps', {}).items() if v],
+                "summary": snmp_net_str,
+                "compliant": ok,
+                "failures_count": len(failures) if failures else 0,
+                "failures": failures
+    
+            }
+    
+        if not ok:
+            log.error(
+                "snmp_netmiko_post_validation_failed",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "SNMP (NETMIKO) Configuration Post Validation Failed"
+                }
+            )
+            device_result["critical_issues"].extend(failures)
+            device_result["status"] = "FAILED"
+        else:
+            log.info(
+                "snmp_netmiko_post_validation_success",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "SNMP (NETMIKO) Configuration Post Validation Successful"
+                }
+            )
+            device_result["actions_taken"].append(
+                "SNMP (NETMIKO) Configuration Post Validation Successful | "
+                f"{snmp_net_str}"
+            )
+    return device_result
+def compliance_syslog_nc(sesh, device_ip, context, device_state, device_result, log):
+	exp_syslog = context.get("syslog", {})
+	act_syslog = build_syslog_nc(device_state)
+	syslog_nc_updated = False
+
+	syslog_log = []
+
+	if exp_syslog.get("facility"):
+	    syslog_log.append(
+	        f"Facility: {exp_syslog.get('facility', '')}"
+	    )
+	if exp_syslog.get("hosts"):
+	    for h in exp_syslog.get("hosts", []):
+	        syslog_log.append(
+	            f"SYSLOG HOST IP: {h}"
+	        )
+	if exp_syslog.get("source_interface"):
+	    syslog_log.append(
+	        f"Source Interface: {exp_syslog.get('source_interface', '')}"
+	    )
+	if "timestamps" in exp_syslog:
+	    syslog_log.append(
+	        f"Service Timestamps (msec): {exp_syslog.get('timestamps', False)}"
+	    )
+	if exp_syslog.get("trap_level"):
+	    syslog_log.append(
+	        f"Severity: {exp_syslog.get('trap_level', '')}"
+	    )
+	syslog_str = " | ".join(syslog_log) or "Syslog (NETCONF) Configuration Empty"
+
+	if exp_syslog:
+	    ok, failures = check_syslog(exp_syslog, act_syslog)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "syslog",
+	        "transport": "NETCONF",
+	        "host_count": len(exp_syslog.get('hosts', [])),
+	        "hosts": [h for h in exp_syslog.get('hosts', [])],
+	        "facility": exp_syslog.get("facility", ""),
+	        "source_interface": exp_syslog.get("source_interface", ""),
+	        "service_timestamps": exp_syslog.get("timestamps", False),
+	        "severity": exp_syslog.get("trap_level", ""),
+	        "summary": syslog_str,
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+
+	    if ok:
+	        log.info(
+	            "syslog_netconf_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "Syslog (NETCONF) Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "Syslog (NETCONF) Configuration Already Compliant | "
+	            f"{syslog_str}"
+	        )
+	    else:
+	        log.warning(
+	            "syslog_netconf_non_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "Syslog (NETCONF) Configuration Non-Compliant"
+	            }
+	        )
+	        device_result["initial_issues"].extend(failures)
+	        result = configure_syslog_nc(sesh, device_ip, exp_syslog, log)
+	        summary = result.get("summary")
+
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            syslog_nc_updated = True
+	        else: 
+	        	device_result["status"] = "FAILED"
+
+	if syslog_nc_updated and not DRY_RUN:
+	    new_state = collect_netconf_state(sesh)
+	    new_syslog = build_syslog_nc(new_state)
+
+	    if exp_syslog:
+	        ok, failures = check_syslog(exp_syslog, new_syslog)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "syslog",
+	            "transport": "NETCONF",
+	            "host_count": len(exp_syslog.get('hosts', [])),
+	            "hosts": [h for h in exp_syslog.get('hosts', [])],
+	            "facility": exp_syslog.get("facility", ""),
+	            "source_interface": exp_syslog.get("source_interface", ""),
+	            "service_timestamps": exp_syslog.get("timestamps", False),
+	            "severity": exp_syslog.get("trap_level", ""),
+	            "summary": syslog_str,
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+	        }
+
+	        if not ok:
+	            log.error(
+	                "syslog_netconf_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "Syslog (NETCONF) Configuration Post Validation Failed"
+	                }
+	            )
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+	        else:
+	            log.info(
+	                "syslog_netconf_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "Syslog (NETCONF) Configuration Post Validation Successful"
+	                }
+	            )
+	            device_result["actions_taken"].append(
+	                "Syslog (NETCONF) Configuration Post Validation Successful | "
+	                f"{syslog_str}"
+	            )
+	return device_result
+def compliance_syslog_net(sesh, device_ip, context, device_state, device_result, log):
+	exp_syslog = context.get("syslog", {})
+	act_syslog = build_syslog_netmiko(device_state)
+	syslog_updated = False
+
+	syslog_log = []
+
+	if exp_syslog.get("facility"):
+	    syslog_log.append(
+	        f"Facility: {exp_syslog.get('facility', '')}"
+	    )
+	if exp_syslog.get("hosts"):
+	    for h in exp_syslog.get("hosts", []):
+	        syslog_log.append(
+	            f"SYSLOG HOST IP: {h}"
+	        )
+	if exp_syslog.get("source_interface"):
+	    syslog_log.append(
+	        f"Source Interface: {exp_syslog.get('source_interface', '')}"
+	    )
+	if "timestamps" in exp_syslog:
+	    syslog_log.append(
+	        f"Service Timestamps (msec): {exp_syslog.get('timestamps', False)}"
+	    )
+	if exp_syslog.get("trap_level"):
+	    syslog_log.append(
+	        f"Severity: {exp_syslog.get('trap_level', '')}"
+	    )
+	syslog_net_str = " | ".join(syslog_log) or "No Syslog (NETMIKO) Configuration"
+
+	if exp_syslog:
+	    ok, failures = check_syslog(exp_syslog, act_syslog)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "syslog",
+	        "transport": "NETMIKO",
+	        "host_count": len(exp_syslog.get('hosts', [])),
+	        "hosts": [h for h in exp_net_syslog.get('hosts', [])],
+	        "facility": exp_syslog.get("facility", ""),
+	        "source_interface": exp_syslog.get("source_interface", ""),
+	        "service_timestamps": exp_syslog.get("timestamps", False),
+	        "severity": exp_syslog.get("trap_level", ""),
+	        "summary": syslog_net_str,
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+	    }
+
+	    if ok:
+	        log.info(
+	            "syslog_netmiko_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "Syslog (NETMIKO) Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "Syslog (NETMIKO) Configuration Already Compliant | "
+	            f"{syslog_net_str}"
+	        )
+	    else:
+	        log.warning(
+	            "syslog_netmiko_non_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "Syslog (NETMIKO) Configuration Non-Compliant"
+	            }
+	        )
+	        device_result["initial_issues"].extend(failures)
+	        result = configure_syslog_netmiko(sesh, exp_syslog, log)
+	        summary = result.get("summary")
+
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            syslog_net_updated = True
+	        else: 
+	        	device_result["status"] = "FAILED"
+
+	if syslog_net_updated and not DRY_RUN:
+	    new_state = collect_device_state(sesh)
+	    new_syslog = build_syslog_netmiko(new_state)
+
+	    if exp_syslog:
+	        ok, failures = check_syslog(exp_syslog, new_syslog)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "syslog",
+	            "transport": "NETMIKO",
+	            "host_count": len(exp_syslog.get('hosts', [])),
+	            "hosts": [h for h in exp_syslog.get('hosts', [])],
+	            "facility": exp_syslog.get("facility", ""),
+	            "source_interface": exp_syslog.get("source_interface", ""),
+	            "service_timestamps": exp_syslog.get("timestamps", False),
+	            "severity": exp_syslog.get("trap_level", ""),
+	            "summary": syslog_net_str,
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+	        }
+
+	        if not ok:
+	            log.error(
+	                "syslog_netmiko_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "Syslog (NETMIKO) Configuration Post Validation Failed"
+	                }
+	            )
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+	        else:
+	            log.info(
+	                "syslog_netmiko_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "Syslog (NETMIKO) Configuration Post Validation Successful"
+	                }
+	            )
+	            device_result["actions_taken"].append(
+	                "Syslog (NETMIKO) Configuration Post Validation Successful | "
+	                f"{syslog_net_str}"
+	            )
+	return device_result
+def compliance_port_security(sesh, device_ip, context, device_state, device_result, log):
+	exp_ps = context.get("port_security", {})
+    act_ps = build_port_security(device_state)
+    ps_updated = False
+    interfaces = exp_ps.get("interfaces", {})
+    ps_log = []
+    if interfaces:
+        for interface, int_value in interfaces.items():
+            ps_log.append(
+                f"Interface: {interface} | PS Enabled: {int_value.get('enabled')} | "
+                f"MAC Addresses:  {int_value.get('mac_addresses')} | "
+                f"Maximum: {int_value.get('maximum')} | "
+                f"Sticky Enabled: {int_value.get('sticky')} | "
+                f"Violation: {int_value.get('violation')}"
+    
+            )
+    ps_str = " | ".join(ps_log)
+    
+    if exp_ps:
+        ok, failures = check_port_security(exp_ps, act_ps)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "port_security",
+            "transport": "NETMIKO",
+            "interface_count": len(interfaces or {}),
+            "enabled_count": sum(1 for c in (interfaces or {}).values() if c.get("enabled")),
+            "maximum_count": [safe_int(i.get('maximum')) for i in (interfaces or {}).values()],
+            "violation_modes": [c.get('violation') for c in (interfaces or {}).values() if c.get('violation', '')],
+            "summary": ps_str,
+            "failures_count": len(failures) if failures else 0,
+            "failures": failures
+        }
+    
+        if ok:
+            log.info(
+                "port_security_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "Port Security Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "Port Security Configuration Already Compliant"
+                f" | {ps_str}"
+            )
+        else:
+            log.warning(
+                "port_security_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "Port Security Configuration Non-Compliant"
+                }
+            )
+            device_result["initial_issues"].extend(failures)
+            result = configure_psecurity(sesh, exp_ps, log)
+            summary = result.get("summary")
+    
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                ps_updated = True
+            else: 
+            	device_result["status"] = "FAILED"
+            	device_result["critical_issues"].append(
+            		   "Port Security Remediation Failed | "
+            		   f"{ps_str}"
+            		)
+    
+    if ps_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_ps = build_port_security(new_state)
+    
+        if exp_ps:
+    
+            ok, failures = check_port_security(exp_ps, new_ps)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "port_security",
+                "transport": "NETMIKO",
+                "interface_count": len(interfaces or {}),
+                "enabled_count": sum(1 for c in (interfaces or {}).values() if c.get("enabled", False)),
+                "maximum_count": [safe_int(i.get('maximum')) for i in (interfaces or {}).values()],
+                "violation_modes": [c.get('violation') for c in (interfaces or {}).values() if c.get('violation', '')],
+                "summary": ps_str,
+                "failures_count": len(failures) if failures else 0,
+                "failures": failures
+            }
+    
+            if not ok:
+                log.error(
+                    "port_security_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "Port Security Configuration Post Validation Failed"						}
+                )
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+            else:
+                log.info(
+                    "port_security_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": "Port Security Configuration Post Validation Successful"
+                    }
+                )
+                device_result["actions_taken"].append(
+                    "Port Security Configuration Post Validation Successful"
+                    f" | {ps_str}"
+                )
+    return device_result
+def compliance_snooping(sesh, device_ip, context, device_state, device_result, log):
+	exp_snooping = context.get("dhcp_snooping", {})
+    act_snooping = build_snooping(device_state)
+    snooping_updated = False
+    s_interfaces = exp_snooping.get("interfaces")
+    snooping_log = []
+    trusted_interfaces = sum(
+        1 for i,v in (s_interfaces or {}).items() if v.get("trusted")
+    )
+    if exp_snooping.get("enabled_vlans"):
+        vlans = ", ".join(map(str, sorted(exp_snooping.get('enabled_vlans', []))))
+        snooping_log.append(f"Enabled VLANs: {vlans}")
+    if s_interfaces:
+        f for i,v in s_interfaces.items():
+            if v.get("trusted"):
+                snooping_log.append(f"Trusted Interface: {i}")
+    if "option82" in exp_snooping:
+        snooping_log.append(
+            f"Option 82: {'Enabled' if exp_snooping.get('option82') else 'Disabled'}"
+        )
+    snooping_str = " | ".join(snooping_log) or "No DHCP Snooping Configuration Exists"
+    if exp_snooping:
+        ok, failures = check_snooping(exp_snooping, act_snooping)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "dhcp_snooping",
+            "transport": "NETMIKO",
+            "enabled_vlan_count": len(exp_snooping.get('enabled_vlans', [])),
+            "trusted_interface_count": trusted_interfaces,
+            "summary": snooping_str,
+            "compliant": ok,
+            "failures_count": len(failures),
+            "failures": failures
+        }
+    
+        if ok:
+            log.info(
+                "snooping_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "DHCP Snooping Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "DHCP Snooping Configuration Already Compliant"
+                f" | {snooping_str}"
+            )
+        else:
+            log.warning(
+                "snooping_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "DHCP Snooping Configuration Non-Compliant"
+                }
+            )
+            device_result["initial_issues"].extend(failures)
+            result = configure_snooping(sesh, exp_snooping, log)
+            summary = result.get("summary")
+    
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                snooping_updated = True
+            else: 
+            	device_result["status"] = "FAILED"
+            	device_result["critical_issues"].append(
+            		   "DHCP Snooping Configuration Remediation Failed | "
+            		   f"{snooping_str}"
+            		)
+    
+    if snooping_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_snooping = build_snooping(new_state)
+    
+        if exp_snooping:
+            ok, failures = check_snooping(exp_snooping, new_snooping)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "dhcp_snooping",
+                "transport": "NETMIKO",
+                "enabled_vlan_count": len(exp_snooping.get('enabled_vlans', [])),
+                "trusted_interface_count": trusted_interfaces,
+                "summary": snooping_str,
+                "compliant": ok,
+                "failures_count": len(failures),
+                "failures": failures
+            }
+    
+            if not ok:
+                log.error(
+                    "snooping_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "DHCP Snooping Configuration Post Validation Failed"
+                    }
+                )
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+    
+            else:
+                log.info(
+                    "snooping_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": "DHCP Snooping Configuration Post Validation Successful"
+                    }
+                )
+                device_result["actions_taken"].append(
+                    "DHCP Snooping Configuration Post Validation Successful"
+                    f" | {snooping_str}"
+                )
+    return device_result
+def compliance_dai(sesh, device_ip, context, device_state, device_result, log):
+	exp_dai = context.get("dai", {})
+    act_dai = build_dai(device_state)
+    dai_updated = False
+    dai_log = []
+    dai_interfaces = exp_dai.get("interfaces", {})
+    buffer = exp_dai.get("log_buffer", {})
+    if exp_dai.get("enabled_vlans"):
+        vlans = ", ".join(map(str, sorted(exp_dai.get('enabled_vlans', []))))
+        dai_log.append(
+            f"Enabled VLANs: {vlans}"
+        )
+    if dai_interfaces:
+        d_list = []
+        for i,v in dai_interfaces.items():
+            if v.get("trusted"):
+                d_list.append(f"{i}")
+        dai_log.append(
+            f"Trusted Interfaces: {', '.join(d_list or 'None')}"
+        )
+    if buffer:
+        dai_log.append(
+            f"Log Buffer: {'Enabled' if buffer.get('enabled', False) else 'Disabled'} | "
+            f"Entries: {buffer.get('entries', 0)}"
+        )
+    dai_str = " | ".join(dai_log) or "No DAI Configuration"
+    
+    if exp_dai:
+        ok, failures = check_dai(exp_dai, act_dai)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "dai",
+            "transport": "NETMIKO",
+            "interface_count": len(dai_interfaces or {}),
+            "enabled_vlan_count": len(exp_dai.get("enabled_vlans", [])),
+            "log_buffer_enabled": buffer.get('enabled', False),
+            "log_buffer_entries": buffer.get('entries', 0),
+            "trusted_interfaces": [
+                d
+                for d, v in dai_interfaces.items() if v.get('trusted', False)
+            ],
+            "summary": dai_str,
+            "compliant": ok,
+            "failure_count": len(failures) if failures else 0,
+            "failures": failures,
+    
+        }
+    
+        if ok:
+            log.info(
+                "dai_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "DAI Configuration Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "DAI Configuration Compliant | "
+                f"{dai_str}"
+            )
+        else:
+            log.warning(
+                "dai_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "DAI Configuration Non-Compliant"
+                }
+            )
+            device_result["initial_issues"].extend(failures)
+            result = configure_dai(sesh, exp_dai, log)
+            summary = result.get("summary")
+    
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                dai_updated = True
+            else: 
+            	device_result["status"] = "FAILED"
+            	device_result["critical_issues"].append(
+            		   "DAI Configuration Remediation Failed | "
+            		   f"{dai_str}"
+
+            		)
+    
+    if dai_updated and not DRY_RUN:
+        new_state = collect_device_state(sesh)
+        new_dai = build_dai(new_state)
+    
+        if exp_dai:
+            ok, failures = check_dai(exp_dai, new_dai)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "dai",
+                "transport": "NETMIKO",
+                "interface_count": len(dai_interfaces or {}),
+                "enabled_vlan_count": len(exp_dai.get("enabled_vlans", [])),
+                "log_buffer_enabled": buffer.get('enabled', False),
+                "log_buffer_entries": buffer.get('entries', 0),
+                "trusted_interfaces": [
+                    d
+                    for d, v in dai_interfaces.items() if v.get('trusted', False)
+                ],
+                "summary": dai_str,
+                "compliant": ok,
+                "failure_count": len(failures) if failures else 0,
+                "failures": failures,
+    
+            }
+    
+            if not ok:
+                log.error(
+                    "dai_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "DAI Configuration Post Validation Failed"
+                    }
+                )
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+	        else:
+	            log.info(
+	                "dai_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "DAI Configuration Post Validation Successful"
+	                }
+	            )
+	            device_result["actions_taken"].append(
+	                "DAI Configuration Post Validation Successful | "
+	                f"{dai_str}"
+	            )
+    return device_result
+def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log):
+	exp_cdp = context.get("cdp", {})
+    act_cdp = build_cdp_nc(device_state)
+    cdp_updated = False
+    cdp_log = []
+    int_count = 0
+    if "enabled" in exp_cdp:
+        cdp_log.append(
+            f"Enabled: {exp_cdp.get('enabled', False)}"
+        )
+    if "timer" in exp_cdp:
+        cdp_log.append(
+            f"Timer: {exp_cdp.get('timer', None)}"
+        )
+    if "holdtime" in exp_cdp:
+        cdp_log.append(
+            f"HoldTime: {exp_cdp.get('holdtime', None)}"
+        )
+    if exp_cdp.get("run_on_interfaces"):
+        enabled_interfaces = []
+        disabled_interfaces = []
+       	for i,v in exp_cdp.get("run_on_interfaces", {}).items():
+            if v.get("enabled"):
+                enabled_interfaces.append(i)
+                int_count += 1
+            else:
+                disabled_interfaces.append(i)
+        if enabled_interfaces:
+            cdp_log.append(
+                f"Enabled Interfaces: {', '.join(enabled_interfaces)}"
+            )
+        if disabled_interfaces:
+            cdp_log.append(
+                f"Disabled Interfaces: {', '.join(disabled_interfaces)}"
+            )
+    cdp_str = " | ".join(cdp_log) or "No CDP Configuration"
+    
+    if exp_cdp:
+        ok, failures = check_cdp(exp_cdp, act_cdp)
+    
+        log_extra = {
+            "device_ip": device_ip,
+            "component": "main_process",
+            "protocol": "cdp",
+            "transport": "NETCONF",
+            "cdp_enabled": exp_cdp.get("enabled"),
+            "timer": exp_cdp.get("timer"),
+            "holdtime": exp_cdp.get("holdtime"),
+            "enabled_int_count": int_count,
+            "enabled_interfaces": [
+                i
+                for i,v in exp_cdp.get("run_on_interfaces", {}).items()
+                if v.get('enabled', False)
+            ],
+            "summary": cdp_str,
+            "compliant": ok,
+            "failures_count": len(failures) if failures else 0,
+            "failures": failures
+    
+        }
+    
+        if ok:
+            log.info(
+                "cdp_netconf_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.SUCCESS.value,
+                    "message": "CDP (NETCONF) Configuration Already Compliant"
+                }
+            )
+            device_result["actions_taken"].append(
+                "CDP (NETCONF) Configuration Already Compliant | "
+                f"{cdp_str}"
+            )
+        else:
+            log.warning(
+                "cdp_netconf_non_compliant",
+                extra={
+                    **log_extra,
+                    "status": StepStatus.FAILED.value,
+                    "message": "CDP (NETCONF) Configuration Non-Compliant"
+                }
+            )
+            device_result["initial_issues"].extend(failures)
+            result = configure_cdp_nc(sesh, device_ip, exp_cdp, log)
+            summary = result.get("summary")
+    
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OpStatus.SUCCESS.value:
+                cdp_updated = True
+            else:
+                device_result["status"] = "FAILED" 
+    			device_result["critical_issues"].append(
+    					"CDP (NETCONF) Configuration Remediation Failed | "
+    					f"{cdp_str}"
+    				)
+    if cdp_updated and not DRY_RUN:
+        new_state = collect_netconf_state(sesh)
+        new_cdp = build_cdp_nc(new_state)
+    
+        if exp_cdp:
+            ok, failures = check_cdp(exp_cdp, new_cdp)
+    
+            log_extra = {
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "cdp",
+                "transport": "NETCONF",
+                "cdp_enabled": exp_cdp.get("enabled"),
+                "timer": exp_cdp.get("timer"),
+                "holdtime": exp_cdp.get("holdtime"),
+                "enabled_int_count": int_count,
+                "enabled_interfaces": [
+                    i
+                    f or i,v in exp_cdp.get("run_on_interfaces", {}).items()
+                    if v.get('enabled', False)
+                ],
+                "summary": cdp_str,
+                "compliant": ok,
+                "failures_count": len(failures) if failures else 0,
+                "failures": failures
+    
+            }
+    
+            if not ok:
+                log.error(
+                    "cdp_netconf_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "CDP Configuration Post Validation Failed"
+    
+                    }
+                )
+                device_result["critical_issues"].extend(failures)
+                device_result["status"] = "FAILED"
+            else:
+                log.info(
+                    "cdp_netconf_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": "CDP Configuration Post Validation Successful"
+                    }
+                )
+                device_result["actions_taken"].append(
+                    "CDP Configuration Post Validation Successful"
+                    f" | {cdp_str}"
+                )
+    return device_result
+def compliance_cdp_net(sesh, device_ip, context, device_state, device_result, log):
+	exp_cdp_net = context.get("cdp", {})
+	act_net_cdp = build_cdp_netmiko(device_state)
+	cdp_net_updated = False
+	cdp_net_log = []
+	int_count = 0
+	if "enabled" in exp_cdp_net:
+	    cdp_net_log.append(
+	        f"Enabled: {exp_cdp_net.get('enabled')}"
+	    )
+	if "timer" in exp_cdp_net:
+	    cdp_net_log.append(
+	        f"Timer: {exp_cdp_net.get('timer')}"
+	    )
+	if "holdtime" in exp_cdp_net:
+	    cdp_net_log.append(
+	        f"HoldTime: {exp_cdp_net.get('holdtime')}"
+	    )
+	if exp_cdp_net.get("run_on_interfaces"):
+	    enabled_interfaces = []
+	    disabled_interfaces = []
+	    for i,v in exp_cdp_net.get("run_on_interfaces").items():
+	        if v.get("enabled"):
+	            enabled_interfaces.append(i)
+	            int_count += 1
+	        else:
+	            disabled_interfaces.append(i)
+	    if enabled_interfaces:
+	        cdp_net_log.append(
+	            f"Enabled Interfaces: {', '.join(enabled_interfaces)}"
+	        )
+	    if disabled_interfaces:
+	        cdp_net_log.append(
+	            f"Disabled Interfaces: {', '.join(disabled_interfaces)}"
+	        )
+	cdp_str = " | ".join(cdp_net_log) or "No CDP Configuration"
+
+	if exp_cdp_net:
+	    ok, failures = check_cdp(exp_cdp_net, act_net_cdp)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "cdp",
+	        "transport": "NETMIKO",
+	        "cdp_enabled": exp_cdp_net.get("enabled"),
+	        "timer": exp_cdp_net.get("timer"),
+	        "holdtime": exp_cdp_net.get("holdtime"),
+	        "enabled_int_count": int_count,
+	        "enabled_interfaces": [
+	            i
+	            for i,v in exp_cdp_net.get("run_on_interfaces", {}).items()
+	            if v.get('enabled', False)
+	        ],
+	        "summary": cdp_str,
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+
+	    }
+
+	    if ok:
+	        log.info(
+	            "cdp_net_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "CDP (NETMIKO) Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "CDP (NETMIKO) Configuration Already Compliant | "
+	            f"{cdp_str}"
+	        )
+	    else:
+	        log.warning(
+	            "cdp_net_non_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "CDP (NETMIKO) Configuration Non-Compliant"
+	            }
+	        )
+	        device_result["initial_issues"].extend(failures)
+	        result = configure_cdp_netmiko(sesh, exp_cdp_net, log)
+	        summary = result.get("summary")
+
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            cdp_updated = True
+	        else:
+	            device_result["status"] = "FAILED" 
+	            device_result["critical_issues"].append(
+	            		"CDP (NETMIKO) Configuration Remediation Failed | "
+	            		f"{cdp_str}"
+	            	)
+
+	if cdp_updated and not DRY_RUN:
+	    new_state = collect_device_state(sesh)
+	    new_cdp = build_cdp_netmiko(new_state)
+
+	    if exp_cdp_net:
+	        ok, failures = check_cdp(exp_cdp_net, new_cdp)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "cdp",
+	            "transport": "NETMIKO",
+	            "cdp_enabled": exp_cdp_net.get("enabled"),
+	            "timer": exp_cdp_net.get("timer"),
+	            "holdtime": exp_cdp_net.get("holdtime"),
+	            "enabled_int_count": int_count,
+	            "enabled_interfaces": [
+	                i
+	                for i,v in exp_cdp_net.get("run_on_interfaces", {}).items()
+	                if v.get('enabled', False)
+	            ],
+	            "summary": cdp_str,
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+
+	        }
+
+	        if not ok:
+	            log.error(
+	                "cdp_net_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "CDP (NETMIKO) Configuration Post Validation Failed"
+
+	                }
+	            )
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+	        else:
+	            log.info(
+	                "cdp_net_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "CDP (NETMIKO) Configuration Post Validation Successful"
+	                }
+	            )
+	            device_result["actions_taken"].append(
+	                "CDP (NETMIKO) Configuration Post Validation Successful"
+	                f" | {cdp_str}"
+	            )
+    return device_result
+def compliance_cdp_net(sesh, device_ip, context, device_state, device_result, log):
+	exp_ether = context.get("etherchannel", {})
+	act_ether = build_etherchannel(device_state)
+	ether_updated = False
+	ether_log = []
+	groups = exp_ether.get("groups", {})
+	if "enabled" in exp_ether:
+	    ether_log.append(
+	        f"Etherchannel Enabled: {exp_ether.get('enabled')}"
+	    )
+	if groups:
+	    f or g,v in groups.items():
+	        ether_log.append(
+	            f"Group Number: {g} | Interfaces: {', '.join(v.get('interfaces', []))} | "
+	            f"Type/Mode: {v.get('type')} - {v.get('mode')} | "
+	            f"Switchport Mode: {v.get('switchport_mode')}"
+	        )
+	ether_str = " | ".join(ether_log) or "No Etherchannel Configuration"
+
+	if exp_ether:
+	    ok, failures = check_etherchannel(exp_ether, act_ether)
+
+	    log_extra = {
+	        "device_ip": device_ip,
+	        "component": "main_process",
+	        "protocol": "etherchannel",
+	        "transport": "NETMIKO",
+	        "group_numbers": list((groups or {}).keys()),
+	        "group_modes": [g.get('mode') for g in (groups or {}).values()],
+	        "group_types": [g.get('type') for g in (groups or {}).values()],
+	        "summary": ether_str,
+	        "compliant": ok,
+	        "failures_count": len(failures) if failures else 0,
+	        "failures": failures
+
+	    }
+
+	    if ok:
+	        log.info(
+	            "etherchannel_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.SUCCESS.value,
+	                "message": "Etherchannel Configuration Already Compliant"
+	            }
+	        )
+	        device_result["actions_taken"].append(
+	            "Etherchannel Configuration Already Compliant | "
+	            f"{ether_str}"
+	        )
+	    else:
+	        log.warning(
+	            "etherchannel_non_compliant",
+	            extra={
+	                **log_extra,
+	                "status": StepStatus.FAILED.value,
+	                "message": "Etherchannel Configuration Non-Compliant"
+	            }
+	        )
+	        device_result["initial_issues"].extend(failures)
+	        result = configure_etherchannel(sesh, device_ip, exp_ether, log)
+	        summary = result.get("summary")
+
+	        if summary:
+	            device_result["actions_taken"].append(summary)
+	        if result.get("status") == OpStatus.SUCCESS.value:
+	            ether_updated = True
+	        else:
+	            device_result["status"] = "FAILED" 
+	            device_result["critical_issues"].append(
+	            	   "Etherchannl Configuration Remediation Failed | "
+	            	   f"{ether_str}"
+	            	)
+
+	if ether_updated and not DRY_RUN:
+	    new_state = collect_device_state(sesh)
+	    new_ether = build_etherchannel(new_state)
+
+	    if exp_ether:
+	        ok, failures = check_etherchannel(exp_ether, new_ether)
+
+	        log_extra = {
+	            "device_ip": device_ip,
+	            "component": "main_process",
+	            "protocol": "etherchannel",
+	            "transport": "NETMIKO",
+	            "group_numbers": list((groups or {}).keys()),
+	            "group_modes": [g.get('mode') for g in (groups or {}).values()],
+	            "group_types": [g.get('type') for g in (groups or {}).values()],
+	            "summary": ether_str,
+	            "compliant": ok,
+	            "failures_count": len(failures) if failures else 0,
+	            "failures": failures
+
+	        }
+
+	        if not ok:
+	            log.error(
+	                "etherchannel_post_validation_failed",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.FAILED.value,
+	                    "message": "Etherchannel Configuration Post Validation Failed"
+	                }
+	            )
+	            device_result["critical_issues"].extend(failures)
+	            device_result["status"] = "FAILED"
+	        else:
+	            log.info(
+	                "etherchannel_post_validation_success",
+	                extra={
+	                    **log_extra,
+	                    "status": StepStatus.SUCCESS.value,
+	                    "message": "Etherchannel Configuration Post Validation Successful"
+	                }
+	            )
+	            device_result["actions_taken"].append(
+	                "Etherchannel Configuration Post Validation Successful | "
+	                f"{ether_str}"
+	            )
+    return device_result
+def compliance_cdp_net(sesh, device_ip, context, device_state, device_result, log)
 class SessionContext: 
 	def __init__(self, session, base_url, device_ip): 
 		self.session = session
@@ -4967,6 +7813,7 @@ def main_process(task):
         "events": [],
         "checks_passed": 0,
         "checks_failed": 0,
+        "initial_issues": [],
         "critical_issues": [],
         "warnings": [],
         "interfaces": [],
@@ -5002,10 +7849,13 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "roas",
+					"transport": "RESTCONF",
 					"interface": interface,
 					"vlan_id": vlan,
 					"ip/mask": f"{ip}/{mask}",
-					"comppliant": ok, 
+					"compliant": ok, 
+					"failures_count": len(failures) if failures else 0, 
 					"failures": failures
 
 				}
@@ -5024,7 +7874,7 @@ def main_process(task):
 						)
 					continue 
 
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 
 				adapter.warning(
 					"roas_drift",
@@ -5043,6 +7893,8 @@ def main_process(task):
 
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					roas_updated = True 
+				else: 
+					device_success = False 
 
 			if roas_success and not DRY_RUN: 
 				new_roas = collect_restconf_state(sesh, adapter)
@@ -5055,17 +7907,19 @@ def main_process(task):
 					log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "roas",
+					"transport": "RESTCONF",
 					"interface": interface,
 					"vlan_id": vlan,
 					"ip/mask": f"{ip}/{mask}",
-					"comppliant": ok, 
+					"compliant": ok, 
+					"failures_count": len(failures) if failures else 0, 
 					"failures": failures
 
 						}
-
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
-
+						device_result["status"] = "FAILED"
 						adapter.error(
 							"roas_post_validation_failed",
 							extra={
@@ -5106,6 +7960,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": sesh.device_ip,
 					"component": "main_process",
+					"protocol": "ospf",
+					"transport": "RESTCONF",
 					"interfaces": interface,
 					"process_id": process_id,
 					"router_id": router_id,
@@ -5128,7 +7984,7 @@ def main_process(task):
 						)
 					continue 
 
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 
 				adapter.warning(
 						"ospf_non_compliant",
@@ -5146,6 +8002,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					ospf_updated = True 
+				else: 
+					device_success = False
 
 		 	if ospf_updated and not DRY_RUN: 
 		 		new_ospf = collect_restconf_state(sesh, adapter)
@@ -5164,6 +8022,8 @@ def main_process(task):
 					log_extra = {
 					"device_ip": sesh.device_ip,
 					"component": "main_process",
+					"protocol": "ospf",
+					"transport": "RESTCONF",
 					"interfaces": interface,
 					"process_id": process_id,
 					"router_id": router_id,
@@ -5175,6 +8035,7 @@ def main_process(task):
 					if not ok:  
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
+						device_result["status"] = "FAILED"
 
 						adapter.error(
 								"ospf_post_validation_failed",
@@ -5214,6 +8075,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "vlan",
+					"transport": "NETMIKO",
 					"name": name,
 					"vlan_id": vlan_id,
 					"compliant": ok,
@@ -5236,7 +8099,7 @@ def main_process(task):
 						)
 					continue 
 				
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 
 				adapter.warning(
 						"vlan_drift",
@@ -5253,6 +8116,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					vlan_updated = True 
+				else: 
+					device_success = False
 
 
 			if vlan_updated and not DRY_RUN: 
@@ -5267,6 +8132,8 @@ def main_process(task):
 					log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "vlan",
+					"transport": "NETMIKO",
 					"name": name,
 					"vlan_id": vlan_id,
 					"compliant": ok,
@@ -5277,7 +8144,7 @@ def main_process(task):
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
-
+						device_result["status"] = "FAILED"
 						adapter.error(
 							"vlan_post_validation_failed", 
 							extra={
@@ -5312,6 +8179,8 @@ def main_process(task):
 				log_extra = {
 						"device_ip": device_ip,
 						"component": "main_process", 
+						"protocol": "access_interface",
+						"transport": "NETMIKO",
 						"interface": access_interface,
 						"vlan_id": access_vlan,
 						"compliant": ok, 
@@ -5334,7 +8203,7 @@ def main_process(task):
 						)
 					continue 
 
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 
 				adapter.warning(
 						"access_interface_drift",
@@ -5352,6 +8221,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					access_updated = True 
+				else: 
+					device_success = False 
 
 			if access_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
@@ -5366,17 +8237,18 @@ def main_process(task):
 					log_extra = {
 						"device_ip": device_ip,
 						"component": "main_process", 
+						"protocol": "access_interface",
+						"transport": "NETMIKO",
 						"interface": access_interface,
 						"vlan_id": access_vlan,
 						"compliant": ok, 
 						"failures": len(failures) if failures else 0,
 						"failures": failures
 							}
-
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
-
+						device_result["status"] = "FAILED"
 						adapter.error(
 							"access_interface_post_validation_failed", 
 							extra={
@@ -5401,7 +8273,7 @@ def main_process(task):
 						    )
 			# Interface 
 			exp_interfaces = context.get("interfaces")
-			act_interfaces = build_interface(sesh)
+			act_interfaces = build_interface(device_state)
 			interfaces_updated = False
 
 			for int_data in exp_interfaces: 
@@ -5414,6 +8286,8 @@ def main_process(task):
 				log_extra = {
 							"device_ip": host_ip,
 							"component": "main_process",
+							"protocol": "interface",
+							"transport": "NETMIKO",
 							"interface": interface,
 							"description": description,
 							"should_be_up": should_be_up,
@@ -5439,7 +8313,7 @@ def main_process(task):
 						)
 					continue 
 
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 
 				adapter.warning(
 						"interface_drift",
@@ -5459,6 +8333,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					interfaces_updated = True 
+				else: 
+					device_success = False
 
 			if interfaces_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
@@ -5474,6 +8350,8 @@ def main_process(task):
 					log_extra = {
 							"device_ip": host_ip,
 							"component": "main_process",
+							"protocol": "interface",
+							"transport": "NETMIKO",
 							"interface": interface,
 							"description": description,
 							"should_be_up": should_be_up,
@@ -5484,7 +8362,7 @@ def main_process(task):
 
 					if not ok: 
 						device_result["critical_issues"].extend(failures)
-						
+						device_result["status"] = "FAILED"
 						adapter.error(
 								"interface_post_validation_failed",
 								extra={
@@ -5511,7 +8389,7 @@ def main_process(task):
 						
 			#Trunk 
 			exp_trunk = context.get("trunk_ports", [])
-			act_trunk = build_trunk(sesh)
+			act_trunk = build_trunk(device_state)
 			trunk_updated = False 
 
 			for trunk_data in exp_trunk: 
@@ -5523,6 +8401,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "trunk_interface",
+					"transport": "NETMIKO",
 					"trunk_interface": trunk_interface,
 					"allowed_vlans": allowed_vlans,
 					"compliant": ok,
@@ -5545,7 +8425,7 @@ def main_process(task):
 						)
 					continue 
 
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 
 				adapter.warning(
 						"trunk_interface_drift",
@@ -5565,6 +8445,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value: 
 					trunk_updated = True 
+				else: 
+					device_success = False
 
 			if trunk_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
@@ -5578,27 +8460,29 @@ def main_process(task):
 					ok, failures = check_trunk(trunk_data, new_trunk)
 
 					log_extra = {
-					"device_ip": host_ip,
-					"component": "main_process",
-					"trunk_interface": trunk_interface,
-					"allowed_vlans": allowed_vlans,
-					"compliant": ok,
-					"failure_count": len(failures) if failures else 0,
-					"failures": failures
-						}
+							"device_ip": host_ip,
+							"component": "main_process",
+							"protocol": "interface",
+							"transport": "NETMIKO",
+							"interface": interface,
+							"description": description,
+							"should_be_up": should_be_up,
+							"compliant": ok,
+							"failure_count": len(failures) if failures else 0,
+							"failures": failures
+					}
 
 					if not ok: 
-						device_result["critical_issues"].append(failures)
+						device_result["critical_issues"].extend(failures)
 						device_success = False 
-
+						device_result["status"] = "FAILED"
 						adapter.error(
 								"trunk_interface_post_validation_failed",
 								extra={
 									**log_extra,
 									"status": StepStatus.FAILED.value, 
 									"message": (
-											f"Trunk Interface Post Validation Failed | "
-											f"({len(failures)}) failures"
+											f"Trunk Interface Configuration Post Validation Failed | "
 										)
 								}
 							)
@@ -5613,7 +8497,7 @@ def main_process(task):
 								extra={
 								  **log_extra,
 								  "status": StepStatus.SUCCESS.value,
-								  "message": "Trunk Interface Post Validation Successful"
+								  "message": "Trunk Interface Configuration Post Validation Successful"
 								}
 							)
 			# NTP 
@@ -5636,6 +8520,8 @@ def main_process(task):
 				log_extra = {
 			        "device_ip": host_ip,
 			        "component": "main_process",
+			        "protocol": "ntp",
+			        "transport": "NETCONF",
 			        "server_ip": server_ip,
 					"key_id": key_id, 
 					"authenticated": authenticated,
@@ -5660,7 +8546,7 @@ def main_process(task):
 						 	f"Authenticated: {authenticated}"
 						)
 				else:  
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 
 					adapter.warning(
 							"ntp_drift",
@@ -5676,7 +8562,9 @@ def main_process(task):
 					if summary: 
 						device_result["summary"].append(summary)
 					if result.get("status") == OpStatus.SUCCESS.value 
-						ntp_updated = True 
+						ntp_updated = True
+					else: 
+						device_success = False 
 
 			if ntp_updated and not DRY_RUN: 
 				new_state = collect_netconf_state(sesh)
@@ -5687,13 +8575,15 @@ def main_process(task):
 				log_extra = {
 			        "device_ip": host_ip,
 			        "component": "main_process",
+			        "protocol": "ntp",
+			        "transport": "NETCONF",
 			        "server_ip": server_ip,
 					"key_id": key_id, 
 					"authenticated": authenticated,
 			        "compliant": ok,
 			        "failure_count": len(failures),
 			        "failures": failures,           
-			    }
+			   		 }
 
 				if not ok: 
 					adapter.error(
@@ -5706,7 +8596,7 @@ def main_process(task):
 						)
 					device_result["critical_issues"].append(failures)
 					device_success = False 
-
+					device_result["status"] = "FAILED"
 				else: 
 					device_result["actions_taken"].append(
 							f"NTP Post Validation Successful | "
@@ -5739,6 +8629,8 @@ def main_process(task):
 				log_extra = {
 			        "device_ip": host_ip,
 			        "component": "main_process",
+			        "protocol": "qos",
+			        "transport": "NETCONF",
 			        "policy_names": policy_names,
 			        "class_names": class_names,
 			        "compliant": ok,
@@ -5762,7 +8654,7 @@ def main_process(task):
 							f"Class Name: {class_names}"
 						)
 				else:  
-					device_result["critical_issues"].append(failures)
+					device_result["initial_issues"].append(failures)
 					
 					adapter.warning(
 							"qos_non_compliant", 
@@ -5778,6 +8670,8 @@ def main_process(task):
 						device_result["actions_taken"].append(summary)
 					if result.get("status") == OpStatus.SUCCESS.value: 
 						qos_updated = True 
+					else: 
+						device_success = False
 
 			if qos_updated and not DRY_RUN: 
 				new_state = collect_netconf_state(sesh)
@@ -5788,14 +8682,16 @@ def main_process(task):
 					
 
 					log_extra = {
-				        "device_ip": host_ip,
-				        "component": "main_process",
-				        "policy_names": policy_names,
-				        "class_names": class_names,
-				        "compliant": ok,
-				        "failure_count": len(failures),
-				        "failures": failures,           
-				    }
+			        "device_ip": host_ip,
+			        "component": "main_process",
+			        "protocol": "qos",
+			        "transport": "NETCONF",
+			        "policy_names": policy_names,
+			        "class_names": class_names,
+			        "compliant": ok,
+			        "failure_count": len(failures),
+			        "failures": failures,           
+			    		}
 					
 					if not ok: 
 						adapter.error(
@@ -5807,7 +8703,8 @@ def main_process(task):
 								}
 							)
 						device_result["critical_issues"].extend(failures)
-						device_success = False 
+						device_success = False
+						device_result["status"] = "FAILED"
 					else: 
 						device_result["actions_taken"].append(
 								f"QOS Post Validation Successful | "
@@ -5838,6 +8735,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "stp",
+					"transport": "NETMIKO",
 					"stp_mode": mode,
 					"vlan_priorities": vlan_priorities,
 					"vlan_count": len(vlan_priorities),
@@ -5872,7 +8771,7 @@ def main_process(task):
 									)
 							}
 						)
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 
 					result = configure_global_stp(sesh, host_ip, exp_stp, adapter)
 					summary = result.get("summary")
@@ -5881,6 +8780,8 @@ def main_process(task):
 						device_result["actions_taken"].append(summary)
 					if result.get("status") == OpStatus.SUCCESS.value:
 						stp_updated = True 
+					else: 
+						device_success = False
 
 			if stp_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
@@ -5891,6 +8792,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "stp",
+					"transport": "NETMIKO",
 					"stp_mode": mode,
 					"vlan_priorities": vlan_priorities,
 					"vlan_count": len(vlan_priorities),
@@ -5911,6 +8814,7 @@ def main_process(task):
 					)
 					device_result["critical_issues"].extend(failures)
 					device_success = False 
+					device_result["status"] = "FAILED"
 				else: 
 					device_result["actions_taken"].append(
 							f"STP Global Configuration Post Validation Successful | "
@@ -5941,6 +8845,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "stp_interfaces",
+					"transport": "NETMIKO",
 					"portfast": portfast,
 					"root_guard": root_guard,
 					"loop_guard": loop_guard,
@@ -5967,7 +8873,7 @@ def main_process(task):
 							f"BPDU Filter: {bpdu_filter}"
 						)
 				else: 
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 
 					adapter.warning(
 						  "stp_interfaces_non_compliant",
@@ -5984,6 +8890,8 @@ def main_process(task):
 						device_result["summary"].append(summary)
 					if result.get("status") == OpStatus.SUCCESS.value: 
 						stp_int_updated = True 
+					else: 
+						device_success = False
 
 			if stp_int_updated and not DRY_RUN: 
 				new_state = collect_device_state(sesh)
@@ -5994,11 +8902,13 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "stp_interfaces",
+					"transport": "NETMIKO",
 					"portfast": portfast,
 					"root_guard": root_guard,
 					"loop_guard": loop_guard,
 					"bpdu_guard": bpdu_guard,
-					"bpdu_filter":bpdu_filter,
+					"bpdu_filter":bpdu_filter, 
 					"compliant": ok,
 					"failures_count": len(failures) if failures else 0,
 					"failures": failures
@@ -6014,7 +8924,8 @@ def main_process(task):
 						  }
 						)
 					device_result["critical_issues"].extend(failures)
-					device_success = False 
+					device_success = False
+					device_result["status"] = "FAILED"
 				else: 
 					device_result["actions_taken"].append(
 							"STP Interface Configuration Post Validation Successful | "
@@ -6049,6 +8960,8 @@ def main_process(task):
 				log_extra = {
 					"device_ip": host_ip,
 					"component": "main_process",
+					"protocol": "hsrp",
+					"transport": "NETCONF",
 					"group": group_num,
 					"interface": interface,
 					"priority": priority,
@@ -6076,7 +8989,7 @@ def main_process(task):
 						)
 					continue 
 
-				device_result["critical_issues"].extend(failures)
+				device_result["initial_issues"].extend(failures)
 				
 				adapter.warning(
 					  "hsrp_non_compliant",
@@ -6093,6 +9006,8 @@ def main_process(task):
 					device_result["actions_taken"].append(summary)
 				if result.get("status") == OpStatus.SUCCESS.value:
 					hsrp_updated = True
+				else: 
+					device_success = False 
 
 			if hsrp_updated and not DRY_RUN: 
 				new_state = collect_netconf_state(sesh)
@@ -6111,6 +9026,8 @@ def main_process(task):
 					log_extra = {
 						"device_ip": host_ip,
 						"component": "main_process",
+						"protocol": "hsrp",
+						"transport": "NETCONF",
 						"group": group_num,
 						"interface": interface,
 						"priority": priority,
@@ -6132,6 +9049,7 @@ def main_process(task):
 							)
 						device_result["critical_issues"].extend(failures)
 						device_success = False 
+						device_result["status"] = "FAILED"
 
 					else: 
 						device_result["actions_taken"].append(
@@ -6186,19 +9104,19 @@ def main_process(task):
 				ok, failures = check_nat(exp_nat, act_nat) 
 
 				log_extra = {
-				"device_ip": host_ip,
-				"component": "main_process",
-				"has_static": bool(exp_nat.get('static')),
-				"has_dynamic": bool(exp_nat.get('dynamic')),
-				"has_pat": bool(exp_nat.get('pat')),
-				"static_count": len(exp_nat.get('static', [])),
-				"dynamic_count": len(exp_nat.get('dynamic', [])),
-				"inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
-				"outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
-				"summary": summary_str,
-				"compliant": ok,
-				"failures_count": len(failures) if failures else 0,
-				"failures": failures
+					"device_ip": host_ip,
+					"component": "main_process",
+					"has_static": bool(exp_nat.get('static')),
+					"has_dynamic": bool(exp_nat.get('dynamic')),
+					"has_pat": bool(exp_nat.get('pat')),
+					"static_count": len(exp_nat.get('static', [])),
+					"dynamic_count": len(exp_nat.get('dynamic', [])),
+					"inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
+					"outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
+					"summary": summary_str,
+					"compliant": ok,
+					"failures_count": len(failures) if failures else 0,
+					"failures": failures
 					}
 
 				if ok: 
@@ -6215,7 +9133,7 @@ def main_process(task):
 							f"{summary_str}"
 						)
 				else: 
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 
 					adapter.warning(
 						  "nat_non_compliant",
@@ -6271,6 +9189,7 @@ def main_process(task):
 							)
 
 						device_result["critical_issues"].extend(failures)
+						device_result["status"] = "FAILED"
 				    else: 
 				    	adapter.info(
 				    		  "nat_post_validation_success",
@@ -6354,7 +9273,7 @@ def main_process(task):
 						   	)
 						}
 					  )
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 					result = configure_dhcp(sesh, host_ip, exp_dhcp, adapter)
 					summary = result.get("summary")
 					if summary: 
@@ -6403,6 +9322,8 @@ def main_process(task):
 								}
 							)
 						device_result["critical_issues"].extend(failures)
+						device_result["status"] = "FAILED"
+						device_success = False
 
 					else: 
 						adapter.info(
@@ -6480,7 +9401,7 @@ def main_process(task):
 						    "message": "SNMP (NETCONF) Configuration Non-Compliant"  
 						  }
 						)
-					device_result["critical_issues"].append(failures)
+					device_result["initial_issues"].append(failures)
 					result = configure_snmp(sesh, host_ip, exp_snmp, adapter)
 					summary = result.get("summary")
 					if summary: 
@@ -6522,6 +9443,7 @@ def main_process(task):
 				    	  )
 				    	device_result["critical_issues"].extend(failures)
 				    	device_success = False 
+				    	device_result["status"] = "FAILED"
 				    else: 
 				    	adapter.info(
 				    		  "snmp_nc_post_validation_success", 
@@ -6600,7 +9522,7 @@ def main_process(task):
 						    "message": "SNMP (NETMIKO) Configuration Non-Compliant"  
 						  }
 						)
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 					result = configure_snmp(sesh, host_ip, exp_net_snmp, adapter)
 					summary = result.get("summary")
 					if summary: 
@@ -6643,6 +9565,7 @@ def main_process(task):
 				    	  )
 				    	device_result["critical_issues"].extend(failures)
 				    	device_success = False 
+				    	device_result["status"] = "FAILED"
 				    else: 
 				    	adapter.info(
 				    		  "snmp_net_post_validation_success", 
@@ -6729,7 +9652,7 @@ def main_process(task):
     					  	"message": "Syslog (NETCONF) Configuration Non-Compliant"
     					  }
 						)
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 					result = configure_syslog_nc(sesh, host_ip, exp_syslog, adapter)
 					summary = result.get("summary")
 
@@ -6773,6 +9696,7 @@ def main_process(task):
 						  	)
 						device_result["critical_issues"].extend(failures)
 						device_success = False
+						device_result["status"] = "FAILED"
 					else: 
 						adapter.info(
 							   "syslog_post_validation_success",
@@ -6858,7 +9782,7 @@ def main_process(task):
     					  	"message": "Syslog (NETMIKO) Configuration Non-Compliant"
     					  }
 						)
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 					result = configure_syslog_netmiko(sesh, host_ip, exp_syslog, adapter)
 					summary = result.get("summary")
 
@@ -6902,6 +9826,7 @@ def main_process(task):
 						  	)
 						device_result["critical_issues"].extend(failures)
 						device_success = False
+						device_result["status"] = "FAILED"
 					else: 
 						adapter.info(
 							   "syslog_post_validation_success",
@@ -6972,7 +9897,7 @@ def main_process(task):
 						  	"message": "Port Security Configuration Non-Compliant"
 						  }
 						)
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 					result = configure_psecurity(sesh, host_ip, exp_ps, adapter)
 					summary = result.get("summary")
 
@@ -7011,6 +9936,7 @@ def main_process(task):
 						       "message": "Port Security Configuration Post Validation Failed"						     }
 						  )
 						device_result["critical_issues"].extend(failures)
+						device_result["status"] = "FAILED"
 					else: 
 						adapter.info(
 							  "port_security_post_validation_success",
@@ -7024,27 +9950,27 @@ def main_process(task):
 								"Port Security Configuration Post Validation Successful"
 								f" | {ps_str}"
 							)
-			#DHCP 
-			exp_snooping = context.get("dhcp", {})
-			act_snooping = build_dhcp(netconf_state)
+			#DHCP Snooping
+			exp_snooping = context.get("dhcp_snooping", {})
+			act_snooping = build_snooping(device_state)
 			snooping_updated = False
 			s_interfaces = exp_snooping.get("interfaces")
 			snooping_log = []
 			trusted_interfaces = sum(
-					1 for i,v in interfaces.items() if v.get("trusted")
+					1 for i,v in (s_interfaces or {}).items() if v.get("trusted")
 				)
 			if exp_snooping.get("enabled_vlans"): 
-				snooping_log.append(
-						sorted(exp_snooping.get('enabled_vlans'))
-					)
+					vlans = ", ".join(map(str, sorted(exp_snooping.get('enabled_vlans', []))))
+					snooping_log.append(f"Enabled VLANs: {vlans}")
 			if s_interfaces:
 				for i,v in s_interfaces.items():
 					if v.get("trusted"): 
 						snooping_log.append(f"Trusted Interface: {i}")
-			if exp_snooping.get("option82"): 
+			if "option82" in exp_snooping: 
 				snooping_log.append(
-						f"Option 82 Enabled: {exp_snooping.get('option82')}"
+						f"Option 82: {'Enabled' if exp_snooping.get('option82') else 'Disabled'}"
 					)
+			snooping_str = " | ".join(snooping_log)
 			if exp_snooping:
 				ok, failures = check_snooping(exp_snooping, act_snooping)
 
@@ -7052,8 +9978,10 @@ def main_process(task):
 				"device_ip": host_ip,
 				"component": "main_process",
 				"protocol": "dhcp",
-				"enabled_vlan_count": len(s_interfaces or {}),
+				"transport": "NETMIKO",
+				"enabled_vlan_count": len(exp_snooping.get('enabled_vlans', [])),
 				"trusted_interface_count": trusted_interfaces,
+				"summary": snooping_str,
 				"compliant": ok,
 				"failures_count": len(failures),
 				"failures": failures
@@ -7068,7 +9996,10 @@ def main_process(task):
 					       "message": "DHCP Snooping Configuration Already Compliant"
 					     }
 					  )
-					device_result["actions_taken"].append(summary)
+					device_result["actions_taken"].append(
+							"DHCP Snooping Configuration Already Compliant"
+							f" | {snooping_str}"
+						)
 				else: 
 					adapter.warning(
 						  "snooping_non_compliant",
@@ -7078,7 +10009,7 @@ def main_process(task):
 						    "message": "DHCP Snooping Configuration Non-Compliant"
 						  }
 						)
-					device_result["critical_issues"].extend(failures)
+					device_result["initial_issues"].extend(failures)
 					result = configure_snooping(sesh, host_ip, exp_snooping, adapter)
 					summary = result.get("summary")
 
@@ -7088,4 +10019,1098 @@ def main_process(task):
 						snooping_updated = True
 
 			if snooping_updated and not DRY_RUN: 
-				
+				new_state = collect_device_state(sesh)
+				new_snooping = build_snooping(new_state)
+
+				if exp_snooping:
+					ok, failures = check_snooping(exp_snooping, new_snooping)
+
+					log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"protocol": "dhcp",
+					"transport": "NETMIKO",
+					"enabled_vlan_count": len(exp_snooping.get('enabled_vlans', [])),
+					"trusted_interface_count": trusted_interfaces,
+					"summary": snooping_str,
+					"compliant": ok,
+					"failures_count": len(failures),
+					"failures": failures
+						}
+
+					if not ok: 
+						adapter.error(
+							  "snooping_post_validation_failed",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.FAILED.value,
+							    "message": "DHCP Snooping Configuration Post Validation Failed"
+							  }
+							)
+						device_result["critical_issues"].extend(failures)
+						device_success = False 
+						device_result["status"] = "FAILED"
+
+					else: 
+						adapter.info(
+							  "snooping_post_validation_success",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.SUCCESS.value,
+							    "message": "DHCP Snooping Configuration Post Validation Successful"
+							  }
+							)
+						device_result["actions_taken"].append(
+							   	 "DHCP Snooping Configuration Post Validation Successful"
+							   	 f" | {snooping_str}"
+							)	
+			#DAI 
+			exp_dai = context.get("dai", {})
+			act_dai = build_dai(device_state)
+			dai_updated = False 
+			dai_log = []
+			dai_interfaces = exp_dai.get("interfaces", {})
+			buffer = exp_dai.get("log_buffer", {})
+			if exp_dai.get("enabled_vlans"): 
+				vlans = ", ".join(map(str, sorted(exp_dai.get('enabled_vlans', []))))
+				dai_log.append(
+					  f"Enabled VLANs: {vlans}"
+					)
+			if dai_interfaces:
+				d_list = []
+				for i,v in dai_interfaces.items(): 
+					if v.get("trusted"): 
+						d_list.append(f"{i}")
+				dai_log.append(
+					  f"Trusted Interfaces: {', '.join(d_list)}"
+					)
+			if buffer: 
+				dai_log.append(
+					  f"Log Buffer: {'Enabled' if buffer.get('enabled', False) else 'Disabled'} | "
+					  f"Entries: {buffer.get('entries', 0)}"
+					)
+			dai_str = " | ".join(dai_log) or "No DAI Configuration"
+
+			if exp_dai: 
+				ok, failures = check_dai(exp_dai, act_dai)
+
+				log_extra = {
+					"device_ip": host_ip,
+					"component": "main_process",
+					"protocol": "dai",
+					"transport": "NETMIKO",
+					"interface_count": len(dai_interfaces or {}),
+					"enabled_vlan_count": len(exp_dai.get("enabled_vlans", [])),
+					"log_buffer_enabled": buffer.get('enabled', False),
+					"log_buffer_entries": buffer.get('entries', 0),
+					"trusted_interfaces": [
+									d
+									for d, v in dai_interfaces.items() if v.get('trusted', False) 
+								],
+					"summary": dai_str,
+					"compliant": ok, 
+					"failure_count": len(failures),
+					"failures": failures,
+
+				}
+
+				if ok: 
+					adapter.info(
+						  "dai_compliant",
+						  extra={
+						  	**log_extra,
+						  	"status": StepStatus.SUCCESS.value,
+						  	"message": "DAI Configuration Compliant"
+						   }
+						)
+					device_result["actions_taken"].append(
+							"DAI Configuration Compliant | "
+							f"{dai_str}"
+						)
+				else: 
+					adapter.warning(
+						    "dai_non_compliant",
+						    extra={
+						       **log_extra,
+						       "status": StepStatus.FAILED.value,
+						       "message": "DAI Configuration Non-Compliant"
+						     }
+						)
+					device_result["initial_issues"].extend(failures)
+					result = configure_dai(sesh, host_ip, exp_dai, adapter)
+					summary = result.get("summary")
+
+					if summary: 
+						device_result["actions_taken"].append(summary)
+					if result.get("status") == OpStatus.SUCCESS.value:
+						dai_updated = True 
+
+			if dai_updated and not DRY_RUN: 
+				new_state = collect_device_state(sesh)
+				new_dai = build_dai(new_state)
+
+				if exp_dai: 
+					ok, failures = check_dai(exp_dai, new_dai)
+
+					log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"protocol": "dai",
+						"transport": "NETMIKO",
+						"interface_count": len(dai_interfaces or {}),
+						"enabled_vlan_count": len(exp_dai.get("enabled_vlans", [])),
+						"log_buffer_enabled": buffer,
+						"log_buffer_entries": buffer.get('entries', 0),
+						"trusted_interfaces": [
+									d
+									for d, v in dai_interfaces.items() if v.get('trusted', False) 
+								],
+						"summary": dai_str,
+						"compliant": ok, 
+						"failure_count": len(failures) if failures else 0,
+						"failures": failures,
+
+					}
+
+					if not ok: 
+						adapter.error(
+						   "dai_post_validation_failed",
+						   extra={
+						     **log_extra,
+						     "status": StepStatus.FAILED.value,
+						     "message": "DAI Configuration Post Validation Failed"
+						   }
+						)
+						device_result["critical_issues"].extend(failures)
+						device_success = False
+						device_result["status"] = "FAILED"
+			        else: 
+			        	adapter.info(
+			        		  "dai_post_validation_success",
+			        		  extra={
+			        		     **log_extra,
+			        		     "status": StepStatus.SUCCESS.value, 
+			        		     "message": "DAI Configuration Post Validation Successful"
+			        		  }
+			        		)
+			        	device_result["actions_taken"].append(
+			        			"DAI Configuration Post Validation Successful | "
+			        			f"{dai_str}"
+			        		)
+
+			    #CDP NETCONF 
+			    exp_cdp = context.get("cdp", {})
+			    act_cdp = build_cdp_nc(netconf_state)
+			    cdp_updated = False 
+			    cdp_log = []
+			    int_count = 0 
+			    if "enabled" in exp_cdp:
+			    	cdp_log.append(
+			    		   f"Enabled: {exp_cdp.get('enabled')}"
+			    		)
+			    if "timer" in exp_cdp: 
+			    	cdp_log.append(
+			    		   f"Timer: {exp_cdp.get('timer')}"
+			    		)
+			    if "holdtime" in exp_cdp: 
+			    	cdp_log.append(
+			    		   f"HoldTime: {exp_cdp.get('holdtime')}"
+			    		)
+			    if exp_cdp.get("run_on_interfaces"):
+			    	enabled_interfaces = []
+			    	disabled_interfaces = []
+			    	for i,v in exp_cdp.get("run_on_interfaces").items():
+			    		if v.get("enabled"): 
+			    			enabled.append(i)
+			    			int_count += 1 
+			    		else: 
+			    			disabled_interfaces.append(i)
+			    	if enabled_interfaces: 
+				    	cdp_log.append(
+				    		   f"Enabled Interfaces: {', '.join(enabled_interfaces)}"
+							)
+				    if disabled_interfaces: 
+				    	cdp_log.append(
+				    		   f"Disabled Interfaces: {', '.join(disabled_interfaces)}"
+							)
+			    cdp_str = " | ".join(cdp_log) or "No CDP Configuration"
+
+			    if exp_cdp: 
+			    	ok, failures = check_cdp(exp_cdp, act_cdp)
+
+			    	log_extra = {
+			    		"device_ip": host_ip,
+			    		"component": "main_process",
+			    		"protocol": "cdp",
+			    		"transport": "NETCONF",
+			    		"cdp_enabled": exp_cdp.get("enabled"),
+			    		"timer": exp_cdp.get("timer"),
+			    		"holdtime": exp_cdp.get("holdtime"),
+			    		"enabled_int_count": int_count,
+			    		"enabled_interfaces": [
+			    			i
+			    			for i,v in exp_cdp.get("run_on_interfaces", {}).items()
+			    			if v.get('enabled', False)
+			    		],
+			    		"changed": cdp_updated,
+			    		"summary": cdp_str,
+			    		"compliant": ok,
+			    		"failures_count": len(failures) if failures else 0, 
+			    		"failures": failures			    	
+
+			    		}
+
+			    	if ok: 
+			    		adapter.info(
+			    			"cdp_compliant",
+			    			extra={
+  							   **log_extra,
+  							   "status": StepStatus.SUCCESS.value,
+  							   "message": "CDP (NETCONF) Configuration Already Compliant"
+			    			 }
+			    		  )
+			    		device_result["actions_taken"].append(
+			    				"CDP (NETCONF) Configuration Already Compliant | "
+			    				f"{cdp_str}"
+			    			)
+			    	else: 
+			    		adapter.warning(
+			    			"cdp_non_compliant",
+			    			extra={
+			    			  **log_extra,
+			    			  "status": StepStatus.FAILED.value,
+			    			  "message": "CDP (NETCONF) Configuration Non-Compliant"
+			    			}
+			    		  )
+			    		device_result["initial_issues"].extend(failures)
+			    		result = configure_cdp_nc(sesh, host_ip, exp_cdp, adapter)
+			    		summary = result.get("summary")
+
+			    		if summary: 
+			    			device_result["actions_taken"].append(summary)
+			    		if result.get("status") == OpStatus.SUCCESS.value: 
+			    			cdp_updated = True 	
+			    		else: 
+			    			device_success = False
+
+			    if cdp_updated and not DRY_RUN: 
+			    	new_state = collect_netconf_state(sesh)
+			    	new_cdp = build_cdp_nc(new_state)
+
+			    	if exp_cdp: 
+				    	ok, failures = check_cdp(exp_cdp, new_cdp)
+
+				    	log_extra = {
+				    		"device_ip": host_ip,
+				    		"component": "main_process",
+				    		"protocol": "cdp",
+				    		"transport": "NETCONF",
+				    		"cdp_enabled": exp_cdp.get("enabled"),
+				    		"timer": exp_cdp.get("timer"),
+				    		"holdtime": exp_cdp.get("holdtime"),
+				    		"enabled_int_count": int_count,
+				    		"enabled_interfaces": [
+					    			i
+					    			for i,v in exp_cdp.get("run_on_interfaces", {}).items()
+					    			if v.get('enabled', False)
+					    		],
+				    		"summary": cdp_str,
+				    		"compliant": ok,
+				    		"failures_count": len(failures) if failures else 0, 
+				    		"failures": failures			    	
+
+				    			}
+
+				    	if not ok: 
+				    		adapter.error(
+				    			  "cdp_post_validation_failed",
+				    			  extra={
+				    			    **log_extra,
+				    			    "status": StepStatus.FAILED.value,
+				    			    "message": "CDP Configuration Post Validation Failed"
+
+				    			  }
+				    			)
+				    		device_result["critical_issues"].extend(failures)
+				    		device_success = False 
+				    		device_result["status"] = "FAILED"
+				    	else: 
+				    		adapter.info(
+				    			  "cdp_post_validation_success",
+				    			  extra={
+				    			    **log_extra,
+				    			    "status": StepStatus.SUCCESS.value,
+				    			    "message": "CDP Configuration Post Validation Successful"
+				    			  }
+				    			)
+				    		device_result["actions_taken"].append(
+				    			  "CDP Configuration Post Validation Successful"
+				    			  f" | {cdp_str}"
+				    			)
+
+				#CDP NETMIKO 
+			    exp_cdp_net = context.get("cdp", {})
+				act_net_cdp = build_cdp_netmiko(device_state)
+				cdp_net_updated = False
+				cdp_net_log = []
+				int_count = 0
+				if "enabled" in exp_cdp_net:
+				    cdp_net_log.append(
+				           f"Enabled: {exp_cdp_net.get('enabled')}"
+				        )
+				if "timer" in exp_cdp_net:
+				    cdp_net_log.append(
+				           f"Timer: {exp_cdp_net.get('timer')}"
+				        )
+				if "holdtime" in exp_cdp_net:
+				    cdp_net_log.append(
+				           f"HoldTime: {exp_cdp_net.get('holdtime')}"
+				        )
+				if exp_cdp_net.get("run_on_interfaces"):
+				    enabled_interfaces = []
+				    disabled_interfaces = []
+				    for i,v in exp_cdp_net.get("run_on_interfaces").items():
+				        if v.get("enabled"):
+				            enabled_interfaces.append(i)
+				            int_count += 1
+				        else:
+				            disabled_interfaces.append(i)
+				    if enabled_interfaces:
+				        cdp_net_log.append(
+				               f"Enabled Interfaces: {', '.join(enabled_interfaces)}"
+				            )
+				    if disabled_interfaces:
+				        cdp_net_log.append(
+				               f"Disabled Interfaces: {', '.join(disabled_interfaces)}"
+				            )
+				cdp_str = " | ".join(cdp_net_log) or "No CDP Configuration"
+
+				if exp_cdp_net:
+				    ok, failures = check_cdp(exp_cdp_net, act_net_cdp)
+
+				    log_extra = {
+				        "device_ip": host_ip,
+				        "component": "main_process",
+				        "protocol": "cdp",
+				        "transport": "NETMIKO",
+				        "cdp_enabled": exp_cdp_net.get("enabled"),
+				        "timer": exp_cdp_net.get("timer"),
+				        "holdtime": exp_cdp_net.get("holdtime"),
+				        "enabled_int_count": int_count,
+				        "enabled_interfaces": [
+				            i
+				            for i,v in exp_cdp_net.get("run_on_interfaces", {}).items()
+				            if v.get('enabled', False)
+				        ],
+				        "summary": cdp_str,
+				        "compliant": ok,
+				        "failures_count": len(failures) if failures else 0,
+				        "failures": failures
+
+				        }
+
+				    if ok:
+				        adapter.info(
+				            "cdp_net_compliant",
+				            extra={
+				               **log_extra,
+				               "status": StepStatus.SUCCESS.value,
+				               "message": "CDP (NETMIKO) Configuration Already Compliant"
+				             }
+				          )
+				        device_result["actions_taken"].append(
+				                "CDP (NETMIKO) Configuration Already Compliant | "
+				                f"{cdp_str}"
+				            )
+				    else:
+				        adapter.warning(
+				            "cdp_net_non_compliant",
+				            extra={
+				              **log_extra,
+				              "status": StepStatus.FAILED.value,
+				              "message": "CDP (NETMIKO) Configuration Non-Compliant"
+				            }
+				          )
+				        device_result["initial_issues"].extend(failures)
+				        result = configure_cdp_netmiko(sesh, host_ip, exp_cdp_net, adapter)
+				        summary = result.get("summary")
+
+				        if summary:
+				            device_result["actions_taken"].append(summary)
+				        if result.get("status") == OpStatus.SUCCESS.value:
+				            cdp_updated = True
+				        else:
+				            device_success = False
+
+				if cdp_updated and not DRY_RUN:
+				    new_state = collect_device_state(sesh)
+				    new_cdp = build_cdp_netmiko(new_state)
+
+				    if exp_cdp_net:
+				        ok, failures = check_cdp(exp_cdp_net, new_cdp)
+
+				        log_extra = {
+				            "device_ip": host_ip,
+				            "component": "main_process",
+				            "protocol": "cdp",
+				            "transport": "NETMIKO",
+				            "cdp_enabled": exp_cdp_net.get("enabled"),
+				            "timer": exp_cdp_net.get("timer"),
+				            "holdtime": exp_cdp_net.get("holdtime"),
+				            "enabled_int_count": int_count,
+				            "enabled_interfaces": [
+				                    i
+				                    for i,v in exp_cdp_net.get("run_on_interfaces", {}).items()
+				                    if v.get('enabled', False)
+				                ],
+				            "summary": cdp_str,
+				            "changed": cdp_net_updated,
+				            "compliant": ok,
+				            "failures_count": len(failures) if failures else 0,
+				            "failures": failures
+
+				                }
+
+				        if not ok:
+				            adapter.error(
+				                  "cdp_net_post_validation_failed",
+				                  extra={
+				                    **log_extra,
+				                    "status": StepStatus.FAILED.value,
+				                    "message": "CDP (NETMIKO) Configuration Post Validation Failed"
+
+				                  }
+				                )
+				            device_result["critical_issues"].extend(failures)
+				            device_success = False
+				            device_result["status"] = "FAILED"
+				        else:
+				            adapter.info(
+				                  "cdp_net_post_validation_success",
+				                  extra={
+				                    **log_extra,
+				                    "status": StepStatus.SUCCESS.value,
+				                    "message": "CDP (NETMIKO) Configuration Post Validation Successful"
+				                  }
+				                )
+				            device_result["actions_taken"].append(
+				                  "CDP (NETMIKO) Configuration Post Validation Successful"
+				                  f" | {cdp_str}"
+				                )
+
+				#ETHERCHANNEL 
+				exp_ether = context.get("etherchannel", {})
+				act_ether = build_etherchannel(device_state)
+				ether_updated = False 
+				ether_log = []
+				groups = exp_ether.get("groups", {})
+				if "enabled" in exp_ether: 
+					ether_log.append(
+						   f"Etherchannel Enabled: {exp_ether.get('enabled')}"
+						)
+				if groups: 
+					for g,v in groups.items():
+						ether_log.append(
+							  f"Group Number: {g} | Interfaces: {', '.join(v.get('interfaces', []))} | "
+							  f"Type/Mode: {v.get('type')} - {v.get('mode')} | "
+							  f"Switchport Mode: {v.get('switchport_mode')}"
+							)
+				ether_str = " | ".join(ether_log) or "No Etherchannel Configuration"
+
+				if exp_ether: 
+					ok, failures = check_etherchannel(exp_ether, act_ether)
+
+					log_extra = {
+					    "device_ip": host_ip,
+					    "component": "main_process",
+					    "protocol": "etherchannel",
+					    "transport": "NETMIKO",
+					    "group_numbers": list((groups or {}).keys()),
+					    "group_modes": [g.get('mode') for g in (groups or {}).values()],
+					    "group_types": [g.get('type') for g in (groups or {}).values()],
+					    "summary": ether_str,
+					    "compliant": ok,
+					    "failures_count": len(failures) if failures else 0,
+					    "failures": failures					
+
+					     	}
+
+					if ok: 
+						adapter.info(
+							 "etherchannel_compliant",
+							 extra={	
+							 	**log_extra,
+							 	"status": StepStatus.SUCCESS.value,
+							 	"message": "Etherchannel Configuration Already Compliant"
+							  }
+						  )
+						device_result["actions_taken"].append(
+								"Etherchannel Configuration Already Compliant | "
+								f"{ether_str}"
+							)
+					else: 
+						adapter.warning(
+							  "etherchannel_non_compliant",
+							  extra={
+							    **log_extra,
+							    "status": StepStatus.FAILED.value,
+							    "message": "Etherchannel Configuration Non-Compliant"
+							  }
+							)
+						device_result["initial_issues"].extend(failures)
+						result = configure_etherchannel(sesh, host_ip, exp_ether, adapter)
+						summary = result.get("summary")
+
+						if summary: 
+							device_result["actions_taken"].append(summary)
+						if result.get("status") == OpStatus.SUCCESS.value: 
+							ether_updated = True 
+						else: 
+							device_success = False
+
+				if ether_updated and not DRY_RUN:
+					new_state = collect_device_state(sesh)
+					new_ether = build_etherchannel(new_state)
+
+					if exp_ether: 
+						ok, failures = check_etherchannel(exp_ether, new_ether)
+
+						log_extra = {
+						    "device_ip": host_ip,
+						    "component": "main_process",
+						    "protocol": "etherchannel",
+						    "transport": "NETMIKO",
+						    "group_numbers": list((groups or {}).keys()),
+						    "group_modes": [g.get('mode') for g in (groups or {}).values()],
+						    "group_types": [g.get('type') for g in (groups or {}).values()],
+						    "summary": ether_str,
+						    "compliant": ok,
+						    "failures_count": len(failures) if failures else 0,
+						    "failures": failures					
+
+						     	}
+
+						if not ok: 
+							adapter.error(
+								  "etherchannel_post_validation_failed",
+								  extra={
+								  	 **log_extra,
+								  	 "status": StepStatus.FAILED.value,
+								  	 "message": "Etherchannel Configuration Post Validation Failed"
+								   }
+							   )
+							device_result["critical_issues"].extend(failures)
+							device_success = False 
+							device_result["status"] = "FAILED"
+						else: 
+							adapter.info(
+								   "etherchannel_post_validation_success",
+								   extra={
+								      **log_extra,
+								      "status": StepStatus.SUCCESS.value,
+								      "message": "Etherchannel Configuration Post Validation Successful"
+								     }
+								  )
+							device_result["actions_taken"].append(
+									"Etherchannel Configuration Post Validation Successful | "
+									f"{ether_str}"
+								)
+
+				#STATIC ROUTES 
+				exp_static = context.get("static", [])
+				act_static = build_static(netconf_state)
+				static_updated = False 
+				static_log = []
+				static_count = 0 
+				for static_data in exp_static: 
+					static_count += 1
+					if static_data.get("administrative_distance"): 
+						static_log.append(
+							   f"AD: {static_data.get('administrative_distance')}"
+							)
+					if static_data.get('exit_interface'): 
+						static_log.append(
+							  f"Exit Interface: {static_data.get('exit_interface')}"
+							)
+					if static_data.get('network') and static_data.get('mask'): 
+						static_log.append(
+								f"IP - Mask: {static_data.get('network')} - {static_data.get('mask')}"
+							)
+					if static_data.get('name'): 
+						static_log.append(
+							  f"Static Name: {static_data.get('name')}"
+							)
+					if static_data.get('next_hop'): 
+						static_log.append(
+							   f"Next Hop(s): {static_data.get(','.join('next_hop', []))}"
+							)
+
+				static_str = " | ".join(static_log) or "No Static Routing Configuration"
+
+				for static_data in exp_static: 
+					ok, failures = check_static(static_data, act_static)
+
+					log_extra = {
+						"device_ip": host_ip,
+						"component": "main_process",
+						"protocol": "static_routing",
+						"transport": "NETCONF",
+						"static_route_count": static_count,
+						"ad": static_data.get("administrative_distance", 0),
+						"exit_interface": static_data.get('exit_interface', None),
+						"ip_mask": f"{static_data.get('network', None)}/{static_data.get('mask', None)}",
+						"name": static_data.get('name'),
+						"next_hop": static_data.get('next_hop'),
+						"summary": static_str,
+						"compliant": ok,
+						"failures_count": len(failures) if failures else 0, 
+						"failures": failures,
+
+					  }
+
+					if ok: 
+						adapter.info(
+							   "static_routing_compliant",
+							   extra={
+							   	  **log_extra,
+							   	  "status": StepStatus.SUCCESS.value,
+							   	  "message": "Static Routing Configuration Already Compliant"
+							   }
+							)
+						device_result["actions_taken"].append(
+								"Static Routing Configuration Already Compliant | "
+								f"{static_str}"
+							)
+					else: 
+						adapter.warning(
+							  "static_routing_non_compliant",
+							  extra={
+							  	  **log_extra,
+							  	  "status": StepStatus.FAILED.value,
+							  	  "message": "Static Routing Configuration Non-Compliant"
+							    }
+							)
+						device_result["initial_issues"].extend(failures)
+						result = configure_static(sesh, host_ip, exp_static, adapter)
+						summary = result.get("summary")
+
+						if summary: 
+							device_result["actions_taken"].append(summary)
+						if result.get("status") == OpStatus.SUCCESS.value: 
+							static_updated = True
+						else: 
+							device_success = False 
+
+				if static_updated and not DRY_RUN:
+					new_state = collect_netconf_state(sesh)
+					new_static = build_static(new_state) 
+					for static_data in exp_static: 
+						ok, failures = check_static(static_data, new_static)
+
+						log_extra = {
+							"device_ip": host_ip,
+							"component": "main_process",
+							"protocol": "static_routing",
+							"transport": "NETCONF",
+							"static_route_count": static_count,
+							"ad": static_data.get("administrative_distance", 0),
+							"exit_interface": static_data.get('exit_interface', None),
+							"ip_mask": f"{static_data.get('network', None)}/{static_data.get('mask', None)}",
+							"name": static_data.get('name'),
+							"next_hop": static_data.get('next_hop'),
+							"summary": static_str,
+							"compliant": ok,
+							"failures_count": len(failures) if failures else 0, 
+							"failures": failures,
+
+						  }
+
+						if not ok: 
+							adapter.error(
+								  "static_routing_post_validation_failed",
+								  extra={
+								    **log_extra,
+								    "status": StepStatus.FAILED.value,
+								    "message": "Static Routing Configuration Post Validation Failed"
+								  }
+								)
+							device_result["critical_issues"].extend(failures)
+							device_success = False
+							device_result["status"] = "FAILED" 
+						else: 
+							adapter.info(
+								   "static_routing_post_validation_success",
+								   extra={
+								   	  **log_extra,
+								   	  "status": StepStatus.SUCCESS.value,
+								   	  "message": "Static Routing Configuration Post Validation Successful"
+								   }
+								)
+							device_result["actions_taken"].append(
+								       "Static Routing Configuration Post Validation Successful | "
+								       f"{static_str}"
+								)
+
+    finally: 
+    	end = datetime.now(UTC)
+
+    	device_result["duration_seconds"] = (
+    		  end - datetime.fromisoformat(device_result["start_time"])
+    		).total_seconds()
+
+    	if device_result["critical_issues"]: 
+    		device_result["status"] = "NON-COMPLIANT"
+    	elif device_result["status"] != "FAILED":
+    		device_result["status"] = "COMPLIANT"
+
+   	return device_result
+PIPELINE = {
+
+    # Layer 2 Foundation
+    "vlans": {
+        "function": configure_vlans,
+        "depends_on": []
+    },
+
+    "interfaces": {
+        "function": configure_interfaces,
+        "depends_on": ["vlans"]
+    },
+
+    "access_ports": {
+        "function": configure_access_ports,
+        "depends_on": ["vlans", "interfaces"]
+    },
+
+    "trunk_ports": {
+        "function": configure_trunks,
+        "depends_on": ["vlans", "interfaces"]
+    },
+
+    "etherchannel": {
+        "function": configure_etherchannel,
+        "depends_on": [
+            "vlans",
+            "interfaces",
+            "trunk_ports"
+        ]
+    },
+
+    "stp": {
+        "function": configure_stp,
+        "depends_on": [
+            "vlans",
+            "etherchannel"
+        ]
+    },
+
+
+    # Layer 3
+    "roas": {
+        "function": configure_roas,
+        "depends_on": [
+            "vlans",
+            "interfaces"
+        ]
+    },
+
+    "hsrp": {
+        "function": configure_hsrp,
+        "depends_on": [
+            "roas"
+        ]
+    },
+
+    "ospf": {
+        "function": configure_ospf,
+        "depends_on": [
+            "roas"
+        ]
+    },
+
+    "static_routes": {
+        "function": configure_static,
+        "depends_on": [
+            "interfaces"
+        ]
+    },
+
+    "nat": {
+        "function": configure_nat,
+        "depends_on": [
+            "interfaces",
+            "roas"
+        ]
+    },
+
+
+    # Security
+    "dhcp_snooping": {
+        "function": configure_dhcp_snooping,
+        "depends_on": [
+            "vlans",
+            "access_ports",
+            "trunk_ports"
+        ]
+    },
+
+    "dai": {
+        "function": configure_dai,
+        "depends_on": [
+            "dhcp_snooping"
+        ]
+    },
+
+    "port_security": {
+        "function": configure_port_security,
+        "depends_on": [
+            "access_ports"
+        ]
+    },
+
+
+    # Services
+    "dhcp": {
+        "function": configure_dhcp,
+        "depends_on": [
+            "interfaces",
+            "roas"
+        ]
+    },
+
+    "ntp": {
+        "function": configure_ntp,
+        "depends_on": [
+            "interfaces"
+        ]
+    },
+
+    "snmp": {
+        "function": configure_snmp,
+        "depends_on": [
+            "interfaces"
+        ]
+    },
+
+    "syslog": {
+        "function": configure_syslog,
+        "depends_on": [
+            "interfaces"
+        ]
+    },
+
+
+    "cdp_netmiko": {
+    "function": configure_cdp_netmiko,
+    "depends_on": [
+        "interfaces"
+		    ]
+		},
+
+	"cdp_netconf": {
+	    "function": configure_cdp_nc,
+	    "depends_on": [
+	        "interfaces"
+	    ]
+	},
+
+}
+def generate_manager_report(report):
+
+    metadata = report["run_metadata"]
+    summary = report["summary"]
+
+    with open("network_compliance_report.txt", "w") as f:
+
+        f.write("=" * 60)
+        f.write("\nNETWORK COMPLIANCE REPORT\n")
+        f.write("=" * 60)
+
+        f.write(
+            f"\n\nReport Time: {metadata['timestamp']}"
+        )
+
+        f.write(
+            f"\nDevices Audited: {metadata['total_devices']}"
+        )
+
+
+        f.write("\n\nSUMMARY")
+        f.write("\n----------------")
+        f.write(
+            f"\n✅ Compliant: {summary['compliant']}"
+        )
+        f.write(
+            f"\n⚠️ Non-Compliant: {summary['non_compliant']}"
+        )
+        f.write(
+            f"\n❌ Failed: {summary['failed']}"
+        )
+
+
+        f.write("\n\nDEVICE DETAILS")
+        f.write("\n----------------")
+
+
+        for device in report["devices"]:
+
+            f.write(
+                f"\n\nDevice: {device.get('device_name','Unknown')}"
+            )
+
+            f.write(
+                f"\nStatus: {device.get('status')}"
+            )
+
+
+            if device.get("critical_issues"):
+
+                f.write("\nIssues:")
+
+                for issue in device["critical_issues"]:
+                    f.write(
+                        f"\n - {issue}"
+                    )
+
+            if device.get("actions_taken"):
+
+                f.write("\nActions Taken:")
+
+                for action in device["actions_taken"]:
+                    f.write(
+                        f"\n - {action}"
+                    )
+
+        f.write("\n")
+def run_pipeline(sesh, host_ip, context, adapter):
+    completed = set()
+
+    while len(completed) < len(PIPELINE):
+
+        progress = False
+
+        for name, task in PIPELINE.items():
+
+            if name in completed:
+                continue
+
+            dependencies = task.get("depends_on", [])
+
+            if not all(dep in completed for dep in dependencies):
+                continue
+
+            adapter.info(
+                "pipeline_step_start",
+                extra={
+                    "step": name,
+                    "message": f"Starting {name}"
+                }
+            )
+
+            try:
+                task["function"](
+                    sesh,
+                    host_ip,
+                    context,
+                    adapter
+                )
+
+                completed.add(name)
+                progress = True
+
+                adapter.info(
+                    "pipeline_step_success",
+                    extra={
+                        "step": name,
+                        "message": f"{name} completed successfully"
+                    }
+                )
+
+            except Exception as e:
+
+                adapter.error(
+                    "pipeline_step_failed",
+                    extra={
+                        "step": name,
+                        "error": str(e)
+                    }
+                )
+
+                raise e
+
+
+        if not progress:
+            raise Exception(
+                f"Pipeline dependency error. Remaining steps: "
+                f"{set(PIPELINE.keys()) - completed}"
+            )
+def main():
+	main_log = logging.LoggerAdapter(logger, {'dev': 'MAIN'})
+	main_lost.info("----- STARTING HYRBID AUTOMATION ----")
+
+	complaince_results = []
+	
+	try: 
+		inventory, config_data = get_netbox()
+		main_log.info(f"---- NETBOX SYNC SUCCESSFUL ----")
+
+		tasks = []
+		for device in inventory: 
+			ip = device.get("host")
+
+			config = config_data.get(ip)
+
+			tasks.append(
+			    "device": device,
+			    "context": copp.deepcopy(config) if config else {}
+		     )
+
+		num_workers = min(len(inventory), 15)
+
+		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+			run_it = [executor.submit(main_process, t) for t in tasks] 
+
+			for r in as_completed(run_it): 
+				try: 
+					result = r.result()
+
+					complaince_results.append(result)
+
+				except Exception as e: 
+					main_log.error(f"Device Thread Failed to Execute: {e}")
+					complaince_results.append({
+							"status": "FAILED",
+							"error": str(e)
+						})
+
+		report = {
+			 "run_metadata": {
+			 	  "timestamps": datetime.utcnow().isoformat(),
+			 	  "total_devices": len(inventory),
+			 	  "successful_runs": len([r for r in complaince_results if r.get("status") != "FAILED"])
+			 },
+			 "devices": complaince_results,
+			 "summary": {
+			 	"compliant": len([r for r in complaince_results if r.get("status") == "COMPLIANT"]),
+                "non_compliant": len([r for r in complaince_results if r.get("status") == "NON-COMPLIANT"]),
+                "failed": len([r for r in complaince_results if r.get("status") == "FAILED"])
+			 }
+
+		}
+
+		with open("final_compliance_report.json", "w") as f: 
+			json.dump(report, f, indent=4, default=str)
+
+			generate_manager_report(report)
+
+			main_log.info(f"Final Compliance Report Saved Successfully")
+
+	except Exception as e: 
+		main_log.error(f"Thread Pool Executor Try/Exception Error: {e}")
+
+	finally: 
+		logging.LoggerAdapter(logger, {'dev': 'FINAL'}.info(
+				f"---- AUTOMATION COMPLETE ----"
+			))
+if __name__ == "__main__":
+	main()
