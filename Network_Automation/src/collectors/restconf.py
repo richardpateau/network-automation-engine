@@ -1,0 +1,43 @@
+def collect_restconf_state(restconf, log):
+    restconf_state = {}
+
+    try:
+        session = restconf.session
+        base_url = restconf.base_url
+
+        # Interface
+        interface_url = (
+            f"{base_url}/Cisco-IOS-XE-native:native/interface"
+        )
+
+        restconf_state["interface_restconf"] = (
+            restconf_get(session, interface_url)
+        )
+
+
+        # OSPF configuration
+        ospf_url = (
+            f"{base_url}/Cisco-IOS-XE-native:native/router"
+        )
+
+        restconf_state["ospf_restconf"] = (
+            restconf_get(session, ospf_url)
+        )
+
+
+        # OSPF operational state
+        ospf_oper_url = (
+            f"{base_url}/Cisco-IOS-XE-ospf_oper:ospf-oper-data"
+        )
+
+        restconf_state["ospf_oper_restconf"] = (
+            restconf_get(session, ospf_oper_url)
+        )
+
+
+    except Exception as e:
+        log.exception(
+            f"RESTCONF collection failed | {restconf.device_ip} | {e}"
+        )
+
+    return restconf_state

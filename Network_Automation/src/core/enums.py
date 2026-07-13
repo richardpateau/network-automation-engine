@@ -1,0 +1,13 @@
+from enum import Enum 
+
+class OperationalStatus(Enum): 
+	SUCCESS = "SUCCESS"
+	FAILED_CONFIG = "FAILED_CONFIG"
+	FAILED_VALIDATION = "FAILED_VALIDATION"
+	ERROR = "ERROR"
+	DRY_RUN = "DRY_RUN"
+class StepStatus(Enum): 
+	SUCCESS = "SUCCESS"
+	FAILED = "FAILED" 
+	ERROR = "ERROR"
+	DRY_RUN = "DRY_RUN"
