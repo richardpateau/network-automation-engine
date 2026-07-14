@@ -1,3 +1,10 @@
+from src.core.enums import StepStatus, OperationalStatus
+from src.collectors.snmp import (build_snmp_netconf,build_snmp_netmiko,)
+from src.collectors.state import (collect_netconf_state,collect_device_state,)
+from src.compliance.snmp_checks import check_snmp
+from src.remediation.snmp import (configure_snmp_netconf,configure_snmp_netmiko,)
+from src.core.settings import DRY_RUN
+
 def compliance_syslog(sesh, device_ip, context, device_state, device_result, log):
 	exp_syslog = context.get("syslog", {})
 
@@ -34,7 +41,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
 	    syslog_log.append(
 	        f"Severity: {exp_syslog.get('trap_level', '')}"
 	    )
-	syslog_str = " | ".join(syslog_log) or "Syslog (NETCONF) Configuration Empty"
+	syslog_str = " | ".join(syslog_log) or "Syslog Configuration Empty"
 
 	if exp_syslog:
 	    ok, failures = check_syslog(exp_syslog, act_syslog)
@@ -62,11 +69,11 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
 	            extra={
 	                **log_extra,
 	                "status": StepStatus.SUCCESS.value,
-	                "message": "Syslog (NETCONF) Configuration Already Compliant"
+	                "message": "Syslog Configuration Already Compliant"
 	            }
 	        )
 	        device_result["actions_taken"].append(
-	            "Syslog (NETCONF) Configuration Already Compliant | "
+	            "Syslog Configuration Already Compliant | "
 	            f"{syslog_str}"
 	        )
 	    else:
@@ -75,7 +82,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
 	            extra={
 	                **log_extra,
 	                "status": StepStatus.FAILED.value,
-	                "message": "Syslog (NETCONF) Configuration Non-Compliant"
+	                "message": "Syslog Configuration Non-Compliant"
 	            }
 	        )
 	        device_result["initial_issues"].extend(failures)
@@ -96,10 +103,10 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
 
 	if syslog_updated and not DRY_RUN:
 		if sesh.transport == "NETCONF": 
-		    new_state = collect_netconf_state(sesh)
+		    new_state = collect_netconf_state(sesh, log)
 		    new_syslog = build_syslog_netconf(new_state)
 		elif sesh.transport == "NETMIKO": 
-			new_state = collect_device_state(sesh)
+			new_state = collect_device_state(sesh, log)
 			new_syslog = build_syslog_netmiko(new_state)
         
         ok, failures = check_syslog(exp_syslog, new_syslog)
@@ -127,7 +134,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": "Syslog (NETCONF) Configuration Post Validation Failed"
+                    "message": "Syslog Configuration Post Validation Failed"
                 }
             )
             device_result["critical_issues"].extend(failures)
@@ -138,11 +145,11 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "Syslog (NETCONF) Configuration Post Validation Successful"
+                    "message": "Syslog Configuration Post Validation Successful"
                 }
             )
             device_result["actions_taken"].append(
-                "Syslog (NETCONF) Configuration Post Validation Successful | "
+                "Syslog Configuration Post Validation Successful | "
                 f"{syslog_str}"
             )
 	return device_result

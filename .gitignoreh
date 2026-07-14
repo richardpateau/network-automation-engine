@@ -3,7 +3,7 @@ __pycache__/
 .env
 inventory*.yml
 learning_archive/
-NETBOX_URL=http://localhost:8000
+NETBOX_URL=http://localhost:8080
 NETBOX_TOKEN=c2ME5bSkp8geCDNvwHOAnKBKNiev6P7DRCEi1tD3
 # If you put passwords in a file, add it here!
 
