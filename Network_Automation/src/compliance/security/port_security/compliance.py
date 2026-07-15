@@ -6,7 +6,7 @@ from src.remediation.port_security import configure_psecurity
 from src.core.settings import DRY_RUN
 
 def compliance_port_security(sesh, device_ip, context, device_state, device_result, log):
-	exp_ps = context.get("port_security", {})
+    exp_ps = context.get("port_security", {})
     act_ps = build_port_security(device_state)
     ps_updated = False
     interfaces = exp_ps.get("interfaces", {})
@@ -71,11 +71,11 @@ def compliance_port_security(sesh, device_ip, context, device_state, device_resu
             if result.get("status") == OperationalStatus.SUCCESS.value:
                 ps_updated = True
             else: 
-            	device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-            	device_result["critical_issues"].append(
-            		   "Port Security Remediation Failed | "
-            		   f"{ps_str}"
-            		)
+                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["critical_issues"].append(
+                       "Port Security Remediation Failed | "
+                       f"{ps_str}"
+                    )
     
     if ps_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)

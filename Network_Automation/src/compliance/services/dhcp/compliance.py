@@ -6,7 +6,7 @@ from src.remediation.dhcp import configure_dhcp
 from src.core.settings import DRY_RUN
 
 def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
-	exp_dhcp = context.get("dhcp", {})
+    exp_dhcp = context.get("dhcp", {})
     act_dhcp = build_dhcp(device_state)
     dhcp_updated = False
     dhcp_log = []

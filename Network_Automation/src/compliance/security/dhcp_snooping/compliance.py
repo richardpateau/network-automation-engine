@@ -6,7 +6,7 @@ from src.remediation.snooping import configure_snooping
 from src.core.settings import DRY_RUN
 
 def compliance_snooping(sesh, device_ip, context, device_state, device_result, log):
-	exp_snooping = context.get("dhcp_snooping", {})
+    exp_snooping = context.get("dhcp_snooping", {})
     act_snooping = build_snooping(device_state)
     snooping_updated = False
     s_interfaces = exp_snooping.get("interfaces")
@@ -73,11 +73,11 @@ def compliance_snooping(sesh, device_ip, context, device_state, device_result, l
             if result.get("status") == OperationalStatus.SUCCESS.value:
                 snooping_updated = True
             else: 
-            	device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-            	device_result["critical_issues"].append(
-            		   "DHCP Snooping Configuration Remediation Failed | "
-            		   f"{snooping_str}"
-            		)
+                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["critical_issues"].append(
+                       "DHCP Snooping Configuration Remediation Failed | "
+                       f"{snooping_str}"
+                    )
     
     if snooping_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)

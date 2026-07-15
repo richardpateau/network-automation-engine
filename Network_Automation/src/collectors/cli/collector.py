@@ -3,7 +3,7 @@ def collect_device_state(conn):
 	try: 
 		device_state["vlans"] = (
 				conn.send_command("show vlan", use_genie=True)
-		k	)
+		)
 	except Exception: 
 		device_state["vlans"] = {}
 	

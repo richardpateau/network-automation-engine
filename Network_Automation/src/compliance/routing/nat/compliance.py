@@ -5,7 +5,7 @@ from src.compliance.routing.nat_helpers import (build_nat,check_nat,)
 from config import DRY_RUN
 
 def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
-	exp_nat = context.get("nat", {})
+    exp_nat = context.get("nat", {})
     act_nat = build_nat(device_state)
     nat_updated = False
     
@@ -91,7 +91,7 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
             if result.get("status") == OperationalStatus.SUCCESS.value:
                 nat_updated = True
             else: 
-            	device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
     
     if nat_updated and not DRY_RUN:
         new_state = collect_netconf_state(sesh, log)
@@ -103,7 +103,7 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
             "device_ip": device_ip,
             "component": "main_process",
             "protocol": "nat",
-       	    "transport": sesh.transport,
+            "transport": sesh.transport,
             "has_static": bool(exp_nat.get('static', [])),
             "has_dynamic": bool(exp_nat.get('dynamic', [])),
             "has_pat": bool(exp_nat.get('pat')),

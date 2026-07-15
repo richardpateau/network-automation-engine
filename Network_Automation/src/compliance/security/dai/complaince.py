@@ -6,7 +6,7 @@ from src.remediation.dai import configure_dai
 from src.core.settings import DRY_RUN
 
 def compliance_dai(sesh, device_ip, context, device_state, device_result, log):
-	exp_dai = context.get("dai", {})
+    exp_dai = context.get("dai", {})
     act_dai = build_dai(device_state)
     dai_updated = False
     dai_log = []
@@ -86,12 +86,12 @@ def compliance_dai(sesh, device_ip, context, device_state, device_result, log):
             if result.get("status") == OperationalStatus.SUCCESS.value:
                 dai_updated = True
             else: 
-            	device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-            	device_result["critical_issues"].append(
-            		   "DAI Configuration Remediation Failed | "
-            		   f"{dai_str}"
+                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["critical_issues"].append(
+                       "DAI Configuration Remediation Failed | "
+                       f"{dai_str}"
 
-            		)
+                    )
     
     if dai_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)
@@ -131,17 +131,17 @@ def compliance_dai(sesh, device_ip, context, device_state, device_result, log):
                 )
                 device_result["critical_issues"].extend(failures)
                 device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
-	        else:
-	            log.info(
-	                "dai_post_validation_success",
-	                extra={
-	                    **log_extra,
-	                    "status": StepStatus.SUCCESS.value,
-	                    "message": "DAI Configuration Post Validation Successful"
-	                }
-	            )
-	            device_result["actions_taken"].append(
-	                "DAI Configuration Post Validation Successful | "
-	                f"{dai_str}"
-	            )
+            else:
+                log.info(
+                    "dai_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": "DAI Configuration Post Validation Successful"
+                    }
+                )
+                device_result["actions_taken"].append(
+                    "DAI Configuration Post Validation Successful | "
+                    f"{dai_str}"
+                )
     return device_result

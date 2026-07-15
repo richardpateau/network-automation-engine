@@ -5,7 +5,7 @@ from src.compliance.routing.roas_helpers import (build_roas,check_roas,)
 from config import DRY_RUN
 
 def compliance_roas(sesh, device_ip, context, device_state, device_result, log): 
-	actual_roas = build_roas(device_state)
+    actual_roas = build_roas(device_state)
     expected_roas = context.get("roas", [])
     roas_updated = False
     for roas_data in expected_roas:
@@ -72,9 +72,9 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log):
         for roas_data in expected_roas:
             ok, failures = check_roas(roas_data, new_state)
             interface = roas_data.get("interface", "")
-	        vlan = roas_data.get("router_vlan", None)
-	        ip = roas_data.get("ip", "")
-	        mask = roas_data.get("mask", "")
+            vlan = roas_data.get("router_vlan", None)
+            ip = roas_data.get("ip", "")
+            mask = roas_data.get("mask", "")
             
             log_extra = {
                 "device_ip": device_ip,

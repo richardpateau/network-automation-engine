@@ -6,9 +6,9 @@ from src.remediation.cdp import (configure_cdp_netconf,configure_cdp_netmiko)
 from src.core.settings import DRY_RUN
 
 def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log):
-	exp_cdp = context.get("cdp", {})
+    exp_cdp = context.get("cdp", {})
 
-    if sesh.transport == "NETMIKO"
+    if sesh.transport == "NETMIKO":
         act_cdp = build_cdp_netconf(device_state)
     elif sesh.transport == "NETMIKO":
         act_cdp = build_cdp_netmiko(device_state)
@@ -34,7 +34,7 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
     if exp_cdp.get("run_on_interfaces"):
         enabled_interfaces = []
         disabled_interfaces = []
-       	for i,v in exp_cdp.get("run_on_interfaces", {}).items():
+        for i,v in exp_cdp.get("run_on_interfaces", {}).items():
             if v.get("enabled"):
                 enabled_interfaces.append(i)
                 int_count += 1
@@ -112,10 +112,10 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
                 cdp_updated = True
             else:
                 device_result["status"] = OperationalStatus.FAILED_CONFIG.value 
-    			device_result["critical_issues"].append(
-    					"CDP (NETCONF) Configuration Remediation Failed | "
-    					f"{cdp_str}"
-    				)
+                device_result["critical_issues"].append(
+                        "CDP (NETCONF) Configuration Remediation Failed | "
+                        f"{cdp_str}"
+                    )
     if cdp_updated and not DRY_RUN:
 
         if sesh.transport == "NETCONF": 
@@ -140,7 +140,7 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
                 "enabled_int_count": int_count,
                 "enabled_interfaces": [
                     i
-                    f or i,v in exp_cdp.get("run_on_interfaces", {}).items()
+                    for i,v in exp_cdp.get("run_on_interfaces", {}).items()
                     if v.get('enabled', False)
                 ],
                 "summary": cdp_str,

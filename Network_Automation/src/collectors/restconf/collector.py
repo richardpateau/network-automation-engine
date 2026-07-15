@@ -41,3 +41,16 @@ def collect_restconf_state(restconf, log):
         )
 
     return restconf_state
+
+def restconf_get(session, url):
+    try:
+        response = session.get(url, verify=False)
+
+        response.raise_for_status()
+
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        raise Exception(f"RESTCONF HTTP error: {e} | URL: {url}")
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"RESTCONF request failed: {e} | URL: {url}")

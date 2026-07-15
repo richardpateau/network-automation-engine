@@ -5,7 +5,7 @@ from src.compliance.switching.vlan_helpers import (build_vlan,check_vlan,)
 from config import DRY_RUN
 
 def compliance_vlans(sesh, device_ip, context, device_state, device_result, log):
-	exp_vlans = context.get("vlans", [])
+    exp_vlans = context.get("vlans", [])
     act_vlans = build_vlan(device_state)
     vlan_updated = False
     for vlan_data in exp_vlans:
