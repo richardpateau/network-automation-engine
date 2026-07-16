@@ -1,7 +1,9 @@
-from src.utils import safe_int 
+from src.utils import safe_int
 from ciscoconfparse import CiscoConfParse
-#VLAN 
-def build_vlan(device_state): 
+
+
+# VLAN
+def build_vlan(device_state):
     device_state_vlan = device_state.get("vlans", {})
     vlan_data = device_state_vlan.get("vlans", {})
     actual_vlans = {}
@@ -10,8 +12,10 @@ def build_vlan(device_state):
             "name": vlan_values.get("name"),
         }
     return actual_vlans
-#ACCESS PORT
-def build_access(device_state): 
+
+
+# ACCESS PORT
+def build_access(device_state):
     device_state_access = device_state.get("switchports", {})
     actual_access = {}
 
@@ -26,13 +30,14 @@ def build_access(device_state):
         actual_access[access_interface] = {
             "access_interface": access_interface,
             "operational_mode": operational_mode,
-            "access_vlan": access_vlan
+            "access_vlan": access_vlan,
         }
     return actual_access
-#TRUNK PORT
+
+
+# TRUNK PORT
 def build_trunk(device_state):
     device_state_trunk = device_state.get("switchports", {})
-    trunk_data = device_state_trunk.get("trunks", {})
     actual_trunk = {}
     for trunk_int, trunk_values in device_state_trunk.items():
         operational_mode = trunk_values.get("operational_mode", "")
@@ -45,11 +50,13 @@ def build_trunk(device_state):
         actual_trunk[trunk_interface] = {
             "trunk_interface": trunk_interface,
             "allowed_vlans": allowed_vlans,
-            "operational_mode": operational_mode
+            "operational_mode": operational_mode,
         }
     return actual_trunk
-#INTERFACE 
-def build_interface(device_state): 
+
+
+# INTERFACE
+def build_interface(device_state):
     device_state_interface = device_state.get("interfaces", {})
     actual_interfaces = {}
     interfaces = device_state_interface.get("interface", {})
@@ -60,13 +67,15 @@ def build_interface(device_state):
         protocol = interface_values.get("protocol", "")
         interface_name = interface_name.lower().strip()
         actual_interfaces[interface_name] = {
-                "interface": interface_name,
-                "status": status,
-                "protocol": protocol,
-                "is_up": status == "up" and protocol == "up"
+            "interface": interface_name,
+            "status": status,
+            "protocol": protocol,
+            "is_up": status == "up" and protocol == "up",
         }
     return actual_interfaces
-#STP GLOBAL 
+
+
+# STP GLOBAL
 def build_stp_global(device_state):
     stp = device_state.get("stp", {})
     actual_stp = {
@@ -90,11 +99,13 @@ def build_stp_global(device_state):
 
         actual_stp["vlan_priorities"][vlan] = priority
     return actual_stp
-#STP INTERFACE 
+
+
+# STP INTERFACE
 def build_stp_interfaces(device_state):
     running_config = device_state.get("running_config", {})
     parse = CiscoConfParse(running_config.splitlines())
-    act_stp_int  = {}
+    act_stp_int = {}
     for interface in parse.find_objects(r"^interface"):
         name = interface.text.split()[1]
         act_stp_int[name] = {
@@ -102,7 +113,7 @@ def build_stp_interfaces(device_state):
             "bpdu_guard": False,
             "root_guard": False,
             "loop_guard": False,
-            "bpdu_filter": False
+            "bpdu_filter": False,
         }
         for config in interface.children:
             text = config.text.strip()
@@ -118,26 +129,26 @@ def build_stp_interfaces(device_state):
             if "bpdufilter" in text:
                 act_stp_int[name]["bpdu_filter"] = True
     return act_stp_int
-#SNMP
-def build_snmp_netmiko(device_state):
 
+
+# SNMP
+def build_snmp_netmiko(device_state):
     running_config = device_state.get("running_config")
     parse = CiscoConfParse(running_config.splitlines())
     actual_snmp = {
-            "communities": [],
-            "hosts": [],
-            "traps": {},
-            "location": "",
-            "contact": ""
-        }
+        "communities": [],
+        "hosts": [],
+        "traps": {},
+        "location": "",
+        "contact": "",
+    }
 
     for s in parse.find_objects(r"^snmp-server community"):
         parts = s.text.split()
 
-        actual_snmp["communities"].append({
-                "snmp_name": parts[2],
-                "permission": parts[3].lower()
-            })
+        actual_snmp["communities"].append(
+            {"snmp_name": parts[2], "permission": parts[3].lower()}
+        )
     for s in parse.find_objects(r"^snmp-server location"):
         parts = s.text.split()
 
@@ -156,20 +167,20 @@ def build_snmp_netmiko(device_state):
     for s in parse.find_objects(r"^snmp-server host"):
         parts = s.text.split()
         if len(parts) >= 6:
-            actual_snmp["hosts"].append({
-                    "snmp_ip": parts[2],
-                    "snmp_version": parts[4],
-                    "snmp_name": parts[5]
-                })
+            actual_snmp["hosts"].append(
+                {"snmp_ip": parts[2], "snmp_version": parts[4], "snmp_name": parts[5]}
+            )
     return actual_snmp
-#SYSLOG 
-def build_syslog_netmiko(device_state): 
+
+
+# SYSLOG
+def build_syslog_netmiko(device_state):
     actual_syslog = {
-            "hosts": [],
-            "trap_level": "",
-            "source_interface": "",
-            "timestamps": False
-        }
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
     state_logging = device_state.get("syslog", {})
     logging = state_logging.get("logging", {})
     parse = CiscoConfParse(running_config.splitlines())
@@ -188,14 +199,11 @@ def build_syslog_netmiko(device_state):
         for interface in source_interface:
             actual_syslog["source_interface"] = interface
     return actual_syslog
-#CDP 
+
+
+# CDP
 def build_cdp_netimko(device_state):
-    actual_cdp = {
-        "enabled": False,
-        "timer": None,
-        "holdtime": None,
-        "interfaces": {}
-    }
+    actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
     run_globl = device_state.get("cdp", {})
     run_interface = device_state.get("cdp_interface", {})
     parse = CiscoConfParse(run_global.splitlines())
@@ -215,27 +223,28 @@ def build_cdp_netimko(device_state):
         config = p.text.strip().split()
         interface_name = config[0]
 
-        actual_cdp["interfaces"][interface_name] = {
-            "enabled": True
-        }
+        actual_cdp["interfaces"][interface_name] = {"enabled": True}
     return actual_cdp
-#PORT SECURITY 
-def build_port_security(device_state): 
+
+
+# PORT SECURITY
+def build_port_security(device_state):
     running_config = device_state.get("running_config", {})
     parse = CiscoConfParse(running_config.splitlines())
 
-    actual_psecurity = {
-            "interfaces": {}
-    }
+    actual_psecurity = {"interfaces": {}}
     for p in parse.find_objects(r"^interface"):
         interface_name = p.text.split()[1]
-        ps_config = actual_psecurity["interfaces"].setdefault(interface_name, {
-                    "enabled": False,
-                    "maximum": None,
-                    "violation": "",
-                    "sticky": False,
-                    "mac_addresses": []
-            })
+        ps_config = actual_psecurity["interfaces"].setdefault(
+            interface_name,
+            {
+                "enabled": False,
+                "maximum": None,
+                "violation": "",
+                "sticky": False,
+                "mac_addresses": [],
+            },
+        )
         for child in p.children:
             full_confg = child.text.strip()
             config = child.text.strip().split()
@@ -250,24 +259,22 @@ def build_port_security(device_state):
             if "switchport port-security mac-address" in full_confg:
                 ps_config["mac_addresses"].append(config[-1])
     return actual_psecurity
-#DHCP SNOOPING
-def build_snooping(device_state): 
+
+
+# DHCP SNOOPING
+def build_snooping(device_state):
     running_config = device_state.get("running_config", {})
-    actual_snooping = {
-                "enabled_vlans": [],
-                "interfaces": {},
-                "option82": False
-        }
+    actual_snooping = {"enabled_vlans": [], "interfaces": {}, "option82": False}
     parse = CiscoConfParse(running_config.splitlines())
     for p in parse.find_objects(r"^ip dhcp snooping"):
-            full_config = p.text.strip()
-            config = p.text.split()
-            if "snooping vlan" in full_config:
-                vlan = config[-1].split(",")
-                vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
-                actual_snooping["enabled_vlans"] = vlan_list
-            if "no ip dhcp snooping information" in full_confg:
-                actual_snooping["option82"] = False
+        full_config = p.text.strip()
+        config = p.text.split()
+        if "snooping vlan" in full_config:
+            vlan = config[-1].split(",")
+            vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
+            actual_snooping["enabled_vlans"] = vlan_list
+        if "no ip dhcp snooping information" in full_confg:
+            actual_snooping["option82"] = False
     for p in find_objects(r"^interface"):
         part = p.text.split()
         interface_name = part[-1]
@@ -278,14 +285,14 @@ def build_snooping(device_state):
 
             if "snooping limit rate" in full_config:
                 actual_snooping["interfaces"][interface_name] = {
-                        "rate_limit": config[-1]
+                    "rate_limit": config[-1]
                 }
             if "snooping trust" in full_config:
-                actual_snooping["interfaces"][interface_name] = {
-                        "trusted": True
-                }
+                actual_snooping["interfaces"][interface_name] = {"trusted": True}
     return actual_snooping
-#DAI 
+
+
+# DAI
 def build_dai(device_state):
     running_config = device_state.get("running_config")
     parse = CiscoConfParse(running_config.splitlines())
@@ -293,7 +300,7 @@ def build_dai(device_state):
         "arp_inspection": "",
         "enabled_vlans": [],
         "interfaces": {},
-        "log_buffer": {}
+        "log_buffer": {},
     }
     for p in parse.find_objects(r"^ip arp inspection"):
         full_config = p.text.strip()
@@ -306,19 +313,15 @@ def build_dai(device_state):
         if "inspection log-buffer" in full_config:
             actual_dai["log_buffer"] = {
                 "enabled": True,
-                "entries": safe_int(config[-1])
+                "entries": safe_int(config[-1]),
             }
     for i in parse.find_objects(r"^interface"):
         part = i.text.strip().split()
         interface_name = part[-1]
 
         intf = actual_dai["interfaces"].setdefault(
-                interface_name,
-                {
-                    "trusted": False,
-                    "rate_limit": None
-                }
-            )
+            interface_name, {"trusted": False, "rate_limit": None}
+        )
         for c in i.children:
             full_config = c.text.strip()
             config = c.text.strip().split()
@@ -327,14 +330,13 @@ def build_dai(device_state):
             if "inspection limit rate" in full_config:
                 intf["rate_limit"] = safe_int(config[-1])
     return actual_dai
-#ETHERCHANNEL
+
+
+# ETHERCHANNEL
 def build_etherchannel(device_state):
     running_config = device_state.get("running_config", {})
     parse = CiscoConfParse(running_config.splitlines())
-    actual_ether = {
-        "enabled": False,
-        "groups": {}
-    }
+    actual_ether = {"enabled": False, "groups": {}}
 
     for p in parse.find_objects(r"^interface"):
         config = p.text.strip().split()
@@ -347,14 +349,17 @@ def build_etherchannel(device_state):
             if "channel-group" in full_config:
                 group = safe_int(config[-3])
                 mode = config[-1]
-                group_entry = actual_ether["groups"].setdefault(group,{
+                group_entry = actual_ether["groups"].setdefault(
+                    group,
+                    {
                         "mode": mode,
                         "interfaces": [],
                         "description": None,
                         "switchport_mode": None,
                         "type": None,
-                        "enabled": True
-                    })
+                        "enabled": True,
+                    },
+                )
                 group_entry["enabled"] = True
                 group_entry["interfaces"].append(interface_name)
 
