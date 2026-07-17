@@ -4,7 +4,10 @@ from ciscoconfparse import CiscoConfParse
 
 # VLAN
 def build_vlan(device_state):
-    device_state_vlan = device_state.get("vlans", {})
+    if not device_state:
+        return {}
+    device_state_vlan = device_state.get("vlans") or {}
+
     vlan_data = device_state_vlan.get("vlans", {})
     actual_vlans = {}
     for vlan_id, vlan_values in vlan_data.items():
@@ -37,18 +40,20 @@ def build_access(device_state):
 
 # TRUNK PORT
 def build_trunk(device_state):
-    device_state_trunk = device_state.get("switchports", {})
+    if not device_state:
+        return {}
+
+    device_state_trunk = device_state.get("switchports") or {}
     actual_trunk = {}
     for trunk_int, trunk_values in device_state_trunk.items():
         operational_mode = trunk_values.get("operational_mode", "")
 
         if "trunk" not in operational_mode:
             continue
-        trunk_interface = trunk_int
         allowed_vlans = trunk_values.get("trunk_vlans", "")
 
-        actual_trunk[trunk_interface] = {
-            "trunk_interface": trunk_interface,
+        actual_trunk[trunk_int] = {
+            "trunk_interface": trunk_int,
             "allowed_vlans": allowed_vlans,
             "operational_mode": operational_mode,
         }
