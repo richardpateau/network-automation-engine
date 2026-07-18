@@ -1,0 +1,67 @@
+{
+    "interface": {
+        "GigabitEthernet0/0": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "up",
+            "protocol": "up"
+        },
+        "GigabitEthernet0/1": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "up",
+            "protocol": "up"
+        },
+        "GigabitEthernet0/2": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "up",
+            "protocol": "up"
+        },
+        "GigabitEthernet0/3": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "up",
+            "protocol": "up"
+        },
+        "GigabitEthernet1/0": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "up",
+            "protocol": "up"
+        },
+        "GigabitEthernet1/1": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "up",
+            "protocol": "up"
+        },
+        "GigabitEthernet1/2": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "down",
+            "protocol": "down"
+        },
+        "GigabitEthernet1/3": {
+            "ip_address": "unassigned",
+            "interface_is_ok": "YES",
+            "method": "unset",
+            "status": "down",
+            "protocol": "down"
+        },
+        "Vlan98": {
+            "ip_address": "192.168.255.10",
+            "interface_is_ok": "YES",
+            "method": "NVRAM",
+            "status": "up",
+            "protocol": "up"
+        }
+    }
+}

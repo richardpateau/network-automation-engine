@@ -6,6 +6,7 @@ from ciscoconfparse import CiscoConfParse
 def build_vlan(device_state):
     if not device_state:
         return {}
+
     device_state_vlan = device_state.get("vlans") or {}
 
     vlan_data = device_state_vlan.get("vlans", {})
@@ -19,7 +20,10 @@ def build_vlan(device_state):
 
 # ACCESS PORT
 def build_access(device_state):
-    device_state_access = device_state.get("switchports", {})
+    if not device_state:
+        return {}
+
+    device_state_access = device_state.get("switchports") or {}
     actual_access = {}
 
     for access_int, access_values in device_state_access.items():
@@ -46,7 +50,10 @@ def build_trunk(device_state):
     device_state_trunk = device_state.get("switchports") or {}
     actual_trunk = {}
     for trunk_int, trunk_values in device_state_trunk.items():
-        operational_mode = trunk_values.get("operational_mode", "")
+        if not isinstance(trunk_values, dict):
+            continue
+
+        operational_mode = trunk_values.get("operational_mode", "").lower()
 
         if "trunk" not in operational_mode:
             continue
@@ -62,11 +69,14 @@ def build_trunk(device_state):
 
 # INTERFACE
 def build_interface(device_state):
-    device_state_interface = device_state.get("interfaces", {})
+    if not device_state:
+        return {}
+
+    device_state_interface = device_state.get("interfaces") or {}
     actual_interfaces = {}
     interfaces = device_state_interface.get("interface", {})
     for interface_name, interface_values in interfaces.items():
-        if not interfaces:
+        if not isinstance(interface_values, dict):
             continue
         status = interface_values.get("status", "")
         protocol = interface_values.get("protocol", "")
@@ -82,7 +92,9 @@ def build_interface(device_state):
 
 # STP GLOBAL
 def build_stp_global(device_state):
-    stp = device_state.get("stp", {})
+    if not device_state:
+        return {}
+    stp = device_state.get("stp") or {}
     actual_stp = {
         "mode": "",
         "vlan_priorities": {},
@@ -99,8 +111,12 @@ def build_stp_global(device_state):
     actual_stp["mode"] = mode
     for vlan_id, data in vlans.items():
         vlan = safe_int(vlan_id)
+        if vlan is None:
+            continue
 
-        priority = data.get("bridge", {}).get("configured_bridge_priority", 32768)
+        priority = safe_int(
+            data.get("bridge", {}).get("configured_bridge_priority", 32768)
+        )
 
         actual_stp["vlan_priorities"][vlan] = priority
     return actual_stp

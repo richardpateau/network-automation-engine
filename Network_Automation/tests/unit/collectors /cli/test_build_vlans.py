@@ -8,9 +8,8 @@ def test_build_vlan_valid_path(vlan_genie_output):
 	assert result["30"]["name"] == "SERVERS"
 
 def test_build_vlan_empty():
-	result = build_vlan({})
-
-	assert result == {}
+	assert build_vlan({}) == {}
+	assert build_vlan(None) == {}
 
 def test_build_vlan_none():
 	result = build_vlan(None)
