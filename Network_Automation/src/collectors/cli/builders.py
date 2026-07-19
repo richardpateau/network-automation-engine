@@ -124,7 +124,9 @@ def build_stp_global(device_state):
 
 # STP INTERFACE
 def build_stp_interfaces(device_state):
-    running_config = device_state.get("running_config", {})
+    if not device_state:
+        return {}
+    running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
     act_stp_int = {}
     for interface in parse.find_objects(r"^interface"):

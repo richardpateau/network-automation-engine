@@ -34,3 +34,8 @@ def stp_global_genie_output():
     )
     with open(fixture_path) as f:
         return json.load
+
+
+@pytests.fixture
+def stp_interface_output():
+    fixture_path = Path(__file__).parent / "fixtures" / "cli" / "running_config_stp.txt"
