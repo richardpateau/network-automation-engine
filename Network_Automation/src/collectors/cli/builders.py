@@ -130,7 +130,11 @@ def build_stp_interfaces(device_state):
     parse = CiscoConfParse(running_config.splitlines())
     act_stp_int = {}
     for interface in parse.find_objects(r"^interface"):
-        name = interface.text.split()[1]
+        parts = interface.text.split()
+        if len(parts) < 2:
+            continue
+
+        name = parts[1].strip().lower()
         act_stp_int[name] = {
             "portfast": False,
             "bpdu_guard": False,
