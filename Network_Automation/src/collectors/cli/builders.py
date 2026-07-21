@@ -160,7 +160,9 @@ def build_stp_interfaces(device_state):
 
 # SNMP
 def build_snmp_netmiko(device_state):
-    running_config = device_state.get("running_config")
+    if not device_state:
+        return {}
+    running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
     actual_snmp = {
         "communities": [],
@@ -174,7 +176,7 @@ def build_snmp_netmiko(device_state):
         parts = s.text.split()
 
         actual_snmp["communities"].append(
-            {"snmp_name": parts[2], "permission": parts[3].lower()}
+            {"snmp_name": parts[2].lower(), "permission": parts[3].lower()}
         )
     for s in parse.find_objects(r"^snmp-server location"):
         parts = s.text.split()
@@ -202,37 +204,39 @@ def build_snmp_netmiko(device_state):
 
 # SYSLOG
 def build_syslog_netmiko(device_state):
+    if not device_state:
+        return {}
     actual_syslog = {
         "hosts": [],
         "trap_level": "",
         "source_interface": "",
         "timestamps": False,
     }
-    state_logging = device_state.get("syslog", {})
-    logging = state_logging.get("logging", {})
+    state_logging = device_state.get("syslog") or {}
+    logging = state_logging.get("logging") or {}
+    running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
     for p in parse.find_objects(r"^service timestamps"):
         if "log datetime msec" in p.text:
             actual_syslog["timestamps"] = True
     trap_level = logging.get("trap", {}).get("level", "")
     if trap_level:
-        actual_syslog["trap_level"] = trap_level
+        actual_syslog["trap_level"] = trap_level.lower()
     logging_to = logging.get("trap", {}).get("logging_to", {})
     if logging_to:
-        for ip in logging_to:
-            actual_syslog["hosts"].append(ip)
+        actual_syslog["hosts"] = list(logging_to.keys())
     source_interface = logging.get("trap", {}).get("logging_source_interface", {})
     if source_interface:
-        for interface in source_interface:
-            actual_syslog["source_interface"] = interface
+        for interface in source_interface.keys():
+            actual_syslog["source_interface"] = interface.lower()
     return actual_syslog
 
 
 # CDP
 def build_cdp_netimko(device_state):
     actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
-    run_globl = device_state.get("cdp", {})
-    run_interface = device_state.get("cdp_interface", {})
+    run_globl = device_state.get("cdp") or ""
+    run_interface = device_state.get("cdp_interface") or ""
     parse = CiscoConfParse(run_global.splitlines())
     for p in parse.find_objects(r"^Global CDP information:"):
         for c in p.children:
@@ -248,7 +252,7 @@ def build_cdp_netimko(device_state):
     parse_2 = CiscoConfParse(run_interface.splitlines())
     for p in parse_2.find_objects(r"^\S+"):
         config = p.text.strip().split()
-        interface_name = config[0]
+        interface_name = config[0].lower()
 
         actual_cdp["interfaces"][interface_name] = {"enabled": True}
     return actual_cdp

@@ -31,9 +31,9 @@ def test_build_stp_interfaces_empty():
 def test_build_stp_interfaces_invalid_interface():
     data = {
         "running_config": """
-	interface 
-	 spanning-tree portfast 
-		"""
+    interface 
+     spanning-tree portfast 
+        """
     }
 
     result = build_stp_interfaces(data)

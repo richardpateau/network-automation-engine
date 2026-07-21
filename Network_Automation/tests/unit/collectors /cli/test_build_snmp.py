@@ -60,6 +60,17 @@ def test_build_snmp_invalid_host():
 
     assert result["hosts"] == []
 
+def test_build_snmp_multiple_hosts():
+	data = {
+        "running_config": """
+        snmp-server host 192.168.100.50 version 2c NETWORK_RO
+		snmp-server host 192.168.100.51 version 2c NETWORK_RO
+		snmp-server host 192.168.100.52 version 2c NETWORK_RO
+		"""
+    }
+    result = build_snmp_netmiko(data)
+
+    assert len(result["hosts"]) == 3 
 
 def test_build_snmp_partial_config():
     data = {
