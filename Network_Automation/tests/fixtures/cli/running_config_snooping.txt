@@ -1,0 +1,33 @@
+ip dhcp snooping vlan 10,20,30
+ip dhcp snooping
+no ip dhcp snooping information option
+interface GigabitEthernet0/1
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ switchport port-security
+ negotiation auto
+ ip dhcp snooping trust
+interface GigabitEthernet0/2
+ switchport access vlan 20
+ switchport mode access
+ switchport port-security maximum 3
+ switchport port-security mac-address 0050.56aa.aaaa
+ switchport port-security mac-address 0050.56aa.bbcc
+ switchport port-security
+ negotiation auto
+ ip dhcp snooping limit rate 15
+interface GigabitEthernet0/3
+ negotiation auto
+interface GigabitEthernet1/0
+ negotiation auto
+interface GigabitEthernet1/1
+ negotiation auto
+interface GigabitEthernet1/2
+ negotiation auto
+interface GigabitEthernet1/3
+ negotiation auto
+interface Vlan98
+ ip address 192.168.255.10 255.255.255.0

@@ -234,8 +234,10 @@ def build_syslog_netmiko(device_state):
 
 # CDP
 def build_cdp_netimko(device_state):
+    if not device_state:
+        return {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
     actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
-    run_globl = device_state.get("cdp") or ""
+    run_global = device_state.get("cdp") or ""
     run_interface = device_state.get("cdp_interface") or ""
     parse = CiscoConfParse(run_global.splitlines())
     for p in parse.find_objects(r"^Global CDP information:"):
@@ -260,41 +262,50 @@ def build_cdp_netimko(device_state):
 
 # PORT SECURITY
 def build_port_security(device_state):
-    running_config = device_state.get("running_config", {})
+    if not device_state:
+        return {"interfaces": {}}
+    running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
 
     actual_psecurity = {"interfaces": {}}
     for p in parse.find_objects(r"^interface"):
         interface_name = p.text.split()[1]
         ps_config = actual_psecurity["interfaces"].setdefault(
-            interface_name,
+            interface_name.lower(),
             {
                 "enabled": False,
                 "maximum": None,
-                "violation": "",
+                "violation": None,
                 "sticky": False,
                 "mac_addresses": [],
             },
         )
         for child in p.children:
-            full_confg = child.text.strip()
+            full_config = child.text.strip()
             config = child.text.strip().split()
-            if "switchport port-security" == full_confg:
+            if "switchport port-security" == full_config:
                 ps_config["enabled"] = True
-            if "port-security maximum" in full_confg:
+            if "port-security maximum" in full_config:
                 ps_config["maximum"] = safe_int(config[-1])
-            if "port-security violation" in full_confg:
+            if "port-security violation" in full_config:
                 ps_config["violation"] = config[-1]
-            if "port-security mac-address sticky" in full_confg:
+            if "port-security mac-address sticky" in full_config:
                 ps_config["sticky"] = True
-            if "switchport port-security mac-address" in full_confg:
+            if (
+                "switchport port-security mac-address" in full_config
+                and "sticky" not in full_config
+            ):
                 ps_config["mac_addresses"].append(config[-1])
+            if ps_config["enabled"] and ps_config["violation"] is None:
+                ps_config["violation"] = "shutdown"
     return actual_psecurity
 
 
 # DHCP SNOOPING
 def build_snooping(device_state):
-    running_config = device_state.get("running_config", {})
+    if not device_state:
+        return {"enabled_vlans": [], "interfaces": {}, "option82": False}
+    running_config = device_state.get("running_config") or ""
     actual_snooping = {"enabled_vlans": [], "interfaces": {}, "option82": False}
     parse = CiscoConfParse(running_config.splitlines())
     for p in parse.find_objects(r"^ip dhcp snooping"):
@@ -304,9 +315,12 @@ def build_snooping(device_state):
             vlan = config[-1].split(",")
             vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
             actual_snooping["enabled_vlans"] = vlan_list
-        if "no ip dhcp snooping information" in full_confg:
+    for p in parse.find_objects(r"^no ip dhcp snooping"):
+        if "no ip dhcp snooping information" in full_config:
             actual_snooping["option82"] = False
-    for p in find_objects(r"^interface"):
+        else:
+            actual_snooping["option82"] = True
+    for p in parse.find_objects(r"^interface"):
         part = p.text.split()
         interface_name = part[-1]
 
@@ -315,11 +329,9 @@ def build_snooping(device_state):
             config = child.text.split()
 
             if "snooping limit rate" in full_config:
-                actual_snooping["interfaces"][interface_name] = {
-                    "rate_limit": config[-1]
-                }
+                actual_snooping["interfaces"][interface_name]["rate_limit"] = config[-1]
             if "snooping trust" in full_config:
-                actual_snooping["interfaces"][interface_name] = {"trusted": True}
+                actual_snooping["interfaces"][interface_name]["trusted"] = True
     return actual_snooping
 
 

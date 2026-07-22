@@ -70,3 +70,36 @@ def cdp_running_config():
         Path(__file__).parent / "fixtures" / "cli" / "running_config_cdp_global.txt"
     )
     return {"cdp": global_path.read.text(), "cdp_interface": interface_path.read.text()}
+
+
+@pytests.fixture
+def port_security_running_config():
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "cli" / "running_config_port_security.txt"
+    )
+
+    with open(fixture_path) as f:
+        return {"running_config": f.read}
+
+
+@pytests.fixture
+def snooping_running_config():
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "cli" / "running_config_snoopoing.txt"
+    )
+
+    with open(fixture_path) as f:
+        return {"running_config": f.read}
+
+
+@pytests.fixture
+def dai_running_config():
+    dai_global = Path(__file__).parent / "fixtures" / "cli" / "running_config_dai.txt"
+    dai_interface = (
+        Path(__file__).parent / "fixtures" / "cli" / "running_config_dai_interface.txt"
+    )
+
+    return {
+        "running_config": dai_global.read.text(),
+        "dai_interface": dai_interface.read.text(),
+    }
