@@ -14,25 +14,25 @@ def test_build_dai_valid(dai_running_config):
 
 def test_build_dai_empty():
     assert build_dai({}) == {
-        "arp_inspection": "",
+        "arp_inspection": False,
         "enabled_vlans": [],
         "interfaces": {},
         "log_buffer": {},
     }
     assert build_dai(None) == {
-        "arp_inspection": "",
+        "arp_inspection": False,
         "enabled_vlans": [],
         "interfaces": {},
         "log_buffer": {},
     }
-    assert build_dai({"not_dai"}) == {
-        "arp_inspection": "",
+    assert build_dai({"not_dai": {}}) == {
+        "arp_inspection": False,
         "enabled_vlans": [],
         "interfaces": {},
         "log_buffer": {},
     }
     assert build_dai({"running_config": {}}) == {
-        "arp_inspection": "",
+        "arp_inspection": False,
         "enabled_vlans": [],
         "interfaces": {},
         "log_buffer": {},
@@ -42,24 +42,24 @@ def test_build_dai_empty():
 def test_build_dai_no_buffer():
     data = {
         "running_config": """
-	 	ip arp inspection vlan 10,20,30
-	 	"""
+        ip arp inspection vlan 10,20,30
+        """
     }
 
     result = build_dai(data)
 
-    assert ["log_buffer"] == {}
+    assert result["log_buffer"] == {}
 
 
 def test_build_dai_rate_and_trust():
     data = {
         "dai_interfaces": """
-		"\n Interface        Trust State     Rate (pps)    
-		Burst Interval\n ---------------  -----------     ----------    --------------\n 
-		Gi0/0            Untrusted               15                 1\n Gi0/1            
-		Trusted               None               N/A\n
+        "\n Interface        Trust State     Rate (pps)    
+        Burst Interval\n ---------------  -----------     ----------    --------------\n 
+        Gi0/0            Untrusted               15                 1\n Gi0/1            
+        Trusted               None               N/A\n
 
-		"""
+        """
     }
 
     result = build_dai(data)
@@ -68,11 +68,11 @@ def test_build_dai_rate_and_trust():
     assert result["interfaces"]["gi0/0"]["trusted"] is False
 
 
-def test_build_dai_no_buffer():
+def test_build_dai_no_vlan():
     data = {
         "running_config": """
-	 	ip arp inspection vlan 10,20,30, abc, richard 
-	 	"""
+        ip arp inspection vlan 10,20,30, abc, richard 
+        """
     }
 
     result = build_dai(data)
@@ -85,11 +85,11 @@ def test_build_dai_no_buffer():
 def test_build_dai_no_config():
     data = {
         "running_config": """
-		interface GigabitEthernet0/1
-		 ip dhcp snooping limit rate 20 
-		 ip dhcp snooping trust
+        interface GigabitEthernet0/1
+         ip dhcp snooping limit rate 20 
+         ip dhcp snooping trust
 
-		""",
+        """,
         "dai_interfaces": "",
     }
 
@@ -105,11 +105,11 @@ def test_build_dai_no_config():
 def test_build_dai_rate(rate):
     data = {
         "dai_interfaces": f"""
-		"\n Interface        Trust State     Rate (pps)    
-		Burst Interval\n ---------------  -----------     ----------    --------------\n 
-		Gi0/0            Untrusted               {rate}                 1\n Gi0/1            
-		Trusted               None               N/A\n
-		"""
+        \n Interface        Trust State     Rate (pps)    
+        Burst Interval\n ---------------  -----------     ----------    --------------\n 
+        Gi0/0            Untrusted               {rate}                 1\n Gi0/1            
+        Trusted               None               N/A\n
+        """
     }
 
     result = build_dai(data)

@@ -103,3 +103,18 @@ def dai_running_config():
         "running_config": dai_global.read.text(),
         "dai_interface": dai_interface.read.text(),
     }
+@pytests.fixture
+def etherchannel_running_config():
+    fixture_path = (
+            Path(__file__).parent / "fixtures" / "cli" / "running_config_etherchannel.txt"
+        )
+    with open(fixture_path) as f: 
+        return {"running_config": f.read}
+
+@pytests.fixture
+def ntp_netconf():
+    fixture_path = (
+            Path(__file__).parent / "fixtures" / "netconf" / "ntp_netconf.json"
+        )
+    with open fixture_path as f: 
+        return json.load(f)
