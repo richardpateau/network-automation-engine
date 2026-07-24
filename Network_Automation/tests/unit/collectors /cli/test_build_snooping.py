@@ -43,8 +43,8 @@ def test_build_snooping_empty():
 def test_build_snooping_option_82():
     data = {
         "running_config": """
-		ip dhcp snooping vlan 10,20,30
-		"""
+        ip dhcp snooping vlan 10,20,30
+        """
     }
 
     result = build_snooping(data)
@@ -54,9 +54,9 @@ def test_build_snooping_option_82():
 def test_build_snooping_trusted_interface():
     data = {
         "running_config": """
-		interface GigabitEthernet0/1
-		 ip dhcp snooping trust
-		"""
+        interface GigabitEthernet0/1
+         ip dhcp snooping trust
+        """
     }
 
     result = build_snooping(data)
@@ -68,9 +68,9 @@ def test_build_snooping_trusted_interface():
 def test_build_snooping_rate_limit_only():
     data = {
         "running_config": """
-		interface GigabitEthernet0/1
-		 ip dhcp snooping limit rate 20 
-		"""
+        interface GigabitEthernet0/1
+         ip dhcp snooping limit rate 20 
+        """
     }
 
     result = build_snooping(data)
@@ -82,10 +82,10 @@ def test_build_snooping_rate_limit_only():
 def test_build_snooping_both_rate_and_trust():
     data = {
         "running_config": """
-		interface GigabitEthernet0/1
-		 ip dhcp snooping limit rate 20 
-		 ip dhcp snooping trust
-		"""
+        interface GigabitEthernet0/1
+         ip dhcp snooping limit rate 20 
+         ip dhcp snooping trust
+        """
     }
 
     result = build_snooping(data)
@@ -96,9 +96,9 @@ def test_build_snooping_both_rate_and_trust():
 def test_build_snooping_invalid_vlan():
     data = {
         "running_config": """
-		ip dhcp snooping vlan 10,20,30, abc, richard
-		ip dhcp snooping
-		"""
+        ip dhcp snooping vlan 10,20,30, abc, richard
+        ip dhcp snooping
+        """
     }
 
     result = build_snooping(data)
