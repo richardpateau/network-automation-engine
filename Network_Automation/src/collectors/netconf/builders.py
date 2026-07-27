@@ -12,17 +12,16 @@ def build_ntp(netconf_state):
     actual_ntp = {"keys": [], "servers": []}
     server_lists = ntp.get("server", {}).get("server-list", {})
     server_list = normalize_to_list(server_lists)
-    ntp_trusted = ntp.get("trusted-key", {}).get("number", "")
     for s in server_list:
-        ntp_ip = s.get("ip-address")
+        ntp_ip = s.get("ip-address", "")
         server_id = s.get("key", "")
         actual_ntp["servers"].append(
             {"server_ip": ntp_ip, "server_id": safe_int(server_id)}
         )
-    ntp_authentication = normalize_to_list(ntp.get("trusted-key", {}))
+    ntp_authentication = normalize_to_list(ntp.get("authentication-key", {}))
     for n in ntp_authentication:
         ntp_key_id = n.get("number", "")
-        if ntp_key_id != "":
+        if ntp_key_id:
             actual_ntp["keys"].append(
                 {
                     "id": safe_int(ntp_key_id),
@@ -34,7 +33,9 @@ def build_ntp(netconf_state):
 
 # QOS
 def build_qos(netconf_state):
-    native = netconf_state.get("native_netconf", {})
+    if not netconf_state:
+        return {"policies": []}
+    native = netconf_state.get("native_netconf") or {}
     qos = native.get("policy", {})
     actual_qos = {"policies": []}
     class_maps = qos.get("class-map", [])
@@ -45,7 +46,7 @@ def build_qos(netconf_state):
     interfaces = native.get("interface", {})
     attachments_lookup = {}
     for c in class_map_list:
-        class_name = c.get("name", "")
+        class_name = c.get("name", "").lower()
         class_map_lookup[class_name] = {
             "match_type": c.get("prematch", ""),
             "name": class_name,
@@ -54,6 +55,7 @@ def build_qos(netconf_state):
                 .get("protocol", {})
                 .get("protocols-list", {})
                 .get("protocols", "")
+                .lower()
             ),
         }
     for int_type, int_value in interfaces.items():
@@ -66,11 +68,11 @@ def build_qos(netconf_state):
             output_policy = service_policy.get("output")
             if input_policy:
                 attachments_lookup.setdefault(input_policy, []).append(
-                    {"interface": interface_name, "direction": "input"}
+                    {"interface": interface_name.lower(), "direction": "input"}
                 )
             if output_policy:
                 attachments_lookup.setdefault(output_policy, []).append(
-                    {"interface": interface_name, "direction": "output"}
+                    {"interface": interface_name.lower(), "direction": "output"}
                 )
     for p in policy_map_list:
         policy_name = p.get("name", "")
@@ -78,7 +80,7 @@ def build_qos(netconf_state):
         qos_class_list = normalize_to_list(qos_classes)
 
         policy = {
-            "policy_name": policy_name,
+            "policy_name": policy_name.lower(),
             "class_maps": [],
             "attachments": attachments_lookup.get(policy_name, []),
         }
@@ -92,7 +94,8 @@ def build_qos(netconf_state):
                     "match_type": cm.get("match_type", ""),
                     "protocol": cm.get("protocol", ""),
                     "action_type": action_list.get("action-type", ""),
-                    "bandwidth": action_list.get("priority", {}).get("kilo-bits", ""),
+                    "priority": action_list.get("priority", {}).get("kilo-bits", ""),
+                    "bandwidth": action_list.get("bandwidth", {}).get("bits", ""),
                 }
             )
         if policy["class_maps"] or policy["attachments"]:
@@ -102,25 +105,31 @@ def build_qos(netconf_state):
 
 # HSRP
 def build_hsrp(netconf_state):
+    if not netconf_state:
+        return []
     actual_hsrp = []
-    native = netconf_state.get("native_netconf", {})
-    interfaces = normalize_to_list(native.get("interface", {}))
+    native = netconf_state.get("native_netconf") or {}
+    interfaces = native.get("interface") or {}
 
     for int_type, int_list in interfaces.items():
         interface_type = str(int_type)
         for value in int_list:
             interface_num = str(value.get("name", "")).strip()
-            full_int = f"{interface_type}{interface_num}"
+            full_int = f"{interface_type}{interface_num}".lower()
             standby_list = value.get("standby", {}).get("standby-list") or {}
+
+            if not standby_list:
+                continue
+
             actual_hsrp.append(
                 {
                     "interface": full_int,
-                    "version": value.get("standby", {}).get("version", ""),
-                    "group": standby_list.get("group-number", ""),
+                    "version": safe_int(value.get("standby", {}).get("version", "")),
+                    "group": safe_int(standby_list.get("group-number", "")),
                     "vip": standby_list.get("ip", {}).get("address", ""),
                     "preempt": "preempt" in standby_list,
-                    "priority": standby_list.get("priority", 100),
-                    "router_vlan": (
+                    "priority": standby_list.get("priority", None),
+                    "router_vlan": safe_int(
                         value.get("encapsulation", {})
                         .get("dot1Q", {})
                         .get("vlan-id", "")
@@ -132,6 +141,8 @@ def build_hsrp(netconf_state):
 
 # NAT
 def build_nat(netconf_state):
+    if not netconf_state:
+        return []
     actual_nat = []
     nat_interfaces = {"inside": [], "outside": []}
     native = netconf_state.get("native_netconf", {})
@@ -179,11 +190,11 @@ def build_nat(netconf_state):
         if pn:
             actual_nat.append(
                 {
-                    "acl": nat_list.get("id", ""),
-                    "pool_name": pn.get("pool_name", ""),
+                    "acl": safe_int(nat_list.get("id", "")),
+                    "pool_name": pn.get("pool_name", "").lower(),
                     "start_ip": pn.get("start_ip", ""),
                     "end_ip": pn.get("end_ip", ""),
-                    "mask": pn.get("netmask", ""),
+                    "mask": pn.get("mask", ""),
                 }
             )
 
@@ -191,19 +202,25 @@ def build_nat(netconf_state):
     interfaces = native.get("interface", {})
     for int_type, int_values in interfaces.items():
         for i_value in normalize_to_list(int_values):
-            full_interface = f"{int_type}{i_value.get('name', '')}"
-            nat = i_value.get("ip", {}).get("nat", {})
-            if nat.get("outside") is not None:
+            full_interface = f"{int_type}{i_value.get('name', '')}".lower()
+            nat_int = i_value.get("ip", {}).get("nat", {})
+            if "outside" in nat_int:
                 nat_interfaces["outside"].append(full_interface)
-            if nat.get("inside") is not None:
+            if "inside" in nat_int:
                 nat_interfaces["inside"].append(full_interface)
     return actual_nat, nat_interfaces
 
 
 # DHCP
+def mini_list(value):
+    return [value] if not isinstance(value, list) else value
+
+
 def build_dhcp(netconf_state):
+    if not netconf_state:
+        return {"excluded_addresses": [], "pools": [], "helper": {"interfaces": []}}
     actual_dhcp = {"excluded_addresses": [], "pools": [], "helper": {"interfaces": []}}
-    native = netconf_state.get("native_netconf", {})
+    native = netconf_state.get("native_netconf") or {}
     dhcp = native.get("ip", {}).get("dhcp", {})
     excl = dhcp.get("excluded-address", {}).get("low-high-address-list", [])
     for e in normalize_to_list(excl):
@@ -213,18 +230,18 @@ def build_dhcp(netconf_state):
     dhcp_pool = dhcp.get("pool", [])
     for d in normalize_to_list(dhcp_pool):
         lease = d.get("lease", {}).get("lease-value", {})
-        dns_list = normalize_to_list(d.get("dns-server", {}).get("dns-server-list", []))
+        dns_list = mini_list(d.get("dns-server", {}).get("dns-server-list", []))
         actual_dhcp["pools"].append(
             {
-                "pool_name": d.get("id", ""),
-                "lease_days": safe_int(lease.get("days", 1)),
-                "lease_hours": safe_int(lease.get("hours", 1)),
-                "lease_minutes": safe_int(lease.get("minutes", 10)),
+                "pool_name": d.get("id", "").lower(),
+                "lease_days": safe_int(lease.get("days", "")),
+                "lease_hours": safe_int(lease.get("hours", "")),
+                "lease_minutes": safe_int(lease.get("minutes", "")),
                 "default_router": (
                     d.get("default-router", {}).get("default-router-list", "")
                 ),
                 "dns_ip": dns_list,
-                "domain_name": d.get("domain-name", ""),
+                "domain_name": d.get("domain-name", "").lower(),
                 "pool_ip": d.get("network", {})
                 .get("primary-network", {})
                 .get("number", ""),
@@ -236,7 +253,7 @@ def build_dhcp(netconf_state):
     interfaces = native.get("interface", {})
     for gigabit, gig_values in interfaces.items():
         for g in normalize_to_list(gig_values):
-            full_interface = f"{gigabit}{g.get('name', '')}"
+            full_interface = f"{gigabit}{g.get('name', '')}".lower()
             helper = g.get("ip", {}).get("helper-address", {}).get("address", [])
             for h in normalize_to_list(helper):
                 actual_dhcp["helper"]["interfaces"].append(
@@ -247,6 +264,14 @@ def build_dhcp(netconf_state):
 
 # SNMP
 def build_snmp_netconf(netconf_state):
+    if not netconf_state:
+        return {
+            "communities": [],
+            "hosts": [],
+            "traps": {},
+            "location": "",
+            "contact": "",
+        }
     actual_snmp = {
         "communities": [],
         "hosts": [],
@@ -262,15 +287,15 @@ def build_snmp_netconf(netconf_state):
             actual_snmp["communities"].append(
                 {"snmp_name": c.get("name", ""), "permission": c.get("permission", "")}
             )
-    contact = snmp.get("contact", {}).get("#text", "")
+    contact = snmp.get("contact", {}).get("#text", "").lower()
     if contact:
         actual_snmp["contact"] = contact
     traps = snmp.get("enable", {}).get("enable-choice", {}).get("traps", {})
     if traps:
         actual_snmp["traps"] = {
-            "snmp": bool(traps.get("snmp", {})),
-            "syslog": bool(traps.get("syslog", "")),
-            "config": bool(traps.get("config", "")),
+            "snmp": "snmp" in traps,
+            "syslog": "syslog" in traps,
+            "config": "config" in traps,
         }
 
     hosts = snmp.get("host-config", {}).get("ip-community", {})
@@ -278,7 +303,7 @@ def build_snmp_netconf(netconf_state):
         for h in normalize_to_list(hosts):
             actual_snmp["hosts"].append(
                 {
-                    "community_name": h.get("community-or-user", ""),
+                    "community_name": h.get("community-or-user", "").lower(),
                     "snmp_ip": h.get("ip-address", ""),
                     "snmp_version": h.get("version", ""),
                 }
@@ -291,6 +316,14 @@ def build_snmp_netconf(netconf_state):
 
 # SYSLOG
 def build_syslog_netconf(netconf_state):
+    if not netconf_state:
+        return {
+            "hosts": [],
+            "facility": "",
+            "trap_level": "",
+            "source_interface": "",
+            "timestamps": False,
+        }
     actual_syslog = {
         "hosts": [],
         "facility": "",
@@ -298,7 +331,7 @@ def build_syslog_netconf(netconf_state):
         "source_interface": "",
         "timestamps": False,
     }
-    native = netconf_state.get("native_netconf", {})
+    native = netconf_state.get("native_netconf") or {}
     logging = native.get("logging", {})
     facility = logging.get("facility", "")
     if facility:
@@ -309,7 +342,7 @@ def build_syslog_netconf(netconf_state):
             actual_syslog["hosts"].append(h.get("ipv4-host", ""))
     source_interface = logging.get("source-interface", {}).get("interface-name", "")
     if source_interface:
-        actual_syslog["source_interface"] = source_interface
+        actual_syslog["source_interface"] = source_interface.lower()
     trap_level = logging.get("trap", {}).get("severity", "")
     if trap_level:
         actual_syslog["trap_level"] = trap_level

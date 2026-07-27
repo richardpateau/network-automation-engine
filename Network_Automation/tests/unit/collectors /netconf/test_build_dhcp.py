@@ -141,7 +141,7 @@ def test_build_dhcp_multiple_pools():
 		    }
 		  }
 		}
-	  }
+	  }c
 
 	result = build_dhcp(data)
 	pool_names = [p["pool_name"] for p in result["pools"]]
@@ -149,9 +149,10 @@ def test_build_dhcp_multiple_pools():
 	assert pool_names == ["users", "voice"]
 
 @parametrize("int_type, int_num, helper_ip", 
-		["gigabitethernet", "3", "192.168.30.1",
-		 "fastethernet", "2", "200.10.10.1",
-		 "ethernet", "1", "192.168.1.1"
+		[
+			 ("gigabitethernet", "3", "192.168.30.1"),
+			 ("fastethernet", "2", "200.10.10.1"),
+			 ("ethernet", "1", "192.168.1.1")
 		]
 	)
 
