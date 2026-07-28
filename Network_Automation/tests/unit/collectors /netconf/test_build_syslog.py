@@ -1,4 +1,5 @@
 from src.collectors.netconf.builders import build_syslog_netconf 
+import pytest
 
 def test_build_syslog_valid(syslog_netconf): 
 	result = build_syslog_netconf(syslog_netconf)

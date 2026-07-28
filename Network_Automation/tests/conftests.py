@@ -152,7 +152,37 @@ def hsrp_netconf():
 
 
 @pytest.fixture
-def hsrp_netconf():
+def dhcp_netconf():
     fixture_path = Path(__file__).parent / "fixtures" / "netconf" / "dhcp_netconf.json"
     with open(fixture_path) as f:
         json.load(f)
+
+
+@pytest.fixture
+def snmp_netconf():
+    fixture_path = Path(__file__).parent / "fixtures" / "netconf" / "snmp_netconf.json"
+    with open(fixture_path) as f:
+        json.load(f)
+
+
+@pytest.fixture
+def syslog_netconf():
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "netconf" / "syslog_netconf.json"
+    )
+    with open(fixture_path) as f:
+        json.load(f)
+
+
+@pytest.fixture
+def cdp_netconf():
+    fixture_path = Path(__file__).parent / "fixtures" / "netconf" / "cdp_netconf.json"
+    with open(fixture_path) as f:
+        json.load(f)
+
+
+@pyetest.fixture
+def static_netconf():
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "netconf" / "static_netconf.json"
+    )

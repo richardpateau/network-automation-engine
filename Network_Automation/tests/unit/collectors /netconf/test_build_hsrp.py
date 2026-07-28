@@ -100,7 +100,7 @@ def test_build_hsrp_multiple_interfaces():
 		              "ip": {
 		                "address": "192.168.10.1"
 		              },
-		              "preempt": null,
+		              "preempt": None,
 		              "priority": "110"
 		            }
 		          }
@@ -120,7 +120,7 @@ def test_build_hsrp_multiple_interfaces():
 		              "ip": {
 		                "address": "192.168.20.1"
 		              },
-		              "preempt": null,
+		              "preempt": None,
 		              "priority": "110"
 		            }
 		          }
@@ -138,7 +138,7 @@ def test_build_hsrp_multiple_interfaces():
 		              "ip": {
 		                "address": "192.168.30.1"
 		              },
-		              "preempt": null,
+		              "preempt": None,
 		              "priority": "110"
 		            }
 		          }
