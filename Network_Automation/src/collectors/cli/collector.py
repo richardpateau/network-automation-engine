@@ -33,9 +33,16 @@ def collect_device_state(conn):
     try:
         device_state["cdp"] = conn.send_command("show cdp")
     except Exception:
-        device_state["cdp"] = {}
+        device_state["cdp"] = ""
     try:
         device_state["cdp_interface"] = conn.send_command("show cdp interface")
     except Exception:
-        device_state["cdp_interface"] = {}
+        device_state["cdp_interface"] = ""
     return device_state
+    try:
+        device_state["dai_interfaces"] = conn.send_command(
+            "show ip arp inspection interfaces"
+        )
+
+    except Exception:
+        device_state["dai_interfaces"] = ""

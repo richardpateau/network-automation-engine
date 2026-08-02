@@ -1,14 +1,18 @@
 from src.core.enums import StepStatus, OperationalStatus
 from src.collectors.netconf import collect_netconf_state
 from src.remediation.routing.nat import configure_nat
-from src.compliance.routing.nat_helpers import (build_nat,check_nat,)
+from src.compliance.routing.nat_helpers import (
+    build_nat,
+    check_nat,
+)
 from config import DRY_RUN
+
 
 def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
     exp_nat = context.get("nat", {})
     act_nat = build_nat(device_state)
     nat_updated = False
-    
+
     nat_summary = []
     if exp_nat.get("interfaces"):
         inside = exp_nat.get("interfaces", {}).get("inside", [])
@@ -33,70 +37,72 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
             f"PAT Interface: {exp_nat.get('pat', {}).get('interfaces', '')} | "
             f"ACL: {exp_nat.get('pat', {}).get('acl', '')}"
         )
-    
+
     summary_str = " | ".join(nat_summary)
-    
+
     if exp_nat:
         ok, failures = check_nat(exp_nat, act_nat)
-    
+
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
             "protocol": "nat",
             "transport": sesh.transport,
-            "has_static": bool(exp_nat.get('static')),
-            "has_dynamic": bool(exp_nat.get('dynamic')),
-            "has_pat": bool(exp_nat.get('pat')),
-            "static_count": len(exp_nat.get('static', [])),
-            "dynamic_count": len(exp_nat.get('dynamic', [])),
+            "has_static": bool(exp_nat.get("static")),
+            "has_dynamic": bool(exp_nat.get("dynamic")),
+            "has_pat": bool(exp_nat.get("pat")),
+            "static_count": len(exp_nat.get("static", [])),
+            "dynamic_count": len(exp_nat.get("dynamic", [])),
             "inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
             "outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
             "summary": summary_str,
             "compliant": ok,
             "failures_count": len(failures) if failures else 0,
-            "failures": failures
+            "failures": failures,
         }
-    
+
         if ok:
             log.info(
                 "nat_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "NAT Configuration Compliant"
-                }
+                    "message": "NAT Configuration Compliant",
+                },
             )
             device_result["actions_taken"].append(
-                "NAT Configuration Compliant | "
-                f"{summary_str}"
+                "NAT Configuration Already Compliant | " f"{summary_str}"
             )
         else:
             device_result["initial_issues"].extend(failures)
-    
+
             log.warning(
                 "nat_non_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": (
-                        "NAT Configuration Non-Compliant"
-                    )
-                }
+                    "message": ("NAT Configuration Non-Compliant"),
+                },
             )
-    
+
+            if DRY_RUN:
+                device_result["actions_taken"].append(
+                    f"[DRY_RUN] Would Configure NAT | {summary_str}"
+                )
+                continue
             result = configure_nat(sesh, exp_nat, log)
             summary = result.get("summary")
             if summary:
                 device_result["actions_taken"].append(summary)
             if result.get("status") == OperationalStatus.SUCCESS.value:
                 nat_updated = True
-            else: 
+            else:
                 device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-    
+
     if nat_updated and not DRY_RUN:
         new_state = collect_netconf_state(sesh, log)
         new_nat = build_nat(new_state)
-    
+
         ok, failures = check_nat(exp_nat, new_nat)
 
         log_extra = {
@@ -104,17 +110,17 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
             "component": "main_process",
             "protocol": "nat",
             "transport": sesh.transport,
-            "has_static": bool(exp_nat.get('static', [])),
-            "has_dynamic": bool(exp_nat.get('dynamic', [])),
-            "has_pat": bool(exp_nat.get('pat')),
-            "static_count": len(exp_nat.get('static')),
-            "dynamic_count": len(exp_nat.get('dynamic')),
+            "has_static": bool(exp_nat.get("static", [])),
+            "has_dynamic": bool(exp_nat.get("dynamic", [])),
+            "has_pat": bool(exp_nat.get("pat")),
+            "static_count": len(exp_nat.get("static")),
+            "dynamic_count": len(exp_nat.get("dynamic")),
             "inside_interfaces": exp_nat.get("interfaces", {}).get("inside", []),
             "outside_interfaces": exp_nat.get("interfaces", {}).get("outside", []),
             "summary": summary_str,
             "compliant": ok,
             "failures_count": len(failures) if failures else 0,
-            "failures": failures
+            "failures": failures,
         }
 
         if not ok:
@@ -123,8 +129,8 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": "NAT Post Validation Failed"
-                }
+                    "message": "NAT Post Validation Failed",
+                },
             )
 
             device_result["critical_issues"].extend(failures)
@@ -135,11 +141,10 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "NAT Post Validation Successful"
-                }
+                    "message": "NAT Post Validation Successful",
+                },
             )
             device_result["actions_taken"].append(
-                "NAT Post Validation Successful | "
-                f"{summary_str}"
+                "NAT Post Validation Successful | " f"{summary_str}"
             )
     return device_result

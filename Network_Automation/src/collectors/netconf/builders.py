@@ -359,10 +359,12 @@ def build_syslog_netconf(netconf_state):
 
 # CDP
 def build_cdp_netconf(netconf_state):
-    actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
-    native = netconf_state.get("native_netconf", {})
-    cdp_run = native.get("cdp", {}).get("run", {})
-    if cdp_run:
+    if not netconf_state: 
+        reutrn {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
+    actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}} 
+    native = netconf_state.get("native_netconf") or {}
+    cdp_run = native.get("cdp", {}).get("run-enable", {}).get("#text", "")
+    if cdp_run == "true":
         actual_cdp["enabled"] = True
     cdp_timer = native.get("cdp", {}).get("timer", {}).get("#text", "")
     if cdp_timer:
@@ -372,8 +374,9 @@ def build_cdp_netconf(netconf_state):
         actual_cdp["holdtime"] = safe_int(cdp_holdtime)
     interface = native.get("interface", {})
     for interface_type, int_value in interface.items():
-        full_interface = f"{interface_type}{int_value.get('name')}"
-        cdp_enable = int_value.get("cdp", {}).get("enable", False)
+        full_interface = f"{interface_type}{int_value.get('name')}".lower()
+        cdp_enables = int_value.get("cdp", {}).get("enable")
+        cdp_enable = "true" in cdp_enable 
 
         actual_cdp["interfaces"][full_interface] = {"enabled": cdp_enable}
     return actual_cdp
@@ -381,8 +384,10 @@ def build_cdp_netconf(netconf_state):
 
 # STATIC
 def build_static(netconf_state):
+    if not netconf_state:
+        return []
     actual_static = []
-    native = netconf_state.get("native_netconf", {})
+    native = netconf_state.get("native_netconf") or {}
     route = (
         native.get("ip", {})
         .get("route", {})
@@ -398,21 +403,25 @@ def build_static(netconf_state):
         network_address = r.get("prefix", "")
         mask = r.get("mask", {})
         fwd_list = r.get("fwd-list", {})
-        fwd = fwd_list.get("fwd", "")
 
-        if is_ip_address(fwd):
-            next_hop = fwd
-            AD = safe_int(fwd_list.get("metric", None))
-            name = fwd_list.get("name", None)
-        else:
-            exit_interface = fwd
+        for f in normalize_to_list(fwd_list):
+            fwd = f.get("fwd", "")
+            if is_ip_address(fwd):
+                next_hop.append(fwd)
+                AD = safe_int(fwd_list.get("metric", 1))
+                name = fwd_list.get("name", None)
+            else:
+                exit_interface = fwd.lower()
 
         fully_specified = fwd_list.get("interface-next-hop", [])
         if fully_specified:
             for f in normalize_to_list(fully_specified):
                 next_hop.append(f.get("ip-address"))
-                AD = safe_int(f.get("metric")) if f.get("metric") is not None else AD
-                name = f.get("name")
+                AD = safe_int(f.get("metric")) if f.get("metric") is not None else 1
+                name = f.get("name", None)
+        else: 
+            AD = fwd_list.get("metric", 1)
+            name = fwd_list.get("name", "")
 
         actual_static.append(
             {
@@ -421,7 +430,7 @@ def build_static(netconf_state):
                 "mask": mask,
                 "next_hop": next_hop,
                 "exit_interface": exit_interface,
-                "name": name,
+                "name": name.lower() if name else None,
             }
         )
     return actual_static

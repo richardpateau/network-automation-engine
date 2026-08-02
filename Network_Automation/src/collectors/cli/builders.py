@@ -321,7 +321,7 @@ def build_snooping(device_state):
         else:
             actual_snooping["option82"] = True
     for p in parse.find_objects(r"^interface"):
-        part = p.text.split()
+        part = p.text.split().lower()
         interface_name = part[-1]
 
         for child in p.children:
@@ -329,7 +329,9 @@ def build_snooping(device_state):
             config = child.text.split()
 
             if "snooping limit rate" in full_config:
-                actual_snooping["interfaces"][interface_name]["rate_limit"] = config[-1]
+                actual_snooping["interfaces"][interface_name]["rate_limit"] = safe_int(
+                    config[-1]
+                )
             if "snooping trust" in full_config:
                 actual_snooping["interfaces"][interface_name]["trusted"] = True
     return actual_snooping
@@ -337,10 +339,18 @@ def build_snooping(device_state):
 
 # DAI
 def build_dai(device_state):
-    running_config = device_state.get("running_config")
+    if not device_state:
+        return {
+            "arp_inspection": "",
+            "enabled_vlans": [],
+            "interfaces": {},
+            "log_buffer": {},
+        }
+    running_config = device_state.get("running_config") or ""
+    dai_interfaces = device_state.get("dai_interfaces") or ""
     parse = CiscoConfParse(running_config.splitlines())
     actual_dai = {
-        "arp_inspection": "",
+        "arp_inspection": False,
         "enabled_vlans": [],
         "interfaces": {},
         "log_buffer": {},
@@ -358,32 +368,31 @@ def build_dai(device_state):
                 "enabled": True,
                 "entries": safe_int(config[-1]),
             }
-    for i in parse.find_objects(r"^interface"):
-        part = i.text.strip().split()
-        interface_name = part[-1]
+    for config in dai_interfaces.splitlines():
+        parts = config.split()
 
-        intf = actual_dai["interfaces"].setdefault(
-            interface_name, {"trusted": False, "rate_limit": None}
-        )
-        for c in i.children:
-            full_config = c.text.strip()
-            config = c.text.strip().split()
-            if "inspection trust" in full_config:
-                intf["trusted"] = True
-            if "inspection limit rate" in full_config:
-                intf["rate_limit"] = safe_int(config[-1])
+        if len(parts) >= 4 and parts[0].startswith("Gi"):
+            interface = parts[0].lower()
+            rate = safe_int(parts[2])
+
+            actual_dai["interfaces"][interface] = {
+                "rate_limit": rate,
+                "trusted": parts[1].lower() == "trusted",
+            }
     return actual_dai
 
 
 # ETHERCHANNEL
 def build_etherchannel(device_state):
-    running_config = device_state.get("running_config", {})
+    if not device_state:
+        return {"enabled": False, "groups": {}}
+    running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
     actual_ether = {"enabled": False, "groups": {}}
 
     for p in parse.find_objects(r"^interface"):
         config = p.text.strip().split()
-        interface_name = config[-1]
+        interface_name = config[-1].strip().lower()
         full_config = p.text.strip()
         for c in p.children:
             full_config = c.text.strip()
@@ -413,7 +422,7 @@ def build_etherchannel(device_state):
                 else:
                     group_entry["type"] = "static"
     for p in parse.find_objects(r"^interface Port-channel"):
-        config = p.text.strip().split()
+        config = p.text.strip().split().lower()
         group = safe_int(config[-1][12:])
         group_entry = actual_ether["groups"].get(group)
         if not group_entry:

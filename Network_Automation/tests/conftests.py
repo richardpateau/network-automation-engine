@@ -186,3 +186,17 @@ def static_netconf():
     fixture_path = (
         Path(__file__).parent / "fixtures" / "netconf" / "static_netconf.json"
     )
+
+
+@pytest.fixture
+def roas_restconf():
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "restconf" / "roas_restconf.json"
+    )
+
+
+@pytest.fixture
+def ospf_restconf():
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "restconf" / "ospf_restconf.json"
+    )
