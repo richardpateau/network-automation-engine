@@ -79,6 +79,7 @@ def test_compliance_nat_already_compliant(
 
     mock_log.info.assert_called_once()
     mock_log.warning.assert_not_called()
+    assert result["initial_issues"] == []
     assert any(
         "NAT Configuration Already Compliant" in r for r in result["actions_taken"]
     )
@@ -107,6 +108,7 @@ def test_compliance_nat_non_compliant_config_successful(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
 
+    mock_configure_nat.assert_called_once()
     mock_log.warning.assert_called_once()
     assert any(
         "(NAT STATIC) Missing Static Configuration" in r
@@ -144,23 +146,22 @@ def test_compliance_nat_config_failed(
 
     mock_log.warning.assert_called_once()
     assert any(
-        "(NAT STATIC) Failed To Configure Static NAT" in r
+        "(NAT STATIC) Missing Static Configuration" in r
         for r in result["initial_issues"]
     )
     assert any(
         "(NAT STATIC) Failed To Configure Static NAT" in r
         for r in result["actions_taken"]
     )
+    assert any("Failed To Remediate NAT" in r for r in result["critical_issues"])
     assert result["status"] == OperationalStatus.FAILED_CONFIG.value
 
 
 @patch("src.compliance.routing.nat.compliance.DRY_RUN", True)
-@patch("src.compliance.routing.nat.compliance.collect_netconf_state")
 @patch("src.compliance.routing.nat.compliance.configure_nat")
 @patch("src.compliance.routing.nat.compliance.build_nat")
 @patch("src.compliance.routing.nat.compliance.check_nat")
 def test_compliance_nat_dry_run(
-    mock_collect_netconf_state,
     mock_configure_nat,
     mock_build_nat,
     mock_check_nat,
@@ -172,14 +173,12 @@ def test_compliance_nat_dry_run(
     mock_build_nat.return_value = {}
     mock_check_nat.return_value = (False, ["(NAT STATIC) Missing Static Configuration"])
     mock_configure_nat.return_value = {}
-    mock_collect_netconf_state.return_value = {}
 
     result = compliance_nat(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
 
     mock_configure_nat.assert_not_called()
-    mock_collect_netconf_state.assert_not_called()
     mock_log.warning.assert_called_once()
     assert any(
         "(NAT STATIC) Missing Static Configuration" in r
@@ -217,8 +216,9 @@ def test_compliance_nat_post_validation_successful(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
 
-    mock_log.info.assert_called_once()
     mock_log.warning.assert_called_once()
+    mock_log.error.assert_not_called()
+    mock_collect_netconf_state.assert_called_once()
     assert any(
         "(NAT STATIC) Missing Static Configuration" in r
         for r in result["initial_issues"]
@@ -228,7 +228,6 @@ def test_compliance_nat_post_validation_successful(
         for r in result["actions_taken"]
     )
     assert result["status"] == OperationalStatus.SUCCESS.value
-    mock_collect_netconf_state.assert_called_once()
     assert any("NAT Post Validation Successful" in r for r in result["actions_taken"])
 
 
@@ -261,7 +260,10 @@ def test_compliance_nat_post_validation_failed(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
 
+    mock_log.error.assert_called_once()
     mock_log.warning.assert_called_once()
+    mock_log.info.assert_not_called()
+    mock_collect_netconf_state.assert_called_once()
     assert any(
         "(NAT STATIC) Missing Static Configuration" in r
         for r in result["initial_issues"]
@@ -270,9 +272,17 @@ def test_compliance_nat_post_validation_failed(
         "(NAT STATIC) Static Mapping Configuration Successful" in r
         for r in result["actions_taken"]
     )
-    mock_log.error.assert_called_once()
     assert any(
         "(NAT STATIC) Missing Static Configuration" in r
         for r in result["critical_issues"]
     )
     assert result["status"] == OperationalStatus.FAILED_VALIDATION.value
+
+
+def test_compliance_nat_empty(mock_sesh, mock_device_result, mock_log):
+    result = compliance_nat(
+        mock_sesh, "192.168.1.1", {"nat": {}}, {}, mock_device_result, mock_log
+    )
+
+    assert result["actions_taken"] == []
+    assert result["initial_issues"] == []

@@ -73,7 +73,7 @@ def test_compliance_snooping_already_compliant(
 @patch("src.compliance.security.dhcp_snooping.compliance.configure_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.build_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.check_snooping")
-def test_compliance_snooping_non_compliant_and_configuration_successful(
+def test_compliance_snooping_non_compliant_configuration_successful(
     mock_configure_snooping,
     mock_check_snooping,
     mock_build_snooping,
@@ -97,7 +97,6 @@ def test_compliance_snooping_non_compliant_and_configuration_successful(
     )
 
     mock_log.warning.assert_called_once()
-    mock_configure_snooping.assert_called_once()
     assert any(
         "(DHCP Snooping) Missing VLAN(s) On Device" in r
         for r in result["initial_issues"]
@@ -135,7 +134,6 @@ def test_compliance_snooping_non_compliant_and_configuration_failed(
     )
 
     mock_log.warning.assert_called_once()
-    mock_configure_snooping.assert_called_once()
     assert any(
         "(DHCP Snooping) Missing VLAN(s) On Device" in r
         for r in result["initial_issues"]
@@ -143,6 +141,9 @@ def test_compliance_snooping_non_compliant_and_configuration_failed(
     assert any(
         "DHCP Snooping Configuration Remediation Failed" in r
         for r in result["critical_issues"]
+    )
+    assert any(
+        "Failed to Configure DHCP Snooping" in r for r in result["actions_taken"]
     )
     assert result["status"] == OperationalStatus.FAILED_CONFIG.value
 

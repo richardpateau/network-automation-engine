@@ -98,6 +98,9 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
                 nat_updated = True
             else:
                 device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["critical_issues"].append(
+                    f"Failed To Remediate NAT | {summary_str}"
+                )
 
     if nat_updated and not DRY_RUN:
         new_state = collect_netconf_state(sesh, log)
