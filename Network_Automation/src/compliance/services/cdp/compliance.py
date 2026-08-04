@@ -1,58 +1,47 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cdp import (build_cdp_netconf,build_cdp_netmiko)
-from src.collectors.state import (collect_netconf_state,collect_device_state)
+from src.collectors.cdp import build_cdp_netconf, build_cdp_netmiko
+from src.collectors.state import collect_netconf_state, collect_device_state
 from src.compliance.cdp_checks import check_cdp
-from src.remediation.cdp import (configure_cdp_netconf,configure_cdp_netmiko)
+from src.remediation.cdp import configure_cdp_netconf, configure_cdp_netmiko
 from src.core.settings import DRY_RUN
 
-def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log):
+
+def compliance_cdp(sesh, device_ip, context, device_state, device_result, log):
     exp_cdp = context.get("cdp", {})
 
-    if sesh.transport == "NETMIKO":
+    if sesh.transport == "NETCONF":
         act_cdp = build_cdp_netconf(device_state)
     elif sesh.transport == "NETMIKO":
         act_cdp = build_cdp_netmiko(device_state)
     else:
-        raise ValueError(
-                f"Unsupported CDP Transport: {sesh.transport}"
-            )
+        raise ValueError(f"Unsupported CDP Transport: {sesh.transport}")
     cdp_updated = False
     cdp_log = []
     int_count = 0
     if "enabled" in exp_cdp:
-        cdp_log.append(
-            f"Enabled: {exp_cdp.get('enabled', False)}"
-        )
+        cdp_log.append(f"Enabled: {exp_cdp.get('enabled', False)}")
     if "timer" in exp_cdp:
-        cdp_log.append(
-            f"Timer: {exp_cdp.get('timer', None)}"
-        )
+        cdp_log.append(f"Timer: {exp_cdp.get('timer', None)}")
     if "holdtime" in exp_cdp:
-        cdp_log.append(
-            f"HoldTime: {exp_cdp.get('holdtime', None)}"
-        )
-    if exp_cdp.get("run_on_interfaces"):
+        cdp_log.append(f"HoldTime: {exp_cdp.get('holdtime', None)}")
+    if exp_cdp.get("interfaces"):
         enabled_interfaces = []
         disabled_interfaces = []
-        for i,v in exp_cdp.get("run_on_interfaces", {}).items():
+        for i, v in exp_cdp.get("interfaces", {}).items():
             if v.get("enabled"):
                 enabled_interfaces.append(i)
                 int_count += 1
             else:
                 disabled_interfaces.append(i)
         if enabled_interfaces:
-            cdp_log.append(
-                f"Enabled Interfaces: {', '.join(enabled_interfaces)}"
-            )
+            cdp_log.append(f"Enabled Interfaces: {', '.join(enabled_interfaces)}")
         if disabled_interfaces:
-            cdp_log.append(
-                f"Disabled Interfaces: {', '.join(disabled_interfaces)}"
-            )
+            cdp_log.append(f"Disabled Interfaces: {', '.join(disabled_interfaces)}")
     cdp_str = " | ".join(cdp_log) or "No CDP Configuration"
-    
+
     if exp_cdp:
         ok, failures = check_cdp(exp_cdp, act_cdp)
-    
+
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
@@ -64,28 +53,26 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
             "enabled_int_count": int_count,
             "enabled_interfaces": [
                 i
-                for i,v in exp_cdp.get("run_on_interfaces", {}).items()
-                if v.get('enabled', False)
+                for i, v in exp_cdp.get("interfaces", {}).items()
+                if v.get("enabled", False)
             ],
             "summary": cdp_str,
             "compliant": ok,
             "failures_count": len(failures) if failures else 0,
-            "failures": failures
-    
+            "failures": failures,
         }
-    
+
         if ok:
             log.info(
                 "cdp_netconf_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "CDP Configuration Already Compliant"
-                }
+                    "message": "CDP Configuration Already Compliant",
+                },
             )
             device_result["actions_taken"].append(
-                "CDP Configuration Already Compliant | "
-                f"{cdp_str}"
+                "CDP Configuration Already Compliant | " f"{cdp_str}"
             )
         else:
             log.warning(
@@ -93,42 +80,43 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": "CDP Configuration Non-Compliant"
-                }
+                    "message": "CDP Configuration Non-Compliant",
+                },
             )
             device_result["initial_issues"].extend(failures)
-            
-            if sesh.transport == sesh.transport: 
-                result = configure_cdp_netconf(sesh, exp_cdp, log)
-            elif sesh.transport == "NETMIKO": 
-                result = configure_cdp_netmiko(sesh, exp_cdp, log)
 
-
-            summary = result.get("summary")
-    
-            if summary:
-                device_result["actions_taken"].append(summary)
-            if result.get("status") == OperationalStatus.SUCCESS.value:
-                cdp_updated = True
+            if DRY_RUN:
+                device_result["actions_taken"].append(
+                    f"[DRY_RUN] Would Configure CDP | {cdp_str}"
+                )
             else:
-                device_result["status"] = OperationalStatus.FAILED_CONFIG.value 
-                device_result["critical_issues"].append(
-                        "CDP (NETCONF) Configuration Remediation Failed | "
-                        f"{cdp_str}"
+                if sesh.transport == "NETCONF":
+                    result = configure_cdp_netconf(sesh, exp_cdp, log)
+                elif sesh.transport == "NETMIKO":
+                    result = configure_cdp_netmiko(sesh, exp_cdp, log)
+
+                summary = result.get("summary")
+
+                if summary:
+                    device_result["actions_taken"].append(summary)
+                if result.get("status") == OperationalStatus.SUCCESS.value:
+                    cdp_updated = True
+                else:
+                    device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                    device_result["critical_issues"].append(
+                        "CDP Configuration Remediation Failed | " f"{cdp_str}"
                     )
     if cdp_updated and not DRY_RUN:
-
-        if sesh.transport == "NETCONF": 
+        if sesh.transport == "NETCONF":
             new_state = collect_netconf_state(sesh, log)
             new_cdp = build_cdp_netconf(new_state)
-        if sesh.transport == "NETMIKO": 
+        if sesh.transport == "NETMIKO":
             new_state = collect_device_state(sesh, log)
             new_cdp = build_cdp_netmiko(new_state)
 
-    
         if exp_cdp:
             ok, failures = check_cdp(exp_cdp, new_cdp)
-    
+
             log_extra = {
                 "device_ip": device_ip,
                 "component": "main_process",
@@ -140,25 +128,23 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
                 "enabled_int_count": int_count,
                 "enabled_interfaces": [
                     i
-                    for i,v in exp_cdp.get("run_on_interfaces", {}).items()
-                    if v.get('enabled', False)
+                    for i, v in exp_cdp.get("interfaces", {}).items()
+                    if v.get("enabled", False)
                 ],
                 "summary": cdp_str,
                 "compliant": ok,
                 "failures_count": len(failures) if failures else 0,
-                "failures": failures
-    
+                "failures": failures,
             }
-    
+
             if not ok:
                 log.error(
                     "cdp_netconf_post_validation_failed",
                     extra={
                         **log_extra,
                         "status": StepStatus.FAILED.value,
-                        "message": "CDP Configuration Post Validation Failed"
-    
-                    }
+                        "message": "CDP Configuration Post Validation Failed",
+                    },
                 )
                 device_result["critical_issues"].extend(failures)
                 device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
@@ -168,11 +154,10 @@ def compliance_cdp_nc(sesh, device_ip, context, device_state, device_result, log
                     extra={
                         **log_extra,
                         "status": StepStatus.SUCCESS.value,
-                        "message": "CDP Configuration Post Validation Successful"
-                    }
+                        "message": "CDP Configuration Post Validation Successful",
+                    },
                 )
                 device_result["actions_taken"].append(
-                    "CDP Configuration Post Validation Successful"
-                    f" | {cdp_str}"
+                    "CDP Configuration Post Validation Successful" f" | {cdp_str}"
                 )
     return device_result
