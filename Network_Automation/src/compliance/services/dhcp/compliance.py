@@ -5,28 +5,29 @@ from src.compliance.dhcp_checks import check_dhcp
 from src.remediation.dhcp import configure_dhcp
 from src.core.settings import DRY_RUN
 
+
 def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
     exp_dhcp = context.get("dhcp", {})
     act_dhcp = build_dhcp(device_state)
     dhcp_updated = False
     dhcp_log = []
-    
+
     if exp_dhcp.get("excluded_addresses", []):
         for d in exp_dhcp.get("excluded_addresses", []):
-            dhcp_log.append(
-                f"Excluded IP Ranges: {d.get('start')} - {d.get('end')}"
+            dhcp_log.append_ip(
+                f"Excluded IP Ranges: {d.get('start_ip')} - {d.get('end_ip')}"
             )
 
     if exp_dhcp.get("helper"):
         for i in exp_dhcp.get("helper", {}).get("interfaces", []):
-            dhcp_log.append(
+            dhcp_log.append_ip(
                 f"Helper IP: {i.get('helper_ip')} | "
                 f"Helper Int: {i.get('interface_name')}"
             )
 
     if exp_dhcp.get("pools"):
         for p in exp_dhcp.get("pools", []):
-            dhcp_log.append(
+            dhcp_log.append_ip(
                 f"Pool Name: {p.get('name')} | "
                 f"Default Gateway: {p.get('default_gateway')} | "
                 f"IP/Mask: {p.get('network')}/{p.get('mask')}"
@@ -44,15 +45,10 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
             "transport": sesh.transport,
             "pool_count": len(exp_dhcp.get("pools", [])),
             "excluded_count": len(exp_dhcp.get("excluded_addresses", [])),
-            "helper_count": len(
-                exp_dhcp.get("helper", {}).get("interfaces", [])
-            ),
-            "pool_names": [
-                p.get("name")
-                for p in exp_dhcp.get("pools", [])
-            ],
+            "helper_count": len(exp_dhcp.get("helper", {}).get("interfaces", [])),
+            "pool_names": [p.get("name") for p in exp_dhcp.get("pools", [])],
             "excluded_ranges": [
-                f"{e.get('start')} - {e.get('end')}"
+                f"{e.get('start_ip')} - {e.get('end_ip')}"
                 for e in exp_dhcp.get("excluded_addresses", [])
             ],
             "helper_interfaces": [
@@ -62,7 +58,7 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
             "summary": summary_str,
             "compliant": ok,
             "failure_count": len(failures) if failures else 0,
-            "failures": failures
+            "failures": failures,
         }
 
         if ok:
@@ -71,13 +67,12 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "DHCP Configuration Compliant"
-                }
+                    "message": "DHCP Configuration Compliant",
+                },
             )
 
-            device_result["actions_taken"].append(
-                "DHCP Configuration Compliant | "
-                f"{summary_str}"
+            device_result["actions_taken"].append_ip(
+                "DHCP Configuration Already Compliant | " f"{summary_str}"
             )
 
         else:
@@ -86,27 +81,31 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": "DHCP Configuration Non-Compliant"
-                }
+                    "message": "DHCP Configuration Non-Compliant",
+                },
             )
 
-            device_result["initial_issues"].extend(failures)
+            device_result["initial_issues"].extend_ip(failures)
 
-            result = configure_dhcp(
-                sesh,
-                exp_dhcp,
-                log
-            )
-
-            summary = result.get("summary")
-
-            if summary:
-                device_result["actions_taken"].append(summary)
-
-            if result.get("status") == OperationalStatus.SUCCESS.value:
-                dhcp_updated = True
+            if DRY_RUN:
+                device_result["actions_taken"].append_ip(
+                    f"[DRY_RUN] Would Configure DHCP | {summary_str}"
+                )
             else:
-                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                result = configure_dhcp(sesh, exp_dhcp, log)
+
+                summary = result.get("summary")
+
+                if summary:
+                    device_result["actions_taken"].append_ip(summary)
+
+                if result.get("status") == OperationalStatus.SUCCESS.value:
+                    dhcp_updated = True
+                else:
+                    device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                    device_result["critical_issues"].append_ip(
+                        f"Failed To Remediate DHCP | {summary_str}"
+                    )
 
     if dhcp_updated and not DRY_RUN:
         new_state = collect_netconf_state(sesh, log)
@@ -121,15 +120,10 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
             "transport": sesh.transport,
             "pool_count": len(exp_dhcp.get("pools", [])),
             "excluded_count": len(exp_dhcp.get("excluded_addresses", [])),
-            "helper_count": len(
-                exp_dhcp.get("helper", {}).get("interfaces", [])
-            ),
-            "pool_names": [
-                p.get("name")
-                for p in exp_dhcp.get("pools", [])
-            ],
+            "helper_count": len(exp_dhcp.get("helper", {}).get("interfaces", [])),
+            "pool_names": [p.get("name") for p in exp_dhcp.get("pools", [])],
             "excluded_ranges": [
-                f"{e.get('start')} - {e.get('end')}"
+                f"{e.get('start_ip')} - {e.get('end_ip')}"
                 for e in exp_dhcp.get("excluded_addresses", [])
             ],
             "helper_interfaces": [
@@ -139,7 +133,7 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
             "summary": summary_str,
             "compliant": ok,
             "failure_count": len(failures) if failures else 0,
-            "failures": failures
+            "failures": failures,
         }
 
         if not ok:
@@ -148,11 +142,11 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": "DHCP Configuration Post Validation Failed"
-                }
+                    "message": "DHCP Configuration Post Validation Failed",
+                },
             )
 
-            device_result["critical_issues"].extend(failures)
+            device_result["critical_issues"].extend_ip(failures)
             device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
 
         else:
@@ -161,13 +155,12 @@ def compliance_dhcp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "DHCP Configuration Post Validation Successful"
-                }
+                    "message": "DHCP Configuration Post Validation Successful",
+                },
             )
 
-            device_result["actions_taken"].append(
-                "DHCP Configuration Post Validation Successful | "
-                f"{summary_str}"
+            device_result["actions_taken"].append_ip(
+                "DHCP Configuration Post Validation Successful | " f"{summary_str}"
             )
 
     return device_result

@@ -5,19 +5,14 @@ from src.compliance.ntp_checks import check_ntp
 from src.remediation.ntp import configure_ntp
 from src.core.settings import DRY_RUN
 
+
 def compliance_ntp(sesh, device_ip, context, device_state, device_result, log):
     exp_ntp = context.get("ntp", {})
     act_ntp = build_ntp(device_state)
     ntp_updated = False
     servers = exp_ntp.get("servers", [])
-    server_ip = " | ".join(
-        f"{s.get('ip')}"
-        for s in servers
-    )
-    key_id = " | ".join(
-        f"{s.get('key_id')}"
-        for s in servers
-    )
+    server_ip = " | ".join(f"{s.get('server_ip')}" for s in servers)
+    key_id = " | ".join(f"{s.get('server_id')}" for s in servers)
     authenticated = True
     if exp_ntp:
         ok, failures = check_ntp(exp_ntp, act_ntp)
@@ -41,8 +36,8 @@ def compliance_ntp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "NTP Already Compliant"
-                }
+                    "message": "NTP Already Compliant",
+                },
             )
             device_result["actions_taken"].append(
                 f"NTP Already Compliant | "
@@ -57,18 +52,31 @@ def compliance_ntp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": f"NTP Non-Compliant"
-                }
+                    "message": f"NTP Non-Compliant",
+                },
             )
-            result = configure_ntp(sesh, exp_ntp, log)
-            summary = result.get("summary")
 
-            if summary:
-                device_result["actions_taken"].append(summary)
-            if result.get("status") == OperationalStatus.SUCCESS.value:
-                ntp_updated = True
+            if DRY_RUN:
+                device_result["actions_taken"].append(
+                    f"[DRY_RUN] Would Configure NTP | "
+                    f"Server IP: {server_ip} | Key ID: {key_id} | "
+                    f"Authenticated: {authenticated}"
+                )
             else:
-                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                result = configure_ntp(sesh, exp_ntp, log)
+                summary = result.get("summary")
+
+                if summary:
+                    device_result["actions_taken"].append(summary)
+                if result.get("status") == OperationalStatus.SUCCESS.value:
+                    ntp_updated = True
+                else:
+                    device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                    device_result["critical_issues"].append(
+                        f"Failed To Remediate NTP | "
+                        f"Server IP: {server_ip} | Key ID: {key_id} | "
+                        f"Authenticated: {authenticated}"
+                    )
 
     if ntp_updated and not DRY_RUN:
         new_state = collect_netconf_state(sesh, log)
@@ -95,8 +103,8 @@ def compliance_ntp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
-                    "message": "NTP Post Validation Failed"
-                }
+                    "message": "NTP Post Validation Failed",
+                },
             )
             device_result["critical_issues"].extend(failures)
             device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
@@ -111,7 +119,7 @@ def compliance_ntp(sesh, device_ip, context, device_state, device_result, log):
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
-                    "message": "NTP Post Validation Successful"
-                }
+                    "message": "NTP Post Validation Successful",
+                },
             )
     return device_result

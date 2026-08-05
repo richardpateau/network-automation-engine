@@ -26,12 +26,13 @@ def check_qos(expected_qos, actual_config):
 					exp_class.get("action_type", "") == act_class.get("action_type", "") and 
 					exp_class.get("match_type", "") == act_class.get("match_type", "") and 
 					exp_class.get("bandwidth", "") == act_class.get("bandwidth", "") and 
-					exp_class.get("protocol", "") == act_class.get("protocol", "")
+					exp_class.get("protocol", "") == act_class.get("protocol", "") and 
+					exp_class.get("priority", "") == act_class.get("priority", "")
 					):
 					matched = True 
 			if not matched: 
 				failures.append(
-						f"Expected Class Map Missing From Policy | Policy: {name} | "
+						f"Expected Class Map Missing From Policy or Mismatch | Policy: {name} | "
 						f"Class Config: {exp_class}"
 					)
 			exp_attached = normalize_to_list(exp_policy.get("attachments", []))
