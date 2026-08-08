@@ -1,0 +1,4 @@
+/home/rich/Python/Network_Automation/.venv/bin/python /home/rich/Python/learning_archive/Genie_Parser.py
+"\n Interface        Trust State     Rate (pps)    Burst Interval\n ---------------  -----------     ----------    --------------\n Gi0/0            Untrusted               15                 1\n Gi0/1            Trusted               None               N/A\n Gi0/2            Untrusted               15                 1\n Gi0/3            Untrusted               15                 1\n Gi1/0            Untrusted               15                 1\n Gi1/1            Untrusted               15                 1\n Gi1/2            Untrusted               15                 1\n Gi1/3            Untrusted               15                 1"
+
+Process finished with exit code 0

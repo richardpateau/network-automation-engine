@@ -1,0 +1,119 @@
+{
+    "vlans": {
+        "10": {
+            "vlan_id": "10",
+            "name": "USERS",
+            "shutdown": false,
+            "state": "active",
+            "type": "enet",
+            "said": 100010,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "20": {
+            "vlan_id": "20",
+            "name": "VOICE",
+            "shutdown": false,
+            "state": "active",
+            "type": "enet",
+            "said": 100020,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "30": {
+            "vlan_id": "30",
+            "name": "SERVERS",
+            "shutdown": false,
+            "state": "active",
+            "type": "enet",
+            "said": 100030,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "40": {
+            "vlan_id": "40",
+            "name": "VLAN0040",
+            "shutdown": false,
+            "state": "active",
+            "type": "enet",
+            "said": 100040,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "50": {
+            "vlan_id": "50",
+            "name": "VLAN0050",
+            "shutdown": false,
+            "state": "active",
+            "type": "enet",
+            "said": 100050,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "98": {
+            "vlan_id": "98",
+            "name": "management",
+            "shutdown": false,
+            "state": "active",
+            "interfaces": [
+                "GigabitEthernet0/0"
+            ],
+            "type": "enet",
+            "said": 100098,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "1002": {
+            "vlan_id": "1002",
+            "name": "fddi-default",
+            "shutdown": false,
+            "state": "unsupport",
+            "type": "fddi",
+            "said": 101002,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "1003": {
+            "vlan_id": "1003",
+            "name": "token-ring-default",
+            "shutdown": false,
+            "state": "unsupport",
+            "type": "tr",
+            "said": 101003,
+            "mtu": 1500,
+            "trans1": 0,
+            "trans2": 0
+        },
+        "1004": {
+            "vlan_id": "1004",
+            "name": "fddinet-default",
+            "shutdown": false,
+            "state": "unsupport",
+            "type": "fdnet",
+            "said": 101004,
+            "mtu": 1500,
+            "stp": "ieee",
+            "trans1": 0,
+            "trans2": 0
+        },
+        "1005": {
+            "vlan_id": "1005",
+            "name": "trnet-default",
+            "shutdown": false,
+            "state": "unsupport",
+            "type": "trnet",
+            "said": 101005,
+            "mtu": 1500,
+            "stp": "ibm",
+            "trans1": 0,
+            "trans2": 0
+        }
+    }
+}

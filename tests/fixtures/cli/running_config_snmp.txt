@@ -1,0 +1,7 @@
+snmp-server community NETWORK_RO RO
+snmp-server community NETWORK_RW RW
+snmp-server location NYC Data Center Rack 12
+snmp-server contact Network Team admin@example.com
+snmp-server enable traps snmp authentication linkdown linkup coldstart warmstart
+snmp-server enable traps syslog
+snmp-server host 192.168.100.50 version 2c NETWORK_RO
