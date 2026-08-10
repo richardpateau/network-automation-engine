@@ -75,8 +75,106 @@ def test_run_pipeline_empty(
 	assert result["initial_issues"] == []
 	assert result["actions_taken"] == []
 
+@patch("src.pipeline.runner.resolve_pipeline")
 def test_run_pipeline_exception_handled(
-		mock_session, mock_log, mock_device_result
+		mock_resolve, mock_session, mock_log, mock_device_result
 	):
 	
+	failing_function = MagicMock(side_effect=Exception("Config Failed"))
+	passing_function = MagicMock(return_value=None)
+
+	pipeline = {
+		"vlans": {"function": failing_function, "depends_on": []},
+		"ospf": {"function": passing_function, "depends_on": []}
+	}	
+
+	context = {"vlans": {}, "ospf": {}}
+
+	mock_resolve.return_value = ["vlans", "ospf"]
+	result = run_pipeline(
+			pipeline, context, mock_session, {}, mock_device_result, mock_log
+		)
+
+	passing_function.assert_called_once()
+	failing_function.assert_called_once()
+	assert any("vlans" in r for r in result["critical_issues"])
+	assert any("vlans pipeline failure" in r for r in result["critical_issues"])
+	mock_log.exception.assert_called()
+
+@patch("src.pipeline.runner.resolve_pipeline")
+def test_run_pipeline_order(
+		mock_resolve, mock_session, mock_log, mock_device_result
+	):
 	
+	seq_order = []
+	
+	def vlan_function(*args): seq_order.append("vlans")
+	def interface_function(*args): seq_order.append("interfaces")
+	def ospf_function(*args): seq_order.append("ospf")
+
+	pipeline = {
+		"vlans":      {"function": vlan_function, "depends_on": []},
+        "interfaces": {"function": interface_function, "depends_on": ["vlans"]},
+        "ospf":       {"function": ospf_function, "depends_on": ["interfaces"]}
+	}
+
+	context = {"vlans": {}, "interfaces": {}, "ospf": {}}
+
+	mock_resolve.return_value = ["vlans", "interfaces", "ospf"]
+
+	run_pipeline(pipeline, context, mock_session, {}, mock_device_result, mock_log)
+
+	assert seq_order == ["vlans", "interfaces", "ospf"]
+
+@patch("src.pipeline.runner.resolve_pipeline")
+def test_run_pipeline_return_device_result(
+		mock_resolve, mock_pipeline, mock_session, mock_device_result, mock_log
+	): 
+
+	context = {"vlans": {}, "interfaces": {}, "ospf": {}}
+	mock_resolve.return_value = ["vlans", "interfaces", "ospf"]
+
+	result = run_pipeline(mock_pipeline, context, mock_session, {}, mock_device_result, mock_log)
+
+	assert result is mock_device_result
+
+@patch("src.pipeline.runner.resolve_pipeline")
+def test_run_pipeline_return_correct_function(
+		mock_resolve, mock_pipeline, mock_session, mock_device_result, mock_log
+	): 
+	mock_function = MagicMock()
+	pipeline = {"vlans": {"function": mock_function, "depends_on": []}}
+	context = {"vlans": {"vlan_id": 10}}
+	device_state = {}
+	mock_resolve.return_value = ["vlans"]
+
+	run_pipeline(pipeline, context, mock_session, device_state , mock_device_result, mock_log)
+
+	mock_function.assert_called_once_with(
+			mock_session, context, device_state, mock_device_result, mock_log
+		)
+
+
+@patch("src.pipeline.runner.resolve_pipeline")
+def test_run_pipeline_return_multiple_exceptions(
+		mock_resolve, mock_pipeline, mock_session, mock_device_result, mock_log
+	): 
+	
+	pipeline = {
+		"vlans": {"function": MagicMock(side_effect=Exception("vlan error")), "depends_on": []},
+		"interfaces": {
+			"function": MagicMock(side_effect=Exception("interface error")), "depends_on": ["vlans"]
+		}, 
+		"ospf": {
+			"function": MagicMock(side_effect=Exception("ospf error")), "depends_on": ["interfaces"]
+		}
+	}
+	context = {"vlans": {}, "interfaces": {}, "ospf": {}}
+	mock_resolve.return_value = ["vlans", "interfaces", "ospf"]
+
+	result = run_pipeline(
+		pipeline, context, mock_session, device_state , mock_device_result, mock_log
+		)
+	assert len(result["critical_issues"]) == 3 
+	assert mock_log.exception.call_count == 3 
+

@@ -1,0 +1,87 @@
+[1mdiff --git a/src/compliance/routing/hsrp/check.py b/src/compliance/routing/hsrp/check.py[m
+[1mindex 5497373..5e9e0ba 100644[m
+[1m--- a/src/compliance/routing/hsrp/check.py[m
+[1m+++ b/src/compliance/routing/hsrp/check.py[m
+[36m@@ -49,7 +49,7 @@[m [mdef check_hsrp(expected_hsrp, actual_config):[m
+ 		if exp.get("preempt") != actual.get("preempt"):[m
+ 		    failures.append([m
+ 		        f"(HSRP) Mismatched Preempt | Interface: {exp_key[0]} | "[m
+[31m-		        f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"[m
+[32m+[m		[32m        f"VLAN: {exp_key[1]} | Group: {exp_key[2]} | "[m
+ 		        f"Expected: {exp.get('preempt')} | Actual: {actual.get('preempt')}"[m
+ 		    )[m
+ 		if exp.get("version") != actual.get("version"):[m
+[1mdiff --git a/src/pipeline/resolver.py b/src/pipeline/resolver.py[m
+[1mindex 80beb95..faf155f 100644[m
+[1m--- a/src/pipeline/resolver.py[m
+[1m+++ b/src/pipeline/resolver.py[m
+[36m@@ -8,7 +8,7 @@[m [mdef resolve_pipeline(pipeline):[m
+ [m
+         if feature in visiting:[m
+             raise Exception([m
+[31m-                f"Circular dependency detected: {feature}"[m
+[32m+[m[32m                f"Redundant dependency detected: {feature}"[m
+             )[m
+ [m
+         if feature in visited:[m
+[1mdiff --git a/tests/unit/pipeline/test_runner.py b/tests/unit/pipeline/test_runner.py[m
+[1mindex 2f31dc3..48a1a1e 100644[m
+[1m--- a/tests/unit/pipeline/test_runner.py[m
+[1m+++ b/tests/unit/pipeline/test_runner.py[m
+[36m@@ -75,8 +75,106 @@[m [mdef test_run_pipeline_empty([m
+ 	assert result["initial_issues"] == [][m
+ 	assert result["actions_taken"] == [][m
+ [m
+[32m+[m[32m@patch("src.pipeline.runner.resolve_pipeline")[m
+ def test_run_pipeline_exception_handled([m
+[31m-		mock_session, mock_log, mock_device_result[m
+[32m+[m		[32mmock_resolve, mock_session, mock_log, mock_device_result[m
+ 	):[m
+ 	[m
+[31m-	[m
+\ No newline at end of file[m
+[32m+[m	[32mfailing_function = MagicMock(side_effect=Exception("Config Failed"))[m
+[32m+[m	[32mpassing_function = MagicMock(return_value=None)[m
+[32m+[m
+[32m+[m	[32mpipeline = {[m
+[32m+[m		[32m"vlans": {"function": failing_function, "depends_on": []},[m
+[32m+[m		[32m"ospf": {"function": passing_function, "depends_on": []}[m
+[32m+[m	[32m}[m[41m	[m
+[32m+[m
+[32m+[m	[32mcontext = {"vlans": {}, "ospf": {}}[m
+[32m+[m
+[32m+[m	[32mmock_resolve.return_value = ["vlans", "ospf"][m
+[32m+[m	[32mresult = run_pipeline([m
+[32m+[m			[32mpipeline, context, mock_session, {}, mock_device_result, mock_log[m
+[32m+[m		[32m)[m
+[32m+[m
+[32m+[m	[32mpassing_function.assert_called_once()[m
+[32m+[m	[32mfailing_function.assert_called_once()[m
+[32m+[m	[32massert any("vlans" in r for r in result["critical_issues"])[m
+[32m+[m	[32massert any("vlans pipeline failure" in r for r in result["critical_issues"])[m
+[32m+[m	[32mmock_log.exception.assert_called()[m
+[32m+[m
+[32m+[m[32m@patch("src.pipeline.runner.resolve_pipeline")[m
+[32m+[m[32mdef test_run_pipeline_order([m
+[32m+[m		[32mmock_resolve, mock_session, mock_log, mock_device_result[m
+[32m+[m	[32m):[m
+[32m+[m[41m	[m
+[32m+[m	[32mseq_order = [][m
+[32m+[m[41m	[m
+[32m+[m	[32mdef vlan_function(*args): seq_order.append("vlans")[m
+[32m+[m	[32mdef interface_function(*args): seq_order.append("interfaces")[m
+[32m+[m	[32mdef ospf_function(*args): seq_order.append("ospf")[m
+[32m+[m
+[32m+[m	[32mpipeline = {[m
+[32m+[m		[32m"vlans":      {"function": vlan_function, "depends_on": []},[m
+[32m+[m[32m        "interfaces": {"function": interface_function, "depends_on": ["vlans"]},[m
+[32m+[m[32m        "ospf":       {"function": ospf_function, "depends_on": ["interfaces"]}[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mcontext = {"vlans": {}, "interfaces": {}, "ospf": {}}[m
+[32m+[m
+[32m+[m	[32mmock_resolve.return_value = ["vlans", "interfaces", "ospf"][m
+[32m+[m
+[32m+[m	[32mrun_pipeline(pipeline, context, mock_session, {}, mock_device_result, mock_log)[m
+[32m+[m
+[32m+[

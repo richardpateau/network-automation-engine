@@ -49,7 +49,7 @@ def check_hsrp(expected_hsrp, actual_config):
 		if exp.get("preempt") != actual.get("preempt"):
 		    failures.append(
 		        f"(HSRP) Mismatched Preempt | Interface: {exp_key[0]} | "
-		        f"VLAN: {exp_key[1]} | Group: {exp_key[2]}"
+		        f"VLAN: {exp_key[1]} | Group: {exp_key[2]} | "
 		        f"Expected: {exp.get('preempt')} | Actual: {actual.get('preempt')}"
 		    )
 		if exp.get("version") != actual.get("version"):

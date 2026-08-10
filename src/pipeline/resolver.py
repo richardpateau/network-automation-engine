@@ -8,7 +8,7 @@ def resolve_pipeline(pipeline):
 
         if feature in visiting:
             raise Exception(
-                f"Circular dependency detected: {feature}"
+                f"Redundant dependency detected: {feature}"
             )
 
         if feature in visited:
