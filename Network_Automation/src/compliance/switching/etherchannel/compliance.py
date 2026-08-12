@@ -64,19 +64,24 @@ def compliance_etherchannel(sesh, device_ip, context, device_state, device_resul
                 }
             )
             device_result["initial_issues"].extend(failures)
-            result = configure_etherchannel(sesh, exp_ether, log)
-            summary = result.get("summary")
 
-            if summary:
-                device_result["actions_taken"].append(summary)
-            if result.get("status") == OperationalStatus.SUCCESS.value:
-                ether_updated = True
-            else:
-                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-                device_result["critical_issues"].append(
-                       "Etherchannel Configuration Remediation Failed | "
-                       f"{ether_str}"
+            if DRY_RUN: 
+                device_result["actions_taken"].append(
+                        f"[DRY_RUN] Would Configure Etherchannel | {ether_str}"
                     )
+            else: 
+                result = configure_etherchannel(sesh, exp_ether, log)
+                summary = result.get("summary")
+                if summary:
+                    device_result["actions_taken"].append(summary)
+                if result.get("status") == OperationalStatus.SUCCESS.value:
+                    ether_updated = True
+                else:
+                    device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                    device_result["critical_issues"].append(
+                           "Etherchannel Configuration Remediation Failed | "
+                           f"{ether_str}"
+                        )
 
     if ether_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)

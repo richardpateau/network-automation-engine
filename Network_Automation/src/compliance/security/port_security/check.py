@@ -7,14 +7,14 @@ def check_port_security(expected_psecurity, actual_config):
     if extra_int:
         for e_int in extra_int:
             failures.append(
-                f"(Port Security) Drift: Extra Interface Configured with PS | "
+                f"(Port Security) Drift: Extra Interface Configured | "
                 f"Interface: {e_int}"
             )
     for interface, int_value in exp_psecurity.items():
         actual = act_psecurity.get(interface)
         if not actual:
             failures.append(
-                f"(Port Security) Interface Not Configured with Port Security | "
+                f"(Port Security) Missing Interface Not Configured with Port Security | "
                 f"Interface: {interface}"
             )
             continue
@@ -55,3 +55,4 @@ def check_port_security(expected_psecurity, actual_config):
                     f"(Port Security) Drift: Extra MAC Address Found | " f"MAC: {e}"
                 )
     return len(failures) == 0, failures
+    

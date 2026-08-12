@@ -16,6 +16,7 @@ def check_vlan(expected_vlans, actual_vlans):
 
 	if expected_name.lower() != actual_name.lower():
 		failures.append(
-				f"VLAN Mismatch | Expected: {expected_name} | Actual: {actual_name}"
+				f"VLAN Name Mismatch | VLAN: {expected_vlan_id} "
+				f"| Expected: {expected_name} | Actual: {actual_name}"
 			)
 	return len(failures) == 0, failures

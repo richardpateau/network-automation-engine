@@ -15,13 +15,13 @@ def check_trunk(expected_trunk, actual_config):
 	actual_mode = actual.get("operational_mode", "").lower().strip()
 	if exp_allowed_vlans != actual_vlans: 
 		failures.append(
-				f"Mismatch Found Trunk Port Allowed VLANs | Interface: {exp_interface}"
+				f"(Trunk) Mismatch Found - Allowed VLANs | Interface: {exp_interface}"
 				f"Expected: {exp_allowed_vlans} | Actual: {actual_vlans}"
 			)
 		return False, failures
 	if exp_mode != actual_mode: 
 		failures.append(
-				f"Incorrect Operational Mode | Interface: {exp_interface} | "
+				f"(Trunk) Mismatched Interface Operational Mode | Interface: {exp_interface} | "
 				f"Expected: {exp_mode} | Actual: {actual_mode}"
 			)
 	return len(failures) == 0, failures

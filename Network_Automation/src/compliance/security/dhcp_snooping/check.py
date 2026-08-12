@@ -23,7 +23,7 @@ def check_snooping(expected_snooping, actual_config):
     if extra_int:
         for e in extra_int:
             failures.append(
-                    f"(DHCP Snooping) Extra Interface Configured with DHCP Snooping | "
+                    f"(DHCP Snooping) Extra Interface Configured | "
                     f"Interface: {e}"
                 )
     for interface, int_value in exp_interfaces.items():
@@ -36,7 +36,7 @@ def check_snooping(expected_snooping, actual_config):
             continue
         if actual.get("rate_limit") != int_value.get("rate_limit"):
             failures.append(
-                    f"(DCHP Snooping) Rate Limit Mismatch | "
+                    f"(DHCP Snooping) Rate Limit Mismatch | "
                     f"Expected: {int_value.get('rate_limit')} | "
                     f"Actual: {actual.get('rate_limit')}"
                 )
@@ -49,7 +49,7 @@ def check_snooping(expected_snooping, actual_config):
     if actual_config.get("option82") != expected_snooping.get("option82"):
         failures.append(
                 f"(DHCP Snooping) Mismatched Option 82 Config | "
-                f"Expected: {int_value.get('option82')} | "
-                f"Actual: {actual.get('option82')}"
+                f"Expected: {expected_snooping.get('option82')} | "
+                f"Actual: {actual_config.get('option82')}"
             )
     return len(failures) == 0, failures

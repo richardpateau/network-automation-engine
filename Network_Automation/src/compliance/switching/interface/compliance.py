@@ -1,6 +1,6 @@
 from src.core.enums import StepStatus, OperationalStatus
 from src.collectors.cli import collect_device_state
-from src.remediation.switching.interface import configure_interfaces
+from src.remediation.switching.interface import configure_interface
 from src.compliance.switching.interface_helpers import (build_interface,check_interface,)
 from config import DRY_RUN
 
@@ -40,7 +40,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
                 }
             )
             device_result["actions_taken"].append(
-                f"Interface Already Compliant | "
+                f"Interface Configuration Already Compliant | "
                 f"Interface: {interface} | Description: {description} | "
                 f"Should Be Up: {should_be_up}"
             )
@@ -58,15 +58,26 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
                 )
             }
         )
-
-        result = configure_interface(sesh, int_data, log)
-        summary = result.get("summary")
-        if summary:
-            device_result["actions_taken"].append(summary)
-        if result.get("status") == OperationalStatus.SUCCESS.value:
-            interfaces_updated = True
-        else:
-            device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+        if DRY_RUN:
+            device_result["actions_taken"].append(
+                    "[DRY_RUN] Would Configure Interface | "
+                    f"Interface: {interface} | Description: {description} | "
+                    f"Should Be Up: {should_be_up}"
+                )
+        else: 
+            result = configure_interface(sesh, int_data, log)
+            summary = result.get("summary")
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OperationalStatus.SUCCESS.value:
+                interfaces_updated = True
+            else:
+                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["critical_issues"].append(
+                        "Failed To Remediate Interface Configuration | "
+                        f"Interface: {interface} | Description: {description} | "
+                        f"Should Be Up: {should_be_up}"
+                    )
 
     if interfaces_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)

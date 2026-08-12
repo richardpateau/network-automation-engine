@@ -142,9 +142,19 @@ def build_hsrp(netconf_state):
 # NAT
 def build_nat(netconf_state):
     if not netconf_state:
-        return []
-    actual_nat = []
-    nat_interfaces = {"inside": [], "outside": []}
+        return {
+            "pat": {}, 
+            "static": [],
+            "pool": [],
+            "dynamic": [],
+            "interfaces": {"inside": [], "outside": []}
+        }
+    actual_nat = {
+            "pat": [], 
+            "static": [],
+            "dynamic": [],
+            "interfaces": {"inside": [], "outside": []}
+        }
     native = netconf_state.get("native_netconf", {})
 
     nat = native.get("ip", {}).get("nat", {})
@@ -156,18 +166,16 @@ def build_nat(netconf_state):
     pat = "overload" in interface_block
 
     if pat:
-        actual_nat.append(
-            {
+        actual_nat["pat"] = {
                 "acl": nat_list.get("id", ""),
                 "interface": interface_block.get("name", ""),
                 "overload": True,
             }
-        )
     static = source.get("static", {})
     nat_static = normalize_to_list(static.get("nat-static-transport-list", []))
     if nat_static:
         for n in nat_static:
-            actual_nat.append(
+            actual_nat["static"].append(
                 {
                     "inside_local": n.get("local-ip", ""),
                     "inside_global": n.get("global-ip", ""),
@@ -183,20 +191,21 @@ def build_nat(netconf_state):
             "end_ip": p.get("end-address", ""),
             "mask": p.get("netmask", ""),
         }
-    nat_pool = nat_list.get("pool-with-vrf", {}).get("pool", {})
-    if nat_pool:
-        name_of_pool = nat_pool.get("name", "")
-        pn = temp_pool.get(name_of_pool, {})
-        if pn:
-            actual_nat.append(
-                {
-                    "acl": safe_int(nat_list.get("id", "")),
-                    "pool_name": pn.get("pool_name", "").lower(),
-                    "start_ip": pn.get("start_ip", ""),
-                    "end_ip": pn.get("end_ip", ""),
-                    "mask": pn.get("mask", ""),
-                }
-            )
+    nat_pools = nat_list.get("pool-with-vrf", {}).get("pool", {})
+    if nat_pools:
+        for nat_pool in nat_pools:
+            name_of_pool = nat_pool.get("name", "")
+            pn = temp_pool.get(name_of_pool, {})
+            if pn:
+                actual_nat["dynamic"].append(
+                    {
+                        "acl": safe_int(nat_list.get("id", "")),
+                        "pool_name": pn.get("pool_name", "").lower(),
+                        "start_ip": pn.get("start_ip", ""),
+                        "end_ip": pn.get("end_ip", ""),
+                        "mask": pn.get("mask", ""),
+                    }
+                )
 
     # PT2 NAT INTERFACES
     interfaces = native.get("interface", {})
@@ -205,10 +214,10 @@ def build_nat(netconf_state):
             full_interface = f"{int_type}{i_value.get('name', '')}".lower()
             nat_int = i_value.get("ip", {}).get("nat", {})
             if "outside" in nat_int:
-                nat_interfaces["outside"].append(full_interface)
+                actual_nat["outside"].append(full_interface)
             if "inside" in nat_int:
-                nat_interfaces["inside"].append(full_interface)
-    return actual_nat, nat_interfaces
+                actual_nat["inside"].append(full_interface)
+    return actual_nat
 
 
 # DHCP

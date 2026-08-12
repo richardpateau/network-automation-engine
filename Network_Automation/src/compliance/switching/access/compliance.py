@@ -48,18 +48,30 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
             extra={
                 **log_extra,
                 "status": StepStatus.FAILED.value,
-                "message": f"Access Port Configuration Non-Compliant "
+                "message": "Access Port Configuration Non-Compliant "
 
             }
         )
-        result = configure_access(sesh, access_data, log)
-        summary = result.get("summary")
-        if summary:
-            device_result["actions_taken"].append(summary)
-        if result.get("status") == OperationalStatus.SUCCESS.value:
-            access_updated = True
-        else:
-            device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+        if DRY_RUN: 
+            device_result["actions_taken"].append(
+                    "[DRY_RUN] Would Configure Access Port | "
+                    f"Interface: {access_interface} | "
+                    f"VLAN: {access_vlan}"
+                )
+        else: 
+            result = configure_access(sesh, access_data, log)
+            summary = result.get("summary")
+            if summary:
+                device_result["actions_taken"].append(summary)
+            if result.get("status") == OperationalStatus.SUCCESS.value:
+                access_updated = True
+            else:
+                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                device_result["critical_issues"].append(
+                        "Failed To Remediate Access Port | "
+                        f"Interface: {access_interface} | "
+                        f"VLAN: {access_vlan}"
+                    )
 
     if access_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)
