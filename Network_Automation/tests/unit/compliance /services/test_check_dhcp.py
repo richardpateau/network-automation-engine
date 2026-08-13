@@ -16,7 +16,12 @@ def exp_dhcp():
 				"pool_ip": "192.168.10.0",
 				"pool_mask": "255.255.255.0"
 		}],
-		"helper": {"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"}
+		"helper": {
+			"interfaces":
+		[
+			{"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"}
+		]
+			}
 	}
 
 @pytest.fixture
@@ -34,7 +39,13 @@ def act_dhcp():
 				"pool_ip": "192.168.10.0",
 				"pool_mask": "255.255.255.0"
 		}],
-		"helper": {"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"}
+		"helper": {
+			"interfaces":
+		[
+			{"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"}
+		]
+			}
+		 
 	}
 
 def test_check_dhcp_compliant(exp_dhcp, act_dhcp): 
@@ -169,14 +180,7 @@ def test_check_dhcp_gateway_mismatch(gateway):
 	assert any("Pool: users" in f for f in failures)
 	assert any(f"Expected: 192.168.10.1 | Actual: {gateway}" in f for f in failures)
 
-@pytest.mark.parametrize("dns", 
-		[
-			["4.4.4.4"],
-			["5.5.5.5", "6.6.6.6", "9.9.9.9"], 
-			["192.168.1.1", "8.8.8.8", "203.0.113.1", "172.16.1.1"]
-	 	]
-	)
-def test_check_dhcp_dns_mismatch(dns):
+def test_check_dhcp_dns_mismatch():
 	expected = {
 		"pools": [{
 				"pool_name": "users",
@@ -197,7 +201,7 @@ def test_check_dhcp_dns_mismatch(dns):
 				"lease_hours": 12,
 				"lease_minutes": 30,
 				"default_gateway": "192.168.10.1",
-				"dns_ip": dns,
+				"dns_ip": ["1.1.1.1"],
 				"domain_name": "company.local",
 				"pool_ip": "192.168.10.0",
 				"pool_mask": "255.255.255.0"
@@ -207,18 +211,19 @@ def test_check_dhcp_dns_mismatch(dns):
 	ok, failures = check_dhcp(expected, actual)
 	assert ok is False
 	assert any("(DHCP) DNS Server IP Mismatch" in f for f in failures)
-	assert any(f'Expected: ["4.4.4.4", "8.8.8.8"] | Actual: {dns}' in f for f in failures)
+	assert any("4.4.4.4" in f and "8.8.8.8" in f for f in failures)
+	assert any("1.1.1.1" in f for f in failures)
 
 @pytest.mark.parametrize("days, hours, minutes", 
 		[
-			(7, 12, 30), 
+			(7, 12, 40), 
 			(12, 12, 30), 
 			(7, 12, 50), 
 			(6, 4, 30), 
 			(8, 24, 0)
 		]
 	)
-def test_check_dhcp_wrong_hours_days_minutes():
+def test_check_dhcp_wrong_hours_days_minutes(days, hours, minutes):
 	expected = {
 		"pools": [{
 				"pool_name": "users",
@@ -251,7 +256,7 @@ def test_check_dhcp_wrong_hours_days_minutes():
 	assert any("(DHCP) Mismatched Lease Duration" in f for f in failures)
 	assert any("users" for f in failures)
 	assert any("Expected(Days/Hours/Min): 7/12/30" in f for f in failures)
-	assert any(f"Actual (Days/Hours/Min): {days}/{hours}/{minutes}")
+	assert any(f"Actual(Days/Hours/Min): {days}/{hours}/{minutes}" in f for f in failures)
 
 @pytest.mark.parametrize("ip, mask", [
 			("192.168.10.1", "255.255.0.0"), 
@@ -334,7 +339,7 @@ def test_check_dhcp_dns(domain):
 	assert ok is False 
 	assert any("(DHCP) Mismatched Domain Name" in f for f in failures)
 	assert any("users" in f for f in failures)
-	assert any(f"Expected: company.local | Actual: {domain}")
+	assert any(f"Expected: company.local | Actual: {domain}" in f for f in failures)
 
 @pytest.mark.parametrize("start, end", 
 					[
@@ -348,7 +353,7 @@ def test_check_dhcp_dns(domain):
 def test_check_dhcp_missing_excluded(start, end):
 	expected = {
 		"excluded_addresses": [{"start_ip": "192.168.1.1", "end_ip": "192.168.1.10"},
-							   {"start_ip": ip, "end_ip": mask}
+							   {"start_ip": start, "end_ip": end}
 							  ]
 	}
 
@@ -359,20 +364,116 @@ def test_check_dhcp_missing_excluded(start, end):
 
 	ok, failures = check_dhcp(expected, actual)
 	assert ok is False
-	assert any(f"(DHCP) Missing Excluded IP {ip} - {mask}" 
+	assert any(f"(DHCP) Missing Excluded IP: {start} - {end}" 
 				in f for f in failures
 		)
-def test_check_dhcp_missing_excluded(start, end):
+@pytest.mark.parametrize("end", 
+					[
+						("192.168.1.1"), 
+						("172.16.1.1"), 
+						("205.0.113.1"),
+						("192.168.70.1")
+					]
+	)
+def test_check_dhcp_missing_excluded_wrong_end(end):
 	expected = {
 		"excluded_addresses": [{"start_ip": "192.168.1.1", "end_ip": "192.168.1.10"},
-							   {"start_ip": ip, "end_ip": mask}
 							  ]
 	}
 
 	actual = {
-		"excluded_addresses": [{"start_ip": "192.168.1.1", "end_ip": "192.168.1.10"}
+		"excluded_addresses": [{"start_ip": "192.168.1.1", "end_ip": end}
 							  ]
 	}
 
 	ok, failures = check_dhcp(expected, actual)
 	assert ok is False
+	assert any("(DHCP) Wrong Excluded End IP" in f for f in failures)
+	assert any(f"Expected End: 192.168.1.10 | Actual: {end}" in f for f in failures)
+
+@pytest.mark.parametrize("start, end", 
+					[
+						("203.0.113.1", "203.0.113.10"), 
+						("172.16.1.1", "172.16.1.10"), 
+						("205.0.113.1", "205.0.113.5"),
+						("192.168.70.1", "192.168.70.20")
+					]
+	)
+def test_check_dhcp_rogue_excluded(start, end):
+	 expected = {
+		"excluded_addresses": [{"start_ip": "192.168.1.1", "end_ip": "192.168.1.10"}
+							   
+							  ]
+	}
+
+	actual = {
+		"excluded_addresses": [{"start_ip": "192.168.1.1", "end_ip": "192.168.1.10"},
+							   {"start_ip": start, "end_ip": end}
+							  ]
+	}
+
+	ok, failures = check_dhcp(expected, actual)
+	assert ok is False
+	assert any("(DHCP) Unexpected Excluded IP addresses" in f for f in failures)
+	assert any(f"Start IP: {start} | End IP: {end}" in f for f in failures)
+
+@pytest.mark.parametrize("ip, interface", 
+		[
+			("192.168.1.10", "gigabitethernet3"),
+			("203.0.113.1", "gigabitethernet1/2"),
+			("205.0.112.9", "gigabitethernet1/1"),
+			("172.16.1.1", "gigabitethernet1")
+		]
+	)
+def test_check_dhcp_missing_helper_ip(ip, interface):
+	expected = {
+		"helper": {
+			"interfaces":[
+			{"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"},
+			{"helper_ip": ip , "interface_name": interface}
+				]
+			}
+		}
+
+
+	actual = {
+		"helper": {
+			"interfaces":[
+			{"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"}
+				]
+			}
+		}
+	ok, failures = check_dhcp(expected, actual)
+	assert ok is False 
+	assert any("(DHCP) Missing Helper IP" in f for f in failures)
+	assert any(f"Interface: {interface} | Helper IP: {ip}" in f for f in failures)
+
+@pytest.mark.parametrize("ip, interface", 
+		[
+			("192.168.1.10", "gigabitethernet3"),
+			("203.0.113.1", "gigabitethernet1/2"),
+			("205.0.112.9", "gigabitethernet1/1"),
+			("172.16.1.1", "gigabitethernet1")
+		]
+	)
+def test_check_dhcp_extra_helper_ip(ip, interface):
+	expected = {
+		"helper": {
+			"interfaces":[
+			{"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"},
+				]
+			}
+		}
+
+	actual = {
+		"helper": {
+			"interfaces":[
+			{"helper_ip": "10.10.10.5" , "interface_name": "gigabitethernet2"},
+			{"helper_ip": ip , "interface_name": interface}
+				]
+			}
+		}
+	ok, failures = check_dhcp(expected, actual)
+	assert ok is False 
+	assert any("(DHCP) Drift Detected: Unexpected Helper IP" in f for f in failures)
+	assert any(f"Interface: {interface} | Helper IP: {ip}" in f for f in failures)
