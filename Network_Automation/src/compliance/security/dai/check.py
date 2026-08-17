@@ -1,13 +1,12 @@
 def check_dai(expected_dai, actual_config): 
 	failures = []
 	exp_arp = expected_dai.get("arp_inspection")
-
-	if exp_arp is not None: 
-		if exp_arp != actual_config.get("arp_inspection"):
-	   		failures.append(
-				   	 	"(DAI) Operational State Mismatch"
-					    f" | Expected: {exp_arp} | Actual: {actual_config.get('arp_inspection')}" 
-		        	)
+	if exp_arp is not None:
+	    if exp_arp != actual_config.get("arp_inspection"):
+	        failures.append(
+	        			f"(DAI) DAI Operational State Mismatch"
+	        			f" | Expected: {exp_arp} | Actual: {actual.get('expected')}" 
+	        	)
 	exp_vlans = set(expected_dai.get("enabled_vlans", []))
 	act_vlans = set(actual_config.get("enabled_vlans", []))
 	missing_vlans = exp_vlans - act_vlans
@@ -59,7 +58,7 @@ def check_dai(expected_dai, actual_config):
 			continue
 		if actual.get("rate_limit") != int_value.get("rate_limit"):
 			failures.append(
-					f"(DAI) Mismatched Rate Limit Configuration | "
+					f"(DAI) Misatched Rate Limit Configuration | "
 					f"Expected: {int_value.get('rate_limit')} | "
 					f"Actual: {actual.get('rate_limit')}"
 				)

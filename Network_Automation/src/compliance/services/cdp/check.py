@@ -1,4 +1,4 @@
-def check_cdp(expected_cdp, actual_config): 
+def check_cdp(expected_cdp, actual_config, transport): 
 	failures = []
 	exp_enabled = expected_cdp.get("enabled", False) 
 	act_enabled = actual_config.get("enabled", False)
@@ -13,7 +13,7 @@ def check_cdp(expected_cdp, actual_config):
 	act_timer = actual_config.get("timer", None)
 	if exp_timer != act_timer: 
 		failures.append(
-				f"(CDP) Timer Mismatch | Expected: {exp_timer} | "
+				f"(CDP) Timer Mismath | Expected: {exp_timer} | "
 				f"Actual: {act_timer}"
 			)
 	exp_hold = expected_cdp.get("holdtime", None)
@@ -25,23 +25,40 @@ def check_cdp(expected_cdp, actual_config):
 			)
 	exp_interfaces = expected_cdp.get("interfaces", {})
 	act_interfaces = actual_config.get("interfaces", {})
- 	
- 	extra_interfaces = act_interfaces.keys() - exp_interfaces.keys()
- 	if extra_interfaces: 
- 		failures.append(
- 				f"(CDP) Rogue Interface Configured with CDP | {' | '.join(extra_interfaces)}"
- 			)
+ 
 	for interface, int_value in exp_interfaces.items(): 
 		actual = act_interfaces.get(interface)
-		if not actual: 
-			failures.append(
-				f"(CDP) Missing Interface Not Configured w/ CDP | Interface: {interface}"
+		exp_enabled = int_value.get("enabled", False)
+		if transport == "NETMIKO":
+			if exp_enabled: 
+				if not actual: 
+					failures.append(
+							f"(CDP) Interface Not Configured w/ CDP | Interface: {interface}"
+						)
+					continue
+				if actual.get("enabled") != int_value.get("enabled"):
+					failures.append(
+							f"(CDP) Interface CDP Configuration Mismatch | "
+							f"Expected: {int_value.get('enabled')} | "
+							f"Actual: {actual.get('enabled')}"
+						)
+			else: 
+				if actual: 
+					failures.append(
+							f"(CDP) Interface CDP Operational State Mismatch | "
+							f"Expected: {int_value.get('enabled')} | "
+							f"Actual: {actual.get('enabled')}"
+						)
+		else: 
+			if not actual: 
+				failures.append(
+						f"(CDP) Interface Not Configured w/ CDP | Interface: {interface}"
 					)
-			continue
-		if actual.get("enabled") != int_value.get("enabled"):
-			failures.append(
-				f"(CDP) Interface Operational State Mismatch | Interface: {interface} | "
-				f"Expected: {int_value.get('enabled')} | "
-				f"Actual: {actual.get('enabled')}"
-			)
+				continue
+			if actual.get("enabled") != int_value.get("enabled"):
+				failures.append(
+						f"(CDP) Interface CDP Configuration Mismatch | "
+						f"Expected: {int_value.get('enabled')} | "
+						f"Actual: {actual.get('enabled')}"
+					)
 	return len(failures) == 0, failures

@@ -68,7 +68,7 @@ def check_dhcp(expected_dhcp, actual_config):
 		exp_end = e.get("end_ip", "")
 		actual = act_lookup.get(exp_start)
 		if actual is None:
-			failures.append(f"(DHCP) Missing Excluded IP: {exp_start} - {exp_end}")
+			failures.append(f"(DHCP) Missing Excluded Starting IP: {exp_start}")
 		elif actual != exp_end:
 			failures.append(
 					f"(DHCP) Missing Excluded End IP | Start: {exp_start} "

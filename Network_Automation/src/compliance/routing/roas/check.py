@@ -1,6 +1,6 @@
 def check_roas(expected_roas, actual_config): 
 	failures = []
-	exp_interface = expected_roas.get("interface", "").lower()
+	exp_interface = expected_roas.get("interface", "")
 	exp_vlan = str(expected_roas.get("router_vlan", ""))
 	exp_ip = expected_roas.get("ip", "")
 	exp_mask = expected_roas.get("mask", "")

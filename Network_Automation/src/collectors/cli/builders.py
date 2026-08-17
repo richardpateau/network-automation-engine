@@ -12,7 +12,7 @@ def build_vlan(device_state):
     vlan_data = device_state_vlan.get("vlans", {})
     actual_vlans = {}
     for vlan_id, vlan_values in vlan_data.items():
-        actual_vlans[str(vlan_id)] = {
+        actual_vlans[safe_int(vlan_id)] = {
             "name": vlan_values.get("name"),
         }
     return actual_vlans
@@ -62,7 +62,7 @@ def build_trunk(device_state):
         actual_trunk[trunk_int] = {
             "trunk_interface": trunk_int,
             "allowed_vlans": allowed_vlans,
-            "operational_mode": operational_mode,
+            "mode": operational_mode,
         }
     return actual_trunk
 

@@ -36,12 +36,12 @@ def check_static(expected_static, actual_config):
 
 		if missing_next: 
 			failures.append(
-					f"(Static Routing) Missing Next Hop | "
+					f"(Static Routing) Missing Static Routes | "
 					f"Missing: {', '.join(missing_next)}"
 				)
 		if extra_next: 
 			failures.append(
-					f"(Static Routing) Drift: Unexpected Next Hop | "
-					f"Extra: {', '.join(extra_next)}"
+					f"(Static Routing) Drift: Unexpected Static Routes | "
+					f"Extra: {extra_next}"
 				)
 	return len(failures) == 0, failures

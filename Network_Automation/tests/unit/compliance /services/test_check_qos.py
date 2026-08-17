@@ -1,7 +1,7 @@
 import pytest
 from src.compliance.services.qos.check import check_qos
 
-@pytest.fixture 
+@pytest.fixture s
 def exp_qos():
 	return {
 		"policies": [{

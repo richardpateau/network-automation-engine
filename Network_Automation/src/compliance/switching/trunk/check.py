@@ -1,27 +1,31 @@
 def check_trunk(expected_trunk, actual_config): 
 	failures = []
-	exp_interface = expected_trunk.get("trunk_interface", "").lower().strip()
-	exp_allowed_vlans = str(expected_trunk.get("allowed_vlans", "")).strip()
-	exp_mode = expected_trunk.get("operational_mode", "").lower().strip()
+	
+	exp_by_int = {t.get("trunk_interface"): t for t in expected_trunk}
 
-	actual = actual_config.get(exp_interface)
-	if not actual: 
-		failures.append(
-				f"Missing Trunk Interface | Interface: {exp_interface} | "
-				f"Expected Allowed VLANs: {exp_allowed_vlans}"
-			)
-		return False, failures
-	actual_vlans = str(actual.get("allowed_vlans", "")).strip()
-	actual_mode = actual.get("operational_mode", "").lower().strip()
-	if exp_allowed_vlans != actual_vlans: 
-		failures.append(
-				f"(Trunk) Mismatch Found - Allowed VLANs | Interface: {exp_interface}"
-				f"Expected: {exp_allowed_vlans} | Actual: {actual_vlans}"
-			)
-		return False, failures
-	if exp_mode != actual_mode: 
-		failures.append(
-				f"(Trunk) Mismatched Interface Operational Mode | Interface: {exp_interface} | "
-				f"Expected: {exp_mode} | Actual: {actual_mode}"
-			)
+	for k,v in exp_by_int.items():
+		actual = actual_config.get(k)
+		if not actual: 
+			failures.append(
+					f"(Trunk) Missing Interface | {k}"
+				)
+			return False, failures
+		if v.get("mode") != actual.get("mode"): 
+			failures.append(
+					f"(Trunk) Mismatched Operational Mode | "
+					f"Expected: {v.get('mode')} | "
+					f"Actual: {actual.get('mode')}"
+				)
+		if v.get("allowed_vlans") != actual.get("allowed_vlans"): 
+			failures.append(
+					f"(Trunk) Mismatched Allowed VLANs | "
+					f"Expected: {v.get('allowed_vlans')} | "
+					f"Actual: {actual.get('allowed_vlans')}"
+				)
+	for k,v in actual_config.items():
+		expected = ex.get(k)
+		if not expected: 
+			failures.append(
+					f"(Trunk) Rogue Interface Configured in Trunk Mode | {k}"
+				)
 	return len(failures) == 0, failures
