@@ -8,7 +8,6 @@ def check_stp_global(expected_stp, actual_config):
         failures.append(
             f"Mismatched STP Mode | Expected: {exp_mode} | Actual: {act_mode}"
         )
-        return False, failures
     exp_vlans = expected_stp.get("vlan_priorities", {})
     act_vlans = actual_config.get("vlan_priorities", {})
 
@@ -21,20 +20,21 @@ def check_stp_global(expected_stp, actual_config):
 
         if missing:
             failures.append(
-                f"(STP) Missing VLANs | Expected: {exp_keys} | Actual: {act_keys}"
+                f"(STP) Missing VLANs | {sorted(missing)} "
             )
         if extra:
             failures.append(
-                f"(STP) Unexpected VLANs | Expected: {exp_keys} | Actual: {act_keys}"
+                f"(STP) Rogue VLANs | {sorted(extra)}"
             )
-        return False, failures
     for vlan in exp_keys:
         exp_priority = exp_vlans.get(vlan)
         act_priority = act_vlans.get(vlan)
+        if act_priority is None:
+            continue 
         if exp_priority != act_priority:
             failures.append(
                 f"(STP) Mismatched Bridge Priority | "
-                f"VLAN: {vlan_id} | "
+                f"VLAN: {vlan} | "
                 f"Expected: {exp_priority} | "
                 f"Actual: {act_priority}"
             )
@@ -43,18 +43,41 @@ def check_stp_global(expected_stp, actual_config):
 
 def check_stp_interfaces(expected_int, actual_config):
     failures = []
-    exp_int = expected_int.get("interfaces", "")
-    exp_stp = expected_int.get("stp", {})
-    actual = actual_config.get(exp_int)
-    if not actual:
-        failures.append(f"(STP) Missing Interface | Interface: {exp_int}")
-        return False, failures
-    for mode, exp_values in exp_stp.items():
-        act_values = actual.get(mode, False)
-
-        if exp_values != act_values:
+    exp_by_int = {e.get("interface"): e for e in expected_int}
+    for interface, value in exp_by_int.items(): 
+        actual = actual_config.get(interface)
+        if not actual: 
+            failures.append(f"(STP) Missing Interface | {interface}")
+            continue 
+        portfast = value.get("stp", {}).get("portfast")
+        if portfast != actual.get("portfast"):
             failures.append(
-                f"(STP) Mismatched STP Mode | Interface: {exp_int} | "
-                f"Feature: {mode} | Expected: {exp_values} | Actual: {act_values}"
-            )
+                    "(STP Interface) Mismatched PortFast | "
+                    f"Should Be Configured? | Expected: {portfast} | "
+                    f"Actual: {actual.get('portfast')}"
+                )
+        bpdu_guard = value.get("stp", {}).get("bpdu_guard")
+        if bpdu_guard != actual.get("bpdu_guard"):
+            failures.append(
+                    "(STP Interface) Mismatched BPDU Guard | Should Be Configured? | "
+                    f"Expected: {bpdu_guard} | Actual: {actual.get('bpdu_guard')}"
+                    )
+        root_guard = value.get("stp", {}).get("root_guard")
+        if root_guard != actual.get("root_guard"): 
+            failures.append(
+                    "(STP Interface) Mismatched Root Guard | Should Be Configured? | "
+                    f"Expected: {root_guard} | Actual: {actual.get('root_guard')}"
+                )
+        loop_guard = value.get("stp", {}).get("loop_guard")
+        if loop_guard != actual.get("loop_guard"):
+            failures.append(
+                    "(STP Interface) Mismatched Loop Guard | Should Be Configured? | "
+                    f"Expected: {loop_guard} | Actual: {actual.get('loop_guard')}" 
+                )
+        bpdu_filter = value.get("stp", {}).get("bpdu_filter")
+        if bpdu_filter != actual.get('bpdu_filter'): 
+            failures.append(
+                    "(STP Interface) Mismatched BPDU Filter | Should Be Configured? | "
+                    f"Expected: {bpdu_filter} | Actual: {actual.get('bpdu_filter')}"
+                )
     return len(failures) == 0, failures

@@ -19,7 +19,7 @@ def act_trunk():
 		}
 	}
 
-def test_check_trunk_complaint(exp_trunk, act_trunk): 
+def test_check_trunk_compliant(exp_trunk, act_trunk): 
 	ok, failures = check_trunk(exp_trunk, act_trunk)
 	assert ok is True 
 	assert failures == []
@@ -58,7 +58,7 @@ def test_check_trunk_missing_interface(interface):
 	ok, failures = check_trunk(expected, actual)
 	assert ok is False 
 	assert any("(Trunk) Missing Interface" in f for f in failures)
-	assert any("gigabitethernet2" in f for f in failures)
+	assert any(f"{interface}" in f for f in failures)
 
 @pytest.mark.parametrize("interface", 
 		[
@@ -123,4 +123,23 @@ def test_check_trunk_mode_mismatch():
 			"1,2,3,4,5,6,7"
 		]
 	)
-def test_check_trunk_complaint	
+def test_check_trunk_allowed_vlans_mismatch(allowed): 
+	expected = [{
+		"trunk_interface": "gigabitethernet1",
+		"mode": "trunk", 
+		"allowed_vlans": "10,20,30,40,50"
+	}]
+
+	actual = {
+		"gigabitethernet1": {
+			"trunk_interface": "gigabitethernet1",
+			"allowed_vlans": allowed,
+			"mode": "trunk"
+		}
+	}
+	ok, failures = check_trunk(expected, actual)
+	assert ok is False
+	assert any("(Trunk) Mismatched Allowed VLANs" in f for f in failures)
+	assert any("Expected: 10,20,30,40,50" in f for f in failures)
+	assert any(f"Actual: {allowed}" in f for f in failures)
+

@@ -9,7 +9,7 @@ def check_trunk(expected_trunk, actual_config):
 			failures.append(
 					f"(Trunk) Missing Interface | {k}"
 				)
-			return False, failures
+			continue 
 		if v.get("mode") != actual.get("mode"): 
 			failures.append(
 					f"(Trunk) Mismatched Operational Mode | "
@@ -23,7 +23,7 @@ def check_trunk(expected_trunk, actual_config):
 					f"Actual: {actual.get('allowed_vlans')}"
 				)
 	for k,v in actual_config.items():
-		expected = ex.get(k)
+		expected = exp_by_int.get(k)
 		if not expected: 
 			failures.append(
 					f"(Trunk) Rogue Interface Configured in Trunk Mode | {k}"
