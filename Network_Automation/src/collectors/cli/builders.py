@@ -32,11 +32,11 @@ def build_access(device_state):
         if "access" not in operational_mode or "trunk" in operational_mode:
             continue
         access_interface = access_int.lower().strip()
-        access_vlan = str(access_values.get("access_vlan", "")).strip()
+        access_vlan = safe_int(access_values.get("access_vlan", "")).strip()
 
         actual_access[access_interface] = {
             "access_interface": access_interface,
-            "operational_mode": operational_mode,
+            "mode": operational_mode,
             "access_vlan": access_vlan,
         }
     return actual_access

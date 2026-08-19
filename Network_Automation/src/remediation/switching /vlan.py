@@ -46,7 +46,7 @@ def configure_vlan(conn, vlan_data, log):
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.error(
             "vlan_config",
             extra={
                 "device_ip": conn.device_ip,

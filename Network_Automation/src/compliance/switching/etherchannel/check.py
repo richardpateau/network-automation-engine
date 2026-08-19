@@ -5,7 +5,7 @@ def check_etherchannel(expected_ether, actual_config):
 
 	if exp_enabled != act_enabled: 
 		failures.append(
-				f"(Etherchannel) Misconfigured Operation Mode | "
+				f"(Etherchannel) Misconfigured Operational Mode | "
 				f"Expected: {exp_enabled} | Actual: {act_enabled}"
 			)
 	exp_groups = expected_ether.get("groups", {})
@@ -15,7 +15,7 @@ def check_etherchannel(expected_ether, actual_config):
 
 	if extra_groups: 
 		failures.append(
-				f"(Etherchannel) Drift: Unexpected Port Channels | "
+				f"(Etherchannel) Drift: Rogue Port Channel(s) | "
 				f"{sorted(extra_groups)}"
 			)
 	for group, g_value in exp_groups.items(): 
@@ -41,28 +41,29 @@ def check_etherchannel(expected_ether, actual_config):
 		if extra_int: 
 			for e in extra_int: 
 				failures.append(
-						f"(Etherchannel) Drift: Unexpected Interface | "
+						f"(Etherchannel) Rogue Interface | "
 						f"Group: {group} | Interface: {e}"
 					)
 		if actual.get("mode") !=  g_value.get("mode"):
 			failures.append(
-					f"(Etherchannel) Mode Mismatch | Expected: {g_value.get('mode')} | "
+					f"(Etherchannel) Mode Mismatch | Group: {group} | "
+					f"Expected: {g_value.get('mode')} | "
 					f"Actual: {actual.get('mode')}"
 				)
 		if actual.get("switchport_mode") != g_value.get("switchport_mode"): 
 			failures.append(
-					f"(Etherchannel) Mismatched Switchport Mode | Expected:"
-					f" {g_value.get('switchport_mode')} | Actual: {actual.get('switchport_mode')}"
+					f"(Etherchannel) Mismatched Switchport Mode | Group: {group} | "
+					f"Expected: {g_value.get('switchport_mode')} | Actual: {actual.get('switchport_mode')}"
 
 				)
 		if actual.get("type") != g_value.get("type"): 
 			failures.append(
-					f"(Etherchannel) Mismatched Etherchannel Type | "
+					f"(Etherchannel) Mismatched Etherchannel Type | Group: {group} | "
 					f"Expected: {g_value.get('type')} | Actual: {actual.get('type')}"
 				)
 		if actual.get("description") != g_value.get("description"): 
 			failures.append(
-					f"(Etherchannel) Mismatched Description | Expected: "
-					f"{g_value.get('description')} | Actual: {actual.get('description')}"
+					f"(Etherchannel) Mismatched Description | Group: {group} | "
+					f"Expected: {g_value.get('description')} | Actual: {actual.get('description')}"
 				)
 	return len(failures) == 0, failures

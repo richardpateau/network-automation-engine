@@ -166,7 +166,8 @@ def get_netbox():
                     config_data[host_ip]["access_ports"].append(
                         {
                             "access_interface": device_interface.name,
-                            "access_vlan": device_interface.untagged_vlan.vid,
+                            "mode": "access",
+                            "access_vlan": safe_int(device_interface.untagged_vlan.vid),
                         }
                     )
                 if (

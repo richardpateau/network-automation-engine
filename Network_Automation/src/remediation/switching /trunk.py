@@ -49,7 +49,7 @@ def configure_trunk(conn, trunk_data, log):
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.error(
             "trunk_config",
             extra={
                 "device_ip": conn.device_ip,
@@ -68,7 +68,7 @@ def configure_trunk(conn, trunk_data, log):
         )
 		return {
 				"status": OperationalStatus.ERROR.value,
-				"summary":(f"Try/Exception Error | VLAN Configuration | "
+				"summary":(f"Try/Exception Error | Trunk Interface Configuration | "
                 		   f"Interface: {trunk_interface} | "
                 			f"Allowed VLANs: {allowed_vlans} | Error: {e}"
                 	),

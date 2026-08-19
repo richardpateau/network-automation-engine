@@ -50,7 +50,7 @@ def configure_interface(conn, interface_data, log):
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.error(
             "interface_config",
             extra={
                 "device_ip": conn.device_ip,

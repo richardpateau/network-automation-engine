@@ -1,29 +1,24 @@
 def check_access(expected_access, actual_config): 
 	failures = []
-	exp_interface = str(expected_access.get("access_interface", "")).lower().strip()
-	exp_vlan = str(expected_access.get("access_vlan", "")).strip()
 
-	actual = actual_config.get(exp_interface)
-	if not actual:
-		failures.append(
-				f"Missing Access Port | Expected Interface: {exp_interface} | "
-				f"Expected VLAN: {exp_vlan}"
-			)
-		return False, failures
-
-	actual_vlan = str(actual.get("access_vlan", "")).strip()
-
-	if exp_vlan != actual_vlan: 
-		failures.append(
-				f"Mismatched Access Port VLAN | Interface: {exp_interface} | VLAN: "
-				f"Expected VLAN: {exp_vlan} | Actual VLAN: {actual_vlan}"
-			)
-		return False, failures
-
-	actual_mode = actual.get("operational_mode").lower().strip()
-	if actual_mode != "static access":
-		failures.append(
-				f"Wrong Interface Operational Mode | Actual: {actual_mode}"
-				f" Expected: static access"
-			)
+	exp_by_int = {e.get("access_interface"): e for e in expected_access}
+	for k,v in exp_by_int.items():
+		actual = actual_config.get(k)
+		if not actual: 
+			failures.append(
+					f"(Access) Missing Interface | {k}"
+				)
+			continue 
+		if v.get("access_vlan") != actual.get("access_vlan"): 
+			failures.append(
+					f"(Access) Mismatched VLAN | Interface: {k} | "
+					f"Expected: {v.get('access_vlan')} | "
+					f"Actual: {actual.get('access_vlan')}"
+				)
+	for k,v in actual_config.items():
+		expected = exp_by_int.get(k)
+		if not expected: 
+			failures.append(
+					f"(Access) Rogue Interface Configured | Interface: {k}"
+				)
 	return len(failures) == 0, failures

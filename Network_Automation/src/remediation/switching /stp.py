@@ -3,7 +3,7 @@ from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
 
-def configure_stp_gloabl(conn, stp_data, log):
+def configure_stp_global(conn, stp_data, log):
     mode = stp_data.get("mode", "")
     vlan_priorities = stp_data.get("vlan_priorities", {})
     vlan_log = " | ".join(
@@ -14,13 +14,12 @@ def configure_stp_gloabl(conn, stp_data, log):
         commands = (
             template.render(mode=mode, vlan_priorities=vlan_priorities)
             .splitlines()
-            .strip()
         )
         if DRY_RUN:
             return {
                 "status": OperationalStatus.DRY_RUN.value,
                 "summary": (
-                    f"[DRY_RUN] Would Configure STP Gloabally  | "
+                    f"[DRY_RUN] Would Configure STP Globally  | "
                     f"Mode: {mode} | "
                     f"VLAN/Priority: {vlan_log}"
                 ),
@@ -92,7 +91,7 @@ def configure_stp_interfaces(conn, stp_data, log):
             return {
                 "status": OperationalStatus.DRY_RUN.value,
                 "summary": (
-                    f"[DRY_RUN] Would Configure (STP) Interface Feature | "
+                    f"[DRY_RUN] Would Configure STP Interface Feature | "
                     f"Interface: {interface} | Feature: {stp_log}"
                 ),
             }
