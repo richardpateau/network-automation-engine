@@ -7,7 +7,7 @@ def configure_etherchannel(conn, eth_data, log):
 	groups = eth_data.get("groups", {})
 	groups_log = " | ".join(
 			f"Group #: {g} | Mode: {v.get('mode')} | Type: {v.get('type')} | "
-			f"Switchport Mode: {v.get('switchport_mode')} | Interfaces: "
+			f"Switchport Mode: {v.get('switchport_mode')} | "
 			f"Interfaces: {','.join(v.get('interfaces', []))} | Description: {v.get('description')}"
 			for g, v in groups.items()
 		)
@@ -40,7 +40,6 @@ def configure_etherchannel(conn, eth_data, log):
 	            "event_type": "ether_config",
 	            "transport": conn.transport,
 	            "status": StepStatus.SUCCESS.value,
-	            "transport": conn.transport,
 	            "enabled": enabled,
 	            "message": (
 	            		f"Etherchannel Configuration Successful | "
@@ -59,7 +58,7 @@ def configure_etherchannel(conn, eth_data, log):
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
 	        "ether_config",
 	        extra={
 	            "device_ip": conn.device_ip,

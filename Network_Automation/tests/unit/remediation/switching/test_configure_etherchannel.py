@@ -34,10 +34,10 @@ def test_configure_etherchannel_dry_run(mock_conn, etherchannel_data, mock_log):
 	result = configure_etherchannel(mock_conn, etherchannel_data, mock_log)
 
 	assert result["status"] == OperationalStatus.DRY_RUN.value 
-	assert "DRY_RUN" in result["status"]
-	assert "Group #: 2" in result["status"]
-	assert "Mode: active" in result["status"]
-	assert "Type: lacp" in result["status"]
+	assert "DRY_RUN" in result["summary"]
+	assert "Group #: 2" in result["summary"]
+	assert "Mode: active" in result["summary"]
+	assert "Type: lacp" in result["summary"]
 	mock_conn.send_config_set.assert_not_called() 
 
 @patch("src.remediation.switching.etherchannel.DRY_RUN", False)
@@ -45,16 +45,20 @@ def test_configure_etherchannel_successful(mock_conn, etherchannel_data, mock_lo
 	result = configure_etherchannel(mock_conn, etherchannel_data, mock_log)
 
 	assert result["status"] == OperationalStatus.SUCCESS.value 
-	assert "Group #: 2" in result["status"]
-	assert "Mode: active" in result["status"]
-	assert "Type: lacp" in result["status"]
+	assert "Group #: 2" in result["summary"]
+	assert "Mode: active" in result["summary"]
+	assert "Type: lacp" in result["summary"]
 	mock_conn.send_config_set.assert_called_once()
 	mock_log.info.assert_called_once()
 
 @patch("src.remediation.switching.etherchannel.DRY_RUN", False)
-def test_configure_etherchannel_successful(mock_conn, etherchannel_data, mock_log):
+def test_configure_etherchannel_failed(mock_conn, etherchannel_data, mock_log):
 	mock_conn.send_config_set.side_effect = Exception("Connection lost")
 	result = configure_etherchannel(mock_conn, etherchannel_data, mock_log)
 
-	assert result["status"] == OperationalStatus.SUCCESS.value 
+	assert result["status"] == OperationalStatus.ERROR.value
+	assert "error" in result
+	assert "Connection lost" in result["error"]
+	mock_log.error.assert_called_once()
+
 	

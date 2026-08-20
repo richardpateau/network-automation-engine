@@ -1,6 +1,7 @@
 from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
+import re
 
 def configure_dhcp(session, dhcp_data, log): 
 	excluded_addresses = dhcp_data.get("excluded_addresses", [])
@@ -89,12 +90,12 @@ def configure_dhcp(session, dhcp_data, log):
 				"summary": (
 					 		f"DHCP Configuration Successful | "
                 			f"{excluded_log} | {pool_log} | {helper_log} | "
-                			f"Transport: {conn.transport}"
+                			f"Transport: {session.transport}"
                 	)
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.error(
             "dhcp_config",
             extra={
                 "device_ip": session.device_ip,
@@ -118,7 +119,7 @@ def configure_dhcp(session, dhcp_data, log):
 				"summary":(
 							f"Try/Exception Error | DHCP Configuration | "
                 			f"{excluded_log} | {pool_log} | {helper_log} | "
-                			f"Transport: {conn.transport} | "
+                			f"Transport: {session.transport} | "
 							f"Error: {str(e)}"
                 	),
 				"error": str(e)

@@ -45,7 +45,7 @@ def configure_access(conn, access_data, log):
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.error(
             "access_config",
             extra={
                 "device_ip": conn.device_ip,
@@ -66,7 +66,7 @@ def configure_access(conn, access_data, log):
 				"status": OperationalStatus.ERROR.value,
 				"summary":(f"Try/Exception Error | Access Port Configuration | "
                 			f"Interface: {access_interface} | VLAN: {access_vlan}"
-                			f" | Error: {e}]"
+                			f" | Error: {e}"
                 	),
 				"error": str(e)
 			}

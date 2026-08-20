@@ -3,7 +3,6 @@ from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 import re 
 def configure_qos(session, qos_data, log):
-	qos = qos_data.get("qos", {})
 	policy_name = qos.get("policy_name", "")
 	attachments = qos.get("attachments", [])
 	class_maps = qos.get("class_maps", [])
@@ -28,7 +27,7 @@ def configure_qos(session, qos_data, log):
 						f"[DRY_RUN] Would Configure QOS | "
 						f"Policy: {policy_name} | "
 						f"Class Map: {class_map_log} | Config: {attachment_log} | "
-						F"Transport: {conn.transport}"
+						f"Transport: {session.transport}"
 				)
 			}
 		policy_response = session.edit_config(
@@ -76,12 +75,12 @@ def configure_qos(session, qos_data, log):
 						 		f"QOS Configuration Successful | "
 	                		    f"Policy: {policy_name} | "
 								f"Class Map: {class_map_log} | Config: {attachment_log} | "
-								f"Transport: {conn.transport}"
+								f"Transport: {session.transport}"
                 	)
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
             "qos_config",
             extra={
                 "device_ip": session.device_ip,
@@ -105,7 +104,7 @@ def configure_qos(session, qos_data, log):
 				"summary":(
 							f"Try/Exception Error | QOS Configuration | "
                 			f"Policy: {policy_name} | "
-							f"Class Map: {class_map_log} | Transport: {conn.transport}"
+							f"Class Map: {class_map_log} | Transport: {session.transport}"
                 	),
 				"error": str(e)
 			}

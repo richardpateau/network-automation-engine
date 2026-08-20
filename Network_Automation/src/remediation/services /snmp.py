@@ -74,7 +74,7 @@ def configure_snmp_netmiko(conn, snmp_data, log):
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.error(
             "snmp_config",
             extra={
                 "device_ip": conn.device_ip,
@@ -108,7 +108,7 @@ def configure_snmp_netmiko(conn, snmp_data, log):
 				"error": str(e)
 			}
 
-def configure_snmp_nc(session, snmp_data, log): 
+def configure_snmp_netconf(session, snmp_data, log): 
 	communities = snmp_data.get("communities", [])
 	contact = snmp_data.get("contact", "")
 	hosts = snmp_data.get("hosts", [])
@@ -120,7 +120,7 @@ def configure_snmp_nc(session, snmp_data, log):
 			for c in communities
 		)
 	hosts_log = " | ".join(
-			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('snmp_version')}"
+			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('version')}"
 			for h in hosts
 		)
 	try: 
@@ -133,7 +133,7 @@ def configure_snmp_nc(session, snmp_data, log):
 						f"[DRY_RUN] Would Configure SNMP | "
 						f"{communities_log} | {hosts_log} | "
 						f"Location: {location} | Contact: {contact} | "
-						f"Traps: {traps} | Transport: {conn.transport}"
+						f"Traps: {traps} | Transport: {session.transport}"
 				)
 			}
 		commands = template_netconf.render(
@@ -176,12 +176,12 @@ def configure_snmp_nc(session, snmp_data, log):
 					 		f"SNMP (Router) Configuration Successful | "
                 			f"{communities_log} | {hosts_log} | "
 							f"Location: {location} | Contact: {contact} | "
-							f"Traps: {traps} | Transport: {conn.transport}"
+							f"Traps: {traps} | Transport: {session.transport}"
                 	)
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.error(
             "snmp_config",
             extra={
                 "device_ip": session.device_ip,
@@ -209,7 +209,7 @@ def configure_snmp_nc(session, snmp_data, log):
 							f"Try/Exception Error | SNMP (Router) Configuration | "
                 			f"{communities_log} | {hosts_log} | "
 							f"Location: {location} | Contact: {contact} | "
-							f"Traps: {traps} | Transport: {conn.transport} | "
+							f"Traps: {traps} | Transport: {session.transport} | "
 							f"Error: {str(e)}"
                 	),
 				"error": str(e)

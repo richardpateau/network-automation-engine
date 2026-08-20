@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def cofnigure_syslog_netmiko(conn, syslog_data, log): 
+def configure_syslog_netmiko(conn, syslog_data, log): 
 	facility = syslog_data.get("facility", "")
 	hosts = syslog_data.get("hosts", [])
 	source_interface = syslog_data.get("source_interface", "")
@@ -25,7 +25,7 @@ def cofnigure_syslog_netmiko(conn, syslog_data, log):
 						f"Hosts: {hosts_log} | Facility: {facility} | "
 						f"Source Interface: {source_interface} | "
 						f"service timestamps log datetime msec: {timestamps} | "
-						f"Severity: {trap_level} | Transport: NEMIKO"
+						f"Severity: {trap_level} | Transport: NETMIKO"
 				)
 			}
 
@@ -37,7 +37,7 @@ def cofnigure_syslog_netmiko(conn, syslog_data, log):
 				timestamps=timestamps
 			).splitlines()
 
-		conn.send_command(commands_syslog)
+		conn.send_config_set(commands_syslog)
 		
 		log.info(
 			"syslog_config",
@@ -74,7 +74,7 @@ def cofnigure_syslog_netmiko(conn, syslog_data, log):
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.error(
             "syslog_config",
             extra={
                 "device_ip": conn.device_ip,
@@ -135,7 +135,7 @@ def configure_syslog_netconf(session, syslog_data, log):
 						f"Hosts: {hosts_log} | Facility: {facility} | "
 						f"Source Interface: {source_interface} | "
 						f"service timestamps log datetime msec: {timestamps} | "
-						f"Severity: {trap_level} | Transport: {conn.transport}"
+						f"Severity: {trap_level} | Transport: {session.transport}"
 				)
 			}
 
@@ -186,12 +186,12 @@ def configure_syslog_netconf(session, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport}"
+							f"Severity: {trap_level} | Transport: {session.transport}"
                 	)
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.error(
             "syslog_config",
             extra={
                 "device_ip": session.device_ip,
@@ -209,7 +209,7 @@ def configure_syslog_netconf(session, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level}"
+							f"Severity: {trap_level} | Error: {e}"
                 	)
             }
 
@@ -221,7 +221,7 @@ def configure_syslog_netconf(session, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport} | "
+							f"Severity: {trap_level} | Transport: {session.transport} | "
 							f"Error: {str(e)}"
                 	),
 				"error": str(e)

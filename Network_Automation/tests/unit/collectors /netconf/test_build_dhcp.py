@@ -4,14 +4,14 @@ import pytest
 def test_build_dhcp_valid(dhcp_netconf):
 	result = build_dhcp(dhcp_netconf)
 	
-	assert {"start_ip": "192.168.10.1" , "end_ip": "192.168.10.20" } in result["excluded_addresses"]
-	assert {"start_ip": "192.168.20.1" , "end_ip": "192.168.20.10" } in result["excluded_addresses"]
+	assert {"start_ip": "192.168.10.1" , "end_ip": "192.168.10.20"} in result["excluded_addresses"]
+	assert {"start_ip": "192.168.20.1" , "end_ip": "192.168.20.10"} in result["excluded_addresses"]
 	assert {
 				"pool_name": "users",
 				"lease_days": 7,
 				"lease_hours": 12,
 				"lease_minutes": 30,
-				"default_router": "192.168.10.1",
+				"default_gateway": "192.168.10.1",
 				"dns_ip": ["4.4.4.4", "8.8.8.8"],
 				"domain_name": "company.local",
 				"pool_ip": "192.168.10.0",
@@ -209,7 +209,7 @@ def test_build_dhcp_multiple_pool_defaults():
 		"lease_days": None,
 		"lease_hours": None,
 		"lease_minutes": None,
-		"default_router": "",
+		"default_gateway": "",
 		"dns_ip": [],
 		"pool_ip": "",
 		"pool_mask": ""
