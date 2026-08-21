@@ -8,7 +8,7 @@ def configure_ospf(session, ospf_data, log):
 	router_id = ospf_data.get("router_id", "")
 	network_list = ospf_data.get("network_list", [])
 	network = ",".join(
-			f"{n['subnet']}/{n['wildcard']} area {n['area']}"
+			f"{n.get('subnet')}/{n.get('wildcard')} area {n.get('area')}"
 			for n in network_list
 		)
 	try: 
@@ -70,7 +70,7 @@ def configure_ospf(session, ospf_data, log):
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.error(
             "ospf_config",
             extra={
                 "device_ip": session.device_ip,

@@ -1,111 +1,92 @@
-import re 
 from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_hsrp(session, hsrp_data, log): 
-	interface = hsrp_data.get("interface", "")
-	match = re.match(r"([A-Za-z]+)(.+)", interface)
-	interface_type = match.group(1) if match else ""
-	int_num = match.group(2) if match else ""
-	version = hsrp_data.get("version", "")
-	group = hsrp_data.get("group", "")
-	vip = hsrp_data.get("vip", "")
-	priority = hsrp_data.get("priority", "")
-	preempt = hsrp_data.get("preempt", "")
-	router_vlan = hsrp_data.get("router_vlan", "")
-	try: 
-		template = template_env.get_template("HSRP_NETCONF.j2")
-		commands = template.render(
-				interface_type=interface_type,
-				int_num=int_num,
-				version=version,
-				group=group,
-				vip=vip,
-				preempt=preempt,
-				priority=priority
-			)
-		if DRY_RUN:
-			return {
-				"status": OperationalStatus.DRY_RUN.value,
-				"summary": (
-						f"[DRY_RUN] Would Configure HSRP | "
-						f"Interface: {interface} | Version: {version} | "
-						f"Group: {group} | VLAN: {router_vlan} | "
-						f"VIP: {vip} | Preempt: {preempt} | Transport: {session.transport}"
-				)
-			}
+def configure_static(session, device_ip, static_data, log):
+    static = static_data.get("static", [])
+    static_log = " | ".join(
+        f"Network Address: {s.get('network_address')} | Mask: {s.get('mask')} | "
+        f"AD: {s.get('AD', 'N/A')} | Exit Interface : {s.get('exit_interface', 'N/A')} | "
+        f"Next Hop IP: {s.get('next_hop', 'N/A')}"
+        for s in static
+    )
+    try:
+        temp_recursive = template_env.get_template("RECURSIVE.j2")
+        temp_exit_int = template_env.get_template("EXIT_INT.j2")
+        temp_full = template_env.get_template("FULLY_SPECIFIC.j2")
 
-		
-		session.edit_config(
-			target="running",
-			config=commands
-		)
-		
-		log.info(
-			"hsrp_automation",
+        templates = {
+            "recursive": temp_recursive,
+            "exit-interface": temp_exit_int,
+            "fully-specified": temp_full
+        }
+
+        if DRY_RUN:
+            return {
+                "status": OperationalStatus.DRY_RUN.value,
+                "summary": (
+                    f"[DRY_RUN] Would Configure Static Routes | "
+                    f"{static_log} | Transport: NETCONF"
+                )
+            }
+
+        for s in static:
+            template = templates.get(s.get("type"))
+            if not template:
+                continue
+            commands = template.render(
+                static=s
+            )
+
+	        session.edit_config(
+	            target="running",
+	            config=commands
+	        )
+
+        log.info(
+            "static_config",
             extra={
-                "device_ip": session.device_ip,
-                "component": "hsrp_config",
-                "event_type": "hsrp_config",
-                "transport": session.transport,
+                "device_ip": device_ip,
+                "component": "static_automation",
+                "event_type": "static_config",
                 "status": StepStatus.SUCCESS.value,
-                "interface": interface,
-                "group": group,
-                "vlan_id": router_vlan,
-                "vip": vip,
-                "version": version,
                 "message": (
-                		f"HSRP Configuration Successful | "
-                		f"Interface: {interface} | Version: {version} | "
-						f"Group: {group} | VLAN: {router_vlan} | "
-						f"VIP: {vip} | Preempt: {preempt}"
-                	)
+                    f"Static Routes Configuration Successful | "
+                    f"{static_log} | Transport: NETCONF"
+                )
             }
 
         )
-		return {
-				"status": OperationalStatus.SUCCESS.value,
-				"summary": (
-					 		f"HSRP Configuration Successful | "
-	                		f"Interface: {interface} | Version: {version} | "
-							f"Group: {group} | VLAN: {router_vlan} | "
-							f"VIP: {vip} | Preempt: {preempt} | Transport: {session.transport}"
-                	)
-			}
-	
-	except Exception as e: 
-		log.info(
-            "hsrp_config",
+        return {
+            "status": OperationalStatus.SUCCESS.value,
+            "summary": (
+                f"Static Route Configuration Successful | "
+                f"{static_log} | Transport: NETCONF"
+            )
+        }
+
+    except Exception as e:
+        log.error(
+            "static_config",
             extra={
-                "device_ip": session.device_ip,
-                "component": "hsrp_automation",
-                "event_type": "hsrp_config",
-                "transport": session.transport,
+                "device_ip": device_ip,
+                "component": "static_automation",
+                "event_type": "static_config",
                 "status": StepStatus.ERROR.value,
-                "interface": interface,
-                "group": group,
-                "vlan_id": router_vlan,
-                "vip": vip,
-                "version": version,
                 "error": str(e),
-                "message": (f"Try/Exception Error | HSRP Configuration | "
-                			f"Interface: {interface} | Version: {version} | "
-							f"Group: {group} | VLAN: {router_vlan} | "
-							f"VIP: {vip} | Preempt: {preempt} | "
-							f"Error: {str(e)}"
-                	)
+                "message": (f"Try/Exception Error | Static Route Configuration | "
+                            f"{static_log} | Transport: NETCONF | "
+                            f"Error: {str(e)}"
+                            )
             }
 
         )
-		return {
-				"status": OperationalStatus.ERROR.value,
-				"summary":(
-							f"Try/Exception Error | HSRP Configuration | "
-                			f"Interface: {interface} | Version: {version} | "
-							f"Group: {group} | VLAN: {router_vlan} | "
-							f"VIP: {vip} | Preempt: {preempt} | Transport: {session.transport} | "
-							f"Error: {str(e)}"
-                	),
-				"error": str(e)
-			}
+        return {
+            "status": OperationalStatus.ERROR.value,
+            "summary": (
+                f"Try/Exception Error | Static Route Configuration | "
+                f"{static_log} | Transport: NETCONF | "
+                f"Error: {str(e)}"
+            ),
+            "error": str(e)
+        }

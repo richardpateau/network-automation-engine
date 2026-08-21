@@ -27,7 +27,7 @@ def configure_hsrp(session, hsrp_data, log):
 			)
 		if DRY_RUN:
 			return {
-				"status": OpStatus.DRY_RUN.value,
+				"status": OperationalStatus.DRY_RUN.value,
 				"summary": (
 						f"[DRY_RUN] Would Configure HSRP | "
 						f"Interface: {interface} | Version: {version} | "
@@ -65,7 +65,7 @@ def configure_hsrp(session, hsrp_data, log):
 
         )
 		return {
-				"status": OpStatus.SUCCESS.value,
+				"status": OperationalStatus.SUCCESS.value,
 				"summary": (
 					 		f"HSRP Configuration Successful | "
 	                		f"Interface: {interface} | Version: {version} | "
@@ -75,7 +75,7 @@ def configure_hsrp(session, hsrp_data, log):
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.error(
             "hsrp_config",
             extra={
                 "device_ip": session.device_ip,
@@ -99,7 +99,7 @@ def configure_hsrp(session, hsrp_data, log):
 
         )
 		return {
-				"status": OpStatus.ERROR.value,
+				"status": OperationalStatus.ERROR.value,
 				"summary":(
 							f"Try/Exception Error | HSRP Configuration | "
                 			f"Interface: {interface} | Version: {version} | "

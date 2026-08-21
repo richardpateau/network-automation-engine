@@ -28,7 +28,7 @@ def configure_roas(session, roas_data, log):
 				)
 			}
 		response = session.patch(
-				url=f"{sesssion.base_url}/Cisco-IOS-XE-native:native/interface",
+				url=f"{session.base_url}/Cisco-IOS-XE-native:native/interface",
 				data=commands
 			)
 		if response.status_code not in [200,201,204]: 
@@ -66,10 +66,10 @@ def configure_roas(session, roas_data, log):
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.error(
             "roas_config",
             extra={
-                "device_ip": device_ip,
+                "device_ip": sessiondevice_ip,
                 "component": "roas_automation",
                 "event_type": "roas_config",
                 "transport": session.transport,

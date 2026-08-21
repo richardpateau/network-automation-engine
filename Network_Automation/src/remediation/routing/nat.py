@@ -45,8 +45,8 @@ def configure_nat(session, nat_data, log):
     if static:
         static_log = " | ".join(
             f"Static NAT | "
-            f"Inside Local: {s.get('inside_ip')} | "
-            f"Outside Global: {s.get('outside_ip')}"
+            f"Inside Local: {s.get('inside_local')} | "
+            f"Inside Global: {s.get('inside_global')}"
             for s in static
         )
         log_parts.append(static_log)
@@ -145,7 +145,7 @@ def configure_nat(session, nat_data, log):
         }
 
     except Exception as e:
-        log.info(
+        log.error(
             "nat_config",
             extra={
                 "device_ip": session.device_ip,

@@ -33,7 +33,8 @@ def configure_snooping(conn, snoop_data, log):
 		global_commands = template.render(
 				enabled_vlans=enabled_vlans,
 				option82=option82
-			)
+			).splitlines()
+		
 		conn.send_config_set(global_commands)
 
 		for intf in interface_list: 
@@ -77,7 +78,7 @@ def configure_snooping(conn, snoop_data, log):
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
 	        "snooping_automation",
 	        extra={
 	            "device_ip": conn.device_ip,

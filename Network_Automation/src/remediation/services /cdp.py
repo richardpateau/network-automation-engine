@@ -40,7 +40,6 @@ def configure_cdp_netmiko(conn, cdp_data, log):
 	            "component": "cdp_automation",
 	            "event_type": "cdp_config",
 	            "transport": conn.transport,
-	            "transport": conn.transport,
 	            "status": StepStatus.SUCCESS.value,
 	            "globally_enabled": enabled,
 	            "timer/holdtime": f"{timer}/{holdtime}",
@@ -64,7 +63,7 @@ def configure_cdp_netmiko(conn, cdp_data, log):
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
 	        "cdp_config",
 	        extra={
 	            "device_ip": conn.device_ip,
@@ -114,7 +113,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 						f"[DRY_RUN] Would Configure CDP | "
 						f"Enabled: {enabled} | Timer: {timer} | "
 						f"HoldTime: {holdtime} | {int_log} | "
-						f"Transport: {conn.transport}"
+						f"Transport: {session.transport}"
 				)
 			}
 		global_commands = template_global.render(
@@ -130,16 +129,16 @@ def configure_cdp_netconf(session, cdp_data, log):
 			match = re.match(r"([A-Za-z]+)(.+)", interface)
 			interface_type = match.group(1) if match else ""
 			interface_num = match.group(2) if match else ""
-			enabled = int_value.get("enabled", False)
+			int_enabled = int_value.get("enabled", False)
 
 			int_commands = template_int.render(
 					interface_type=interface_type,
 					interface_num=interface_num,
-					enabled=enabled
+					enabled=int_enabled
 				)
 			session.edit_config(target="running", config=int_commands)
 
-		log.info(
+		log.error(
 			"cdp_config",
 	        extra={
 	            "device_ip": session.device_ip,
@@ -147,7 +146,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 	            "event_type": "cdp_config",
 	            "transport": session.transport,
 	            "status": StepStatus.SUCCESS.value,
-	            "globlly_enabled": enabled,
+	            "globally_enabled": enabled,
 	            "timer/holdtime": f"{timer}/{holdtime}",
 	            "interfaces": int_log,
 	            "message": (
@@ -164,7 +163,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 					 		f"CDP Configuration Successful | "
 		            		f"Enabled: {enabled} | Timer: {timer} | "
 							f"HoldTime: {holdtime} | {int_log} | "
-							f"Transport: {conn.transport}"
+							f"Transport: {session.transport}"
 	            	)
 			}
 
@@ -177,7 +176,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 	            "event_type": "cdp_config",
 	            "transport": session.transport,
 	            "status": StepStatus.ERROR.value,
-	           	"globlly_enabled": enabled,
+	           	"globally_enabled": enabled,
 	            "timer/holdtime": f"{timer}/{holdtime}",
 	            "interfaces": int_log,
 	            "error": str(e),
@@ -195,7 +194,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 							f"Try/Exception Error | CDP Configuration | "
 	            			f"Enabled: {enabled} | Timer: {timer} | "
 							f"HoldTime: {holdtime} | {int_log} | "
-							f"Transport: {conn.transport} | "
+							f"Transport: {session.transport} | "
 							f"Error: {str(e)}"
 	            	),
 				"error": str(e)
