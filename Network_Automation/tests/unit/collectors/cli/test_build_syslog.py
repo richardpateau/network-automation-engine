@@ -11,11 +11,11 @@ def test_build_syslog_valid(syslog_genie_output):
 
 def test_build_syslog_no_timestamps():
     data = {
-        "running_config": """
-		service timestamps debug datetime msec
-		service timestamps datetime msec
-		no service password-encryption
-		"""
+        "running_config":"""
+service timestamps debug datetime msec
+service timestamps datetime msec
+no service password-encryption
+"""
     }
     result = build_syslog_netmiko(data)
 
@@ -23,9 +23,24 @@ def test_build_syslog_no_timestamps():
 
 
 def test_build_syslog_empty():
-    assert build_syslog_netmiko({}) == {}
-    assert build_syslog_netmiko(None) == {}
-    assert build_syslog_netmiko({"not_syslog": {}}) == {}
+    assert build_syslog_netmiko({}) == {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
+    assert build_syslog_netmiko(None) == {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
+    assert build_syslog_netmiko({"not_syslog": {}}) == {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
     assert build_syslog_netmiko({"syslog": {}}) == {
         "hosts": [],
         "trap_level": "",
@@ -75,9 +90,11 @@ def test_build_syslog_defaults():
     assert result["hosts"] == ["192.168.100.60"]
     assert result["trap_level"] == ""
     assert result["source_interface"] == ""
-    assert result["timestamps"] is False 
+    assert result["timestamps"] is False
+
+
 def test_build_syslog_source_interface():
-	data = {
+    data = {
 
         "syslog": {
             "logging": {
@@ -89,6 +106,7 @@ def test_build_syslog_source_interface():
             }
         }
     }
+
 
     result = build_syslog_netmiko(data)
 

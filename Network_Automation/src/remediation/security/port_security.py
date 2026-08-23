@@ -53,7 +53,7 @@ def configure_psecurity(conn, ps_data, log):
 	            "event_type": "ps_config",
 	            "transport": conn.transport,
 	            "status": StepStatus.SUCCESS.value,
-	            "interfaces": interface_log,
+	            "port_security_interfaces": ps_log,
 	            "message": (
 	            		f"Port Security Configuration Successful | "
 	            		f"{ps_log} "
@@ -70,7 +70,7 @@ def configure_psecurity(conn, ps_data, log):
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
 	        "ps_config",
 	        extra={
 	            "device_ip": conn.device_ip,

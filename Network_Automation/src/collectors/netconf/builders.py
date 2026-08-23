@@ -1,4 +1,4 @@
-from src.utils import safe_int, normalize_to_list, is_ip_address
+from src.utils.helpers import safe_int, normalize_to_list, is_ip_address
 
 
 # NTP
@@ -356,9 +356,10 @@ def build_syslog_netconf(netconf_state):
     if trap_level:
         actual_syslog["trap_level"] = trap_level
     timestamps = (
-        native.get("service", {})
+        native.get("logging", {})
+        .get("service")
         .get("timestamps", {})
-        .get("log", {})
+        .get("debug", {})
         .get("datetime", {})
     )
     if timestamps:
@@ -369,7 +370,7 @@ def build_syslog_netconf(netconf_state):
 # CDP
 def build_cdp_netconf(netconf_state):
     if not netconf_state: 
-        reutrn {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
+        return {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
     actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}} 
     native = netconf_state.get("native_netconf") or {}
     cdp_run = native.get("cdp", {}).get("run-enable", {}).get("#text", "")

@@ -1,4 +1,4 @@
-from src.utils import safe_int
+from src.utils.helpers import safe_int
 from ciscoconfparse import CiscoConfParse
 
 
@@ -32,11 +32,11 @@ def build_access(device_state):
         if "access" not in operational_mode or "trunk" in operational_mode:
             continue
         access_interface = access_int.lower().strip()
-        access_vlan = safe_int(access_values.get("access_vlan", "")).strip()
+        access_vlan = safe_int(access_values.get("access_vlan"))
 
         actual_access[access_interface] = {
             "access_interface": access_interface,
-            "mode": operational_mode,
+            "operational_mode": operational_mode,
             "access_vlan": access_vlan,
         }
     return actual_access
@@ -59,8 +59,8 @@ def build_trunk(device_state):
             continue
         allowed_vlans = trunk_values.get("trunk_vlans", "")
 
-        actual_trunk[trunk_int] = {
-            "trunk_interface": trunk_int,
+        actual_trunk[trunk_int.lower()] = {
+            "trunk_interface": trunk_int.lower(),
             "allowed_vlans": allowed_vlans,
             "mode": operational_mode,
         }
@@ -94,7 +94,10 @@ def build_interface(device_state):
 def build_stp_global(device_state):
     if not device_state:
         return {}
-    stp = device_state.get("stp") or {}
+    stp = device_state.get("stp")
+    
+    if not stp: 
+        return  {}
     actual_stp = {
         "mode": "",
         "vlan_priorities": {},
@@ -162,7 +165,9 @@ def build_stp_interfaces(device_state):
 def build_snmp_netmiko(device_state):
     if not device_state:
         return {}
-    running_config = device_state.get("running_config") or ""
+    running_config = device_state.get("running_config") 
+    if not running_config:
+        return {}
     parse = CiscoConfParse(running_config.splitlines())
     actual_snmp = {
         "communities": [],
@@ -205,20 +210,40 @@ def build_snmp_netmiko(device_state):
 # SYSLOG
 def build_syslog_netmiko(device_state):
     if not device_state:
-        return {}
+        return {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
+    state_logging = device_state.get("syslog")
+    if not state_logging:
+        return {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
+    logging = state_logging.get("logging", {})
+    if not logging:
+        return {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
     actual_syslog = {
         "hosts": [],
         "trap_level": "",
         "source_interface": "",
         "timestamps": False,
     }
-    state_logging = device_state.get("syslog") or {}
-    logging = state_logging.get("logging") or {}
-    running_config = device_state.get("running_config") or ""
-    parse = CiscoConfParse(running_config.splitlines())
-    for p in parse.find_objects(r"^service timestamps"):
-        if "log datetime msec" in p.text:
-            actual_syslog["timestamps"] = True
+    running_config = device_state.get("running_config", {})
+    if running_config:
+        parse = CiscoConfParse(running_config.splitlines())
+        for p in parse.find_objects(r"^service timestamps"):
+            if "log datetime msec" in p.text:
+                actual_syslog["timestamps"] = True
     trap_level = logging.get("trap", {}).get("level", "")
     if trap_level:
         actual_syslog["trap_level"] = trap_level.lower()
@@ -233,30 +258,49 @@ def build_syslog_netmiko(device_state):
 
 
 # CDP
-def build_cdp_netimko(device_state):
+def build_cdp_netmiko(device_state):
     if not device_state:
-        return {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
-    actual_cdp = {"enabled": False, "timer": None, "holdtime": None, "interfaces": {}}
+        return {
+            "enabled": False,
+            "timer": None,
+            "holdtime": None,
+            "interfaces": {},
+        }
+
+    actual_cdp = {
+        "enabled": False,
+        "timer": None,
+        "holdtime": None,
+        "interfaces": {},
+    }
+
     run_global = device_state.get("cdp") or ""
     run_interface = device_state.get("cdp_interface") or ""
-    parse = CiscoConfParse(run_global.splitlines())
-    for p in parse.find_objects(r"^Global CDP information:"):
-        for c in p.children:
-            config = c.text.strip().split()
-            full_config = c.text.strip()
 
-            if "Sending CDP packets every" in full_config:
-                actual_cdp["timer"] = safe_int(config[-2])
-            if "Sending a holdtime value" in full_config:
-                actual_cdp["holdtime"] = safe_int(config[-2])
-            if "enabled" in full_config:
-                actual_cdp["enabled"] = True
+    for line in run_global.splitlines():
+        line = line.strip()
+
+        if "Sending CDP packets every" in line:
+            parts = line.split()
+            actual_cdp["timer"] = safe_int(parts[-2])
+
+        elif "Sending a holdtime value" in line:
+            parts = line.split()
+            actual_cdp["holdtime"] = safe_int(parts[-2])
+
+        elif "Sending CDPv2 advertisements is enabled" in line:
+            actual_cdp["enabled"] = True
+
     parse_2 = CiscoConfParse(run_interface.splitlines())
+
     for p in parse_2.find_objects(r"^\S+"):
         config = p.text.strip().split()
         interface_name = config[0].lower()
 
-        actual_cdp["interfaces"][interface_name] = {"enabled": True}
+        actual_cdp["interfaces"][interface_name] = {
+            "enabled": True
+        }
+
     return actual_cdp
 
 
@@ -341,7 +385,7 @@ def build_snooping(device_state):
 def build_dai(device_state):
     if not device_state:
         return {
-            "arp_inspection": "",
+            "arp_inspection": False,
             "enabled_vlans": [],
             "interfaces": {},
             "log_buffer": {},

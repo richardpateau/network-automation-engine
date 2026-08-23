@@ -73,7 +73,7 @@ def test_build_no_cdp_global():
     result = build_cdp_netmiko(data)
     assert result["timer"] == None
     assert result["holdtime"] == None
-    assert result["enabled"] == None
+    assert result["enabled"] == False 
 
 
 def test_build_cdp_no_invalid_timer():

@@ -65,7 +65,7 @@ def configure_dai(conn, dai_data, log):
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
 	        "dai_config",
 	        extra={
 	            "device_ip": conn.device_ip,

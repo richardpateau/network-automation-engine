@@ -1,3 +1,4 @@
+import pytest
 from src.collectors.cli.builders import build_dai
 
 
@@ -77,7 +78,7 @@ def test_build_dai_no_vlan():
 
     result = build_dai(data)
 
-    assert result["enabled_vlans"] == [10, 20, 30]
+    assert result["enabled_vlans"] == []
     assert "richard" not in result["enabled_vlans"]
     assert "abc" not in result["enabled_vlans"]
 

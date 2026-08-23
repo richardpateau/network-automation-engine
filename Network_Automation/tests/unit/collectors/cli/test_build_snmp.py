@@ -13,10 +13,10 @@ def test_build_snmp_valid(snmp_running_config):
     assert result["traps"]["syslog"] is True
     assert len(result["hosts"]) == 1
     assert {
-        "snmp_ip": "192.168.100.50",
-        "snmp_version": "2c",
-        "snmp_name": "NETWORK_RO",
-    } in result["hosts"]
+           "snmp_ip": "192.168.100.50",
+           "snmp_version": "2c",
+           "snmp_name": "NETWORK_RO",
+           } in result["hosts"]
 
 
 def test_build_snmp_empty():
@@ -28,11 +28,11 @@ def test_build_snmp_empty():
 def test_build_snmp_no_config():
     data = {
         "running_config": """
-		interface GigabitEthernet0/0
-		 switchport access vlan 98
-		 switchport mode access
-		 negotiation auto
-		"""
+interface GigabitEthernet0/0
+ switchport access vlan 98
+ switchport mode access
+ negotiation auto
+"""
     }
     result = build_snmp_netmiko(data)
 
@@ -53,32 +53,36 @@ def test_build_snmp_lowercase(snmp_running_config):
 def test_build_snmp_invalid_host():
     data = {
         "running_config": """
-		snmp-server host 192.168.100.50 version 2c 
-		"""
+snmp-server host 192.168.100.50 version 2c 
+"""
     }
     result = build_snmp_netmiko(data)
 
     assert result["hosts"] == []
 
+
 def test_build_snmp_multiple_hosts():
-	data = {
+    data = {
         "running_config": """
-        snmp-server host 192.168.100.50 version 2c NETWORK_RO
-		snmp-server host 192.168.100.51 version 2c NETWORK_RO
-		snmp-server host 192.168.100.52 version 2c NETWORK_RO
-		"""
+snmp-server host 192.168.100.50 version 2c NETWORK_RO
+snmp-server host 192.168.100.51 version 2c NETWORK_RO
+snmp-server host 192.168.100.52 version 2c NETWORK_RO
+"""
     }
+
+
     result = build_snmp_netmiko(data)
 
-    assert len(result["hosts"]) == 3 
+    assert len(result["hosts"]) == 3
+
 
 def test_build_snmp_partial_config():
     data = {
         "running_config": """
-		snmp-server community NETWORK_RO RO
-		snmp-server community NETWORK_RW RW
-		snmp-server host 192.168.100.50 version 2c NETWORK_RO
-		"""
+snmp-server community NETWORK_RO RO
+snmp-server community NETWORK_RW RW
+snmp-server host 192.168.100.50 version 2c NETWORK_RO
+"""
     }
     result = build_snmp_netmiko(data)
 
@@ -86,9 +90,9 @@ def test_build_snmp_partial_config():
     assert result["location"] == ""
     assert result["contact"] == ""
     assert {
-        "snmp_ip": "192.168.100.50",
-        "snmp_version": "2c",
-        "snmp_name": "NETWORK_RO",
-    } in result["hosts"]
+               "snmp_ip": "192.168.100.50",
+               "snmp_version": "2c",
+               "snmp_name": "NETWORK_RO",
+           } in result["hosts"]
     assert {"snmp_name": "network_ro", "permission": "ro"} in result["communities"]
     assert {"snmp_name": "network_rw", "permission": "rw"} in result["communities"]

@@ -7,7 +7,7 @@ def configure_vlan(conn, vlan_data, log):
 	name = vlan_data.get("name", "")
 
 	try: 
-		template = template_env.get_template("vlan.j2")
+		template = template_env.get_template("switching/vlan.j2")
 		commands = template.render(
 				vlan_id=vlan_id,
 				name=name

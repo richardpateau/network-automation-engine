@@ -21,7 +21,7 @@ def dai_data():
 		"enabled_vlans": [10,20,30,40,50],
 		"interfaces": {
 			"gigabitethernet1": {
-			"rate_limt": 20,
+			"rate_limit": 20,
 			"trusted": False
 			}
 		},
@@ -38,20 +38,24 @@ def test_configure_dai_dry_run(mock_conn, dai_data, mock_log):
 	assert result["status"] == OperationalStatus.DRY_RUN.value 
 	assert "DRY_RUN" in result["summary"]
 	assert "VLANs: [10, 20, 30, 40, 50]" in result["summary"]
-	assert "Interface: gigabitethernet1" in result["summary"
-	mock_conn.
+	assert "Interface: gigabitethernet1" in result["summary"]
+	mock_conn.send_config_set.assert_not_called()
  
 @patch("src.remediation.security.dai.DRY_RUN", False)
 def test_configure_dai_successful(mock_conn, dai_data, mock_log): 
 	result = configure_dai(mock_conn, dai_data, mock_log)
 
-	assert result["status"] == OperationalStatus.DRY_RUN.value
-
+	assert result["status"] == OperationalStatus.SUCCESS.value
+	assert "VLANs: [10, 20, 30, 40, 50]" in result["summary"]
+	assert "Interface: gigabitethernet1" in result["summary"]
+	assert "Rate Limit: 20" in result["summary"]
+	mock_conn.send_config_set.assert_called_once()
+	mock_log.info.assert_called_once()
 
 @patch("src.remediation.security.dai.DRY_RUN", False)
 def test_configure_dai_failed(mock_conn, dai_data, mock_log): 
 	mock_conn.send_config_set.side_effect = Exception("Connection lost")
-	result = configure_dai(mock_conn, snooping_data, mock_log)	
+	result = configure_dai(mock_conn, dai_data, mock_log)	
 	
 	assert result["status"] == OperationalStatus.ERROR.value 
 	assert "error" in result

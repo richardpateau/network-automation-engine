@@ -1,11 +1,11 @@
 from src.collectors.cli.builders import build_port_security
-import pystest
+import pytest
 
 
 def test_build_port_security_first_valid(port_security_running_config):
     result = build_port_security(port_security_running_config)
 
-    assert len(result["interfaces"]) == 2
+    assert len(result["interfaces"]) == 9
     assert result["interfaces"]["gigabitethernet0/1"]["enabled"] is True
     assert result["interfaces"]["gigabitethernet0/1"]["maximum"] == 2
     assert result["interfaces"]["gigabitethernet0/1"]["violation"] == "restrict"
@@ -47,10 +47,10 @@ def test_build_port_security_empty():
 def test_build_port_security_no_interfaces():
     data = {
         "running_config": """
-         switchport access vlan 98
-         switchport mode access
-         negotiation auto
-         """
+switchport access vlan 98
+switchport mode access
+negotiation auto
+"""
     }
     result = build_port_security(data)
 
@@ -61,15 +61,15 @@ def test_build_port_security_no_interfaces():
 def test_build_port_security_violation(violation):
     data = {
         "running_config": f"""
-        interface GigabitEthernet0/1
-         switchport access vlan 10
-         switchport mode access
-         switchport port-security maximum 2
-         switchport port-security violation {violation}
-         switchport port-security mac-address sticky
-         switchport port-security
-         negotiation auto
-         """
+interface GigabitEthernet0/1
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security maximum 2
+ switchport port-security violation {violation}
+ switchport port-security mac-address sticky
+ switchport port-security
+ negotiation auto
+ """
     }
 
     result = build_port_security(data)
@@ -80,15 +80,15 @@ def test_build_port_security_violation(violation):
 def test_build_port_security_maximum(maximum):
     data = {
         "running_config": f"""
-            interface GigabitEthernet0/1
-             switchport access vlan 10
-             switchport mode access
-             switchport port-security maximum {maximum}
-             switchport port-security violation restrict
-             switchport port-security mac-address sticky
-             switchport port-security
-             negotiation auto
-             """
+interface GigabitEthernet0/1
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security maximum {maximum}
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ switchport port-security
+ negotiation auto
+ """
     }
 
     result = build_port_security(data)
@@ -97,15 +97,15 @@ def test_build_port_security_maximum(maximum):
 
 def test_build_port_security_no_port_security_command():
     data = {
-        "running_config": f"""
-        interface GigabitEthernet0/1
-         switchport access vlan 10
-         switchport mode access
-         switchport port-security maximum 2
-         switchport port-security violation restrict
-         switchport port-security mac-address sticky
-         negotiation auto
-         """
+        "running_config": """
+interface GigabitEthernet0/1
+ switchport access vlan 10
+ switchport mode access
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ negotiation auto
+ """
     }
 
     result = build_port_security(data)
