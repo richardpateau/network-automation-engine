@@ -10,7 +10,7 @@ def build_ntp(netconf_state):
     if not ntp:
         return {"keys": [], "servers": []}
     actual_ntp = {"keys": [], "servers": []}
-    server_lists = ntp.get("server", {}).get("server-list", {})
+    server_lists = ntp.get("server", {}).get("server-list", [])
     server_list = normalize_to_list(server_lists)
     for s in server_list:
         ntp_ip = s.get("ip-address", "")
@@ -18,6 +18,7 @@ def build_ntp(netconf_state):
         actual_ntp["servers"].append(
             {"server_ip": ntp_ip, "server_id": safe_int(server_id)}
         )
+    ntp_trusted = ntp.get("trusted-key", {}).get("number", "")
     ntp_authentication = normalize_to_list(ntp.get("authentication-key", {}))
     for n in ntp_authentication:
         ntp_key_id = n.get("number", "")
@@ -128,7 +129,7 @@ def build_hsrp(netconf_state):
                     "group": safe_int(standby_list.get("group-number", "")),
                     "vip": standby_list.get("ip", {}).get("address", ""),
                     "preempt": "preempt" in standby_list,
-                    "priority": standby_list.get("priority", None),
+                    "priority": safe_int(standby_list.get("priority", "")),
                     "router_vlan": safe_int(
                         value.get("encapsulation", {})
                         .get("dot1Q", {})
@@ -145,12 +146,11 @@ def build_nat(netconf_state):
         return {
             "pat": {}, 
             "static": [],
-            "pool": [],
             "dynamic": [],
             "interfaces": {"inside": [], "outside": []}
         }
     actual_nat = {
-            "pat": [], 
+            "pat": {}, 
             "static": [],
             "dynamic": [],
             "interfaces": {"inside": [], "outside": []}
@@ -160,15 +160,15 @@ def build_nat(netconf_state):
     nat = native.get("ip", {}).get("nat", {})
     inside = nat.get("inside", {})
     source = inside.get("source", {})
-    nat_list = source.get("list", {})
+    nat_list = source.get("list") or {}
 
     interface_block = nat_list.get("interface", {})
     pat = "overload" in interface_block
 
     if pat:
         actual_nat["pat"] = {
-                "acl": nat_list.get("id", ""),
-                "interface": interface_block.get("name", ""),
+                "acl": safe_int(nat_list.get("id", "")),
+                "interface": interface_block.get("name", "").lower(),
                 "overload": True,
             }
     static = source.get("static", {})
@@ -181,7 +181,7 @@ def build_nat(netconf_state):
                     "inside_global": n.get("global-ip", ""),
                 }
             )
-    pool = normalize_to_list(nat.get("pool", {}))
+    pool = normalize_to_list(nat.get("pool", []))
     temp_pool = {}
     for p in pool:
         pool_name = p.get("id", "")
@@ -193,7 +193,7 @@ def build_nat(netconf_state):
         }
     nat_pools = nat_list.get("pool-with-vrf", {}).get("pool", {})
     if nat_pools:
-        for nat_pool in nat_pools:
+        for nat_pool in normalize_to_list(nat_pools):
             name_of_pool = nat_pool.get("name", "")
             pn = temp_pool.get(name_of_pool, {})
             if pn:
@@ -208,15 +208,15 @@ def build_nat(netconf_state):
                 )
 
     # PT2 NAT INTERFACES
-    interfaces = native.get("interface", {})
+    interfaces = native.get("ip", {}).get("interface", {})
     for int_type, int_values in interfaces.items():
         for i_value in normalize_to_list(int_values):
             full_interface = f"{int_type}{i_value.get('name', '')}".lower()
             nat_int = i_value.get("ip", {}).get("nat", {})
             if "outside" in nat_int:
-                actual_nat["outside"].append(full_interface)
+                actual_nat["interfaces"]["outside"].append(full_interface)
             if "inside" in nat_int:
-                actual_nat["inside"].append(full_interface)
+                actual_nat["interfaces"]["inside"].append(full_interface)
     return actual_nat
 
 
@@ -246,7 +246,7 @@ def build_dhcp(netconf_state):
                 "lease_days": safe_int(lease.get("days", "")),
                 "lease_hours": safe_int(lease.get("hours", "")),
                 "lease_minutes": safe_int(lease.get("minutes", "")),
-                "default_router": (
+                "default_gateway": (
                     d.get("default-router", {}).get("default-router-list", "")
                 ),
                 "dns_ip": dns_list,
@@ -263,10 +263,10 @@ def build_dhcp(netconf_state):
     for gigabit, gig_values in interfaces.items():
         for g in normalize_to_list(gig_values):
             full_interface = f"{gigabit}{g.get('name', '')}".lower()
-            helper = g.get("ip", {}).get("helper-address", {}).get("address", [])
+            helper = g.get("ip", {}).get("helper-address", {})
             for h in normalize_to_list(helper):
                 actual_dhcp["helper"]["interfaces"].append(
-                    {"helper_ip": h, "interface_name": full_interface}
+                    {"helper_ip": h.get("address", ""), "interface": full_interface}
                 )
     return actual_dhcp
 

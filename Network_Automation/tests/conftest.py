@@ -136,14 +136,14 @@ def hsrp_netconf():
 
 
 @pytest.fixture
-def hsrp_netconf():
+def pat_netconf():
     fixture_path = Path(__file__).parent / "fixtures" / "netconf" / "pat_netconf.json"
     with open(fixture_path) as f:
         return json.load(f)
 
 
 @pytest.fixture
-def hsrp_netconf():
+def dynamic_nat_netconf():
     fixture_path = (
             Path(__file__).parent / "fixtures" / "netconf" / "dynamic_nat_netconf.json"
     )
