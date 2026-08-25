@@ -1,6 +1,6 @@
 from src.collectors.netconf.builders import build_static
 import pytest
-from src.utils import safe_int
+from src.utils.helpers import safe_int
 
 
 def test_build_static_valid(static_netconf):

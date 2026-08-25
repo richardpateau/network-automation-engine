@@ -16,6 +16,7 @@
         },
         {
           "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
+          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
           "name": "WEB",
           "prematch": "match-all",
           "match": {

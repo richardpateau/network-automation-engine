@@ -36,7 +36,9 @@ def build_ntp(netconf_state):
 def build_qos(netconf_state):
     if not netconf_state:
         return {"policies": []}
-    native = netconf_state.get("native_netconf") or {}
+    native = netconf_state.get("native_netconf") 
+    if not native: 
+        return {"policies": []}
     qos = native.get("policy", {})
     actual_qos = {"policies": []}
     class_maps = qos.get("class-map", [])
@@ -50,7 +52,7 @@ def build_qos(netconf_state):
         class_name = c.get("name", "").lower()
         class_map_lookup[class_name] = {
             "match_type": c.get("prematch", ""),
-            "name": class_name,
+            "class_name": class_name,
             "protocol": (
                 c.get("match", {})
                 .get("protocol", {})
@@ -59,6 +61,7 @@ def build_qos(netconf_state):
                 .lower()
             ),
         }
+    print("INTERFACES:", interfaces)
     for int_type, int_value in interfaces.items():
         for i_value in normalize_to_list(int_value):
             service_policy = i_value.get("service-policy", {})
@@ -67,31 +70,33 @@ def build_qos(netconf_state):
             interface_name = f"{int_type}{i_value.get('name', '')}"
             input_policy = service_policy.get("input")
             output_policy = service_policy.get("output")
+            print("INPUT:", input_policy)
+            print("OUTPUT:", output_policy)
             if input_policy:
-                attachments_lookup.setdefault(input_policy, []).append(
+                attachments_lookup.setdefault(str(input_policy).lower(), []).append(
                     {"interface": interface_name.lower(), "direction": "input"}
                 )
             if output_policy:
-                attachments_lookup.setdefault(output_policy, []).append(
+                attachments_lookup.setdefault(str(output_policy).lower(), []).append(
                     {"interface": interface_name.lower(), "direction": "output"}
                 )
     for p in policy_map_list:
-        policy_name = p.get("name", "")
+        policy_name = p.get("name", "").lower()
         qos_classes = p.get("class", [])
         qos_class_list = normalize_to_list(qos_classes)
 
         policy = {
-            "policy_name": policy_name.lower(),
+            "policy_name": policy_name,
             "class_maps": [],
             "attachments": attachments_lookup.get(policy_name, []),
         }
         for q in qos_class_list:
-            class_name = q.get("name", "")
+            class_name = q.get("name", "").lower()
             action_list = q.get("action-list", {})
             cm = class_map_lookup.get(class_name, {})
             policy["class_maps"].append(
                 {
-                    "name": class_name,
+                    "class_name": class_name,
                     "match_type": cm.get("match_type", ""),
                     "protocol": cm.get("protocol", ""),
                     "action_type": action_list.get("action-type", ""),
@@ -317,7 +322,7 @@ def build_snmp_netconf(netconf_state):
                     "snmp_version": h.get("version", ""),
                 }
             )
-    location = snmp.get("location", {}).get("#text", "")
+    location = snmp.get("location", {}).get("#text", "").lower()
     if location:
         actual_snmp["location"] = location
     return actual_snmp
@@ -412,26 +417,30 @@ def build_static(netconf_state):
 
         network_address = r.get("prefix", "")
         mask = r.get("mask", {})
+
         fwd_list = r.get("fwd-list", {})
 
         for f in normalize_to_list(fwd_list):
             fwd = f.get("fwd", "")
+
             if is_ip_address(fwd):
                 next_hop.append(fwd)
-                AD = safe_int(fwd_list.get("metric", 1))
-                name = fwd_list.get("name", None)
+                AD = safe_int(f.get("metric", 1))
+                name = f.get("name")
+
             else:
                 exit_interface = fwd.lower()
 
-        fully_specified = fwd_list.get("interface-next-hop", [])
-        if fully_specified:
-            for f in normalize_to_list(fully_specified):
-                next_hop.append(f.get("ip-address"))
-                AD = safe_int(f.get("metric")) if f.get("metric") is not None else 1
-                name = f.get("name", None)
-        else: 
-            AD = fwd_list.get("metric", 1)
-            name = fwd_list.get("name", "")
+            fully_specified = f.get("interface-next-hop", {})
+
+            if fully_specified:
+                next_hop_ip = fully_specified.get("ip-address", "")
+
+                if next_hop_ip:
+                    next_hop.append(next_hop_ip)
+
+                AD = safe_int(fully_specified.get("metric", 1))
+                name = fully_specified.get("name")
 
         actual_static.append(
             {
