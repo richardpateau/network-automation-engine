@@ -113,22 +113,23 @@ def test_build_roas_no_roas():
 
 def test_build_roas_no_ip():
 	data = {
-		"interface_restconf": {
-			"Cisco-IOS-XE-native:interface": {
-				"GigabitEthernet": [
-			        {
-			          "name": "2",
-			          "encapsulation": {
-			            "dot1Q": {
-			              "vlan-id": 30
-			            }
-			           }
-			          },
-			          "ip": {}
-					   ] 
-					}
+			"interface_restconf": {
+				"Cisco-IOS-XE-native:interface": {
+					"GigabitEthernet": [
+						{
+							"name": "2",
+							"encapsulation": {
+								"dot1Q": {
+									"vlan-id": 30
+								}
+							},
+							"ip": {}
+						}
+					]
 				}
 			}
+		}
+
 	assert build_roas(data) == {}
 
 def test_build_roas_no_vlan(): 

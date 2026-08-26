@@ -67,7 +67,7 @@ def test_build_static_valid(static_netconf):
         "AD": 1,
         "network_address": "30.30.30.0",
         "mask": "255.255.255.0",
-        "next_hop": "192.168.1.2",
+        "next_hop": ["192.168.1.2"],
         "exit_interface": None,
         "name": "users",
     } in result
@@ -83,11 +83,11 @@ def test_build_static_empty(data):
 @pytest.mark.parametrize(
     "ad, network, mask, exit_interface, name",
     [
-        ("20", "192.168.20.1", "255.255.255.0", "GigabitEthernet1", ""),
-        ("100", "203.118.20.1", "255.255.255.0", "GigabitEthernet1/0", "wan"),
-        ("2", "200.168.20.1", "255.255.255.0", "FastEthernet5/0", None),
-        ("45", "176.168.20.1", "255.255.255.0", "FastEthernet9/1", "router"),
-        ("86", "19.168.20.1", "255.255.255.0", "GigabitEthernet3/1", "users"),
+        ("20", "192.168.20.1", "255.255.255.0", "gigabitethernet1", ""),
+        ("100", "203.118.20.1", "255.255.255.0", "gigabitethernet1/0", "wan"),
+        ("2", "200.168.20.1", "255.255.255.0", "fastethernet5/0", None),
+        ("45", "176.168.20.1", "255.255.255.0", "fastethernet9/1", "router"),
+        ("86", "19.168.20.1", "255.255.255.0", "gigabitethernet3/1", "users"),
     ],
 )
 def test_build_static_only_exit_interface_only(ad, network, mask, exit_interface, name):
@@ -114,7 +114,7 @@ def test_build_static_only_exit_interface_only(ad, network, mask, exit_interface
     result = build_static(data)
 
     assert {
-        "AD": safe_int(ad) or 1,
+        "AD": safe_int(ad),
         "network_address": network,
         "mask": mask,
         "next_hop": [],
@@ -129,12 +129,12 @@ def test_build_static_only_exit_interface_only(ad, network, mask, exit_interface
         (
             "192.168.20.1",
             "255.255.255.0",
-            "GigabitEthernet1",
+            "gigabitethernet1",
         ),
-        ("203.118.20.1", "255.255.255.0", "GigabitEthernet1/0"),
-        ("200.168.20.1", "255.255.255.0", "FastEthernet5/0"),
-        ("176.168.20.1", "255.255.255.0", "FastEthernet9/1"),
-        ("19.168.20.1", "255.255.255.0", "GigabitEthernet3/1"),
+        ("203.118.20.1", "255.255.255.0", "gigabitrthernet1/0"),
+        ("200.168.20.1", "255.255.255.0", "fastethernet5/0"),
+        ("176.168.20.1", "255.255.255.0", "fastethernet9/1"),
+        ("19.168.20.1", "255.255.255.0", "gigabitethernet3/1"),
     ],
 )
 def test_build_static_exit_interface(network, mask, exit_interface):
@@ -170,11 +170,11 @@ def test_build_static_exit_interface(network, mask, exit_interface):
 @pytest.mark.parametrize(
     "network, mask, next_hop, ad, name",
     [
-        ("192.168.20.1", "255.255.255.0", "192.168.1.2", "20", "VOICE"),
+        ("192.168.20.1", "255.255.255.0", "192.168.1.2", "20", "voice"),
         ("203.118.20.1", "255.255.255.0", "192.168.20.1", "111", ""),
         ("200.168.20.1", "255.255.255.0", "201.113.1.1", "190", None),
-        ("176.168.20.1", "255.255.255.0", "205.0.11.3", "95", "WAN"),
-        ("19.168.20.1", "255.255.255.0", "192.168.39.1", "2", "CISCO"),
+        ("176.168.20.1", "255.255.255.0", "205.0.11.3", "95", "wan"),
+        ("19.168.20.1", "255.255.255.0", "192.168.39.1", "2", "cisco"),
     ],
 )
 def test_build_static_only_next_hop(network, mask, next_hop, ad, name):
@@ -211,34 +211,33 @@ def test_build_static_only_next_hop(network, mask, next_hop, ad, name):
         (
             "192.168.20.1",
             "255.255.255.0",
-            "GigabitEthernet1",
+            "gigabitethernet1",
             "192.168.1.2",
             "20",
-            "VOICE",
+            "voice",
         ),
         (
             "203.118.20.1",
             "255.255.255.0",
-            "GigabitEthernet1/0",
+            "gigabitethernet1/0",
             "192.168.20.1",
             "111",
             "",
         ),
-        ("200.168.20.1", "255.255.255.0", "FastEthernet5", "201.113.1.1", "190", None),
-        ("176.168.20.1", "255.255.255.0", "FastEthernet9", "205.0.11.3", "95", "WAN"),
+        ("200.168.20.1", "255.255.255.0", "fastethernet5", "201.113.1.1", "190", "voice"),
+        ("176.168.20.1", "255.255.255.0", "fastethernet9", "205.0.11.3", "95", "wan"),
         (
             "19.168.20.1",
             "255.255.255.0",
-            "GigabitEthernet5/1",
+            "gigabitethernet5/1",
             "192.168.39.1",
             "2",
-            "CISCO",
+            "cisco",
         ),
     ],
 )
 def test_build_static_fully_specified(
-    network, mask, exit_interface, next_hop, ad, name
-):
+    network, mask, exit_interface, next_hop, ad, name):
     data = {
         "native_netconf": {
             "ip": {
@@ -296,4 +295,4 @@ def test_build_static_multiple_next_hops():
     result = build_static(data)
 
     assert result[0]["next_hop"] == ["192.168.1.2", "192.168.1.3"]
-    assert result["AD"] == 1
+    assert result[0]["AD"] == 1

@@ -1,5 +1,5 @@
 import pytest 
-from src.compliance.routing.roas import check_roas
+from src.compliance.routing.roas.check import check_roas
 
 @pytest.fixture
 def exp_roas():

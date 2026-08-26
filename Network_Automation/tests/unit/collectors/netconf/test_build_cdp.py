@@ -67,7 +67,15 @@ def test_build_cdp_interfaces(int_type, int_num):
     result = build_cdp_netconf(data)
     assert result["interfaces"][f"{int_type}{int_num}".lower()]["enabled"] is True
 
-
+@pytest.mark.parametrize(
+    "int_type, int_num",
+    [
+        ("gigabitethernet", "1"),
+        ("gigabitethernet", "2"),
+        ("fastethernet", "1/0"),
+        ("fastethernet", "2/0"),
+    ],
+)
 def test_build_cdp_interfaces_disabled(int_type, int_num):
     data = {
         "native_netconf": {
@@ -92,7 +100,7 @@ def test_build_cdp_no_timer_holdtime():
 
     result = build_cdp_netconf(data)
 
-    assert resul["timer"] is None
+    assert result["timer"] is None
     assert result["holdtime"] is None
 
 

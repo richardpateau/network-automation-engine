@@ -61,7 +61,6 @@ def build_qos(netconf_state):
                 .lower()
             ),
         }
-    print("INTERFACES:", interfaces)
     for int_type, int_value in interfaces.items():
         for i_value in normalize_to_list(int_value):
             service_policy = i_value.get("service-policy", {})
@@ -70,8 +69,7 @@ def build_qos(netconf_state):
             interface_name = f"{int_type}{i_value.get('name', '')}"
             input_policy = service_policy.get("input")
             output_policy = service_policy.get("output")
-            print("INPUT:", input_policy)
-            print("OUTPUT:", output_policy)
+
             if input_policy:
                 attachments_lookup.setdefault(str(input_policy).lower(), []).append(
                     {"interface": interface_name.lower(), "direction": "input"}
@@ -361,8 +359,7 @@ def build_syslog_netconf(netconf_state):
     if trap_level:
         actual_syslog["trap_level"] = trap_level
     timestamps = (
-        native.get("logging", {})
-        .get("service")
+        native.get("service", {})
         .get("timestamps", {})
         .get("debug", {})
         .get("datetime", {})
@@ -388,12 +385,16 @@ def build_cdp_netconf(netconf_state):
     if cdp_holdtime:
         actual_cdp["holdtime"] = safe_int(cdp_holdtime)
     interface = native.get("interface", {})
-    for interface_type, int_value in interface.items():
-        full_interface = f"{interface_type}{int_value.get('name')}".lower()
-        cdp_enables = int_value.get("cdp", {}).get("enable")
-        cdp_enable = "true" in cdp_enable 
+    for interface_type, int_values in interface.items():
+        print("TYPE:", interface_type)
+        print("VALUES:", int_values)
+        for int_value in normalize_to_list(int_values):
+            full_interface = f"{interface_type}{int_value.get('name')}".lower()
+            print("FULL INTERFACE:", full_interface)
+            cdp_enables = int_value.get("cdp", {}).get("enable", {})
+            cdp_enable = "true" in cdp_enables 
 
-        actual_cdp["interfaces"][full_interface] = {"enabled": cdp_enable}
+            actual_cdp["interfaces"][full_interface] = {"enabled": cdp_enable}
     return actual_cdp
 
 
@@ -410,11 +411,11 @@ def build_static(netconf_state):
     )
 
     for r in normalize_to_list(route):
-        AD = None
-        name = None
+        print("PROCESSING ROUTE:", r.get("prefix"))
+        AD = 1
         next_hop = []
         exit_interface = None
-
+        name = None
         network_address = r.get("prefix", "")
         mask = r.get("mask", {})
 
@@ -422,15 +423,22 @@ def build_static(netconf_state):
 
         for f in normalize_to_list(fwd_list):
             fwd = f.get("fwd", "")
-
+            #Recursive 
             if is_ip_address(fwd):
                 next_hop.append(fwd)
                 AD = safe_int(f.get("metric", 1))
                 name = f.get("name")
+                if name is not None: 
+                    name = f.get("name").lower()
 
             else:
+            #Directly Connected 
                 exit_interface = fwd.lower()
-
+                name = f.get("name")
+                if name is not None: 
+                    name = name.lower()
+                AD = safe_int(f.get("metric", 1))
+            
             fully_specified = f.get("interface-next-hop", {})
 
             if fully_specified:
@@ -441,6 +449,9 @@ def build_static(netconf_state):
 
                 AD = safe_int(fully_specified.get("metric", 1))
                 name = fully_specified.get("name")
+                if name is not None: 
+                    name = name.lower()
+
 
         actual_static.append(
             {
@@ -449,7 +460,8 @@ def build_static(netconf_state):
                 "mask": mask,
                 "next_hop": next_hop,
                 "exit_interface": exit_interface,
-                "name": name.lower() if name else None,
+                "name": name,
             }
         )
+    print("RESULT COUNT:", len(actual_static))
     return actual_static

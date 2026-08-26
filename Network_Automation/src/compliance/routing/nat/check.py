@@ -82,7 +82,7 @@ def check_nat(expected_nat, actual_config):
                     )
                 if actual.get("start_ip") != p_values.get("start_ip"):
                     failures.append(
-                        f"(Dynamic NAT) Mismatched Pool Beginning IP | Pool: {p_name} |"
+                        f"(Dynamic NAT) Mismatched Pool Start IP | Pool: {p_name} |"
                         f"Expected: {p_values.get('start_ip')} | "
                         f"Actual: {actual.get('start_ip')}"
                     )
@@ -101,13 +101,13 @@ def check_nat(expected_nat, actual_config):
             extra_pools = set(act_set.keys()) - set(exp_set.keys())
             for e in extra_pools:
                 failures.append(
-                    f"(Dynamic NAT) (Drift) Unexpected Pool Found on Device | "
+                    f"(Dynamic NAT) Unexpected Pool Found on Device | "
                     f"Pool: {e}"
                 )
     else:
         if actual_config.get("dynamic"):
             failures.append(
-                f"(Dynamic NAT) Configuration Drift: Unexpected Dynamic NAT Configuration Found"
+                f"(Dynamic NAT) Configuration Drift: Unexpected NAT Configuration Found"
             )
     exp_inside = expected_nat.get("interfaces", {}).get("inside", [])
     exp_outside = expected_nat.get("interfaces", {}).get("outside", [])

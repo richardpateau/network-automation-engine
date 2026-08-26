@@ -2,7 +2,7 @@ from src.utils.helpers import normalize_to_list, safe_int
 
 
 # ROAS
-def build_roas(restconf_state, log):
+def build_roas(restconf_state):
     if not restconf_state:
         return {}
     restconf_state_roas = restconf_state.get("interface_restconf") or {}
@@ -57,8 +57,8 @@ def build_ospf(restconf_state):
             "router_id": router_id,
             "network_list": [],
         }
-    if not network:
-        continue
+        if not network:
+            continue
         for net in network:
             actual_ospf[proc_id]["network_list"].append(
                 {

@@ -1,11 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.netconf import collect_netconf_state
-from src.compliance.routing.hsrp_helpers import (
-    build_hsrp,
-    check_hsrp,
-)
+from src.collectors.netconf.collector import collect_netconf_state
+from src.collectors.netconf.builders import build_hsrp
+from src.compliance.routing.hsrp.check import check_hsrp
 from src.remediation.routing.hsrp import configure_hsrp
-from config import DRY_RUN
+from src.core.settings import DRY_RUN
 
 
 def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log):

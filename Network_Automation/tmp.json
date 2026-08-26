@@ -1,74 +1,17 @@
 {
-  "native_netconf": {
-    "policy": {
-      "class-map": [
-        {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
-          "name": "VOICE",
-          "prematch": "match-any",
-          "match": {
-            "protocol": {
-              "protocols-list": {
-                "protocols": "rtp audio"
-              }
-            }
-          }
-        }
-      ],
-      "policy-map": {
-        "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
-        "name": "WAN-QOS",
-        "class": [
-          {
-            "name": "VOICE",
-            "action-list": {
-              "action-type": "priority",
-              "priority": {
-                "kilo-bits": "1000"
-              }
-            }
-          }
-        ]
-      }
-    },
-    "interface": {
-      "GigabitEthernet": [
-        {
-          "name": "1"
-        }
-      ]
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	"interface_restconf": {
+		"Cisco-IOS-XE-native:interface": {
+			"GigabitEthernet": [
+				{
+					"name": "2",
+					"encapsulation": {
+						"dot1Q": {
+							"vlan-id": 30
+						}
+					},
+					"ip": {}
+				}
+			]
+		}
+	}
+}

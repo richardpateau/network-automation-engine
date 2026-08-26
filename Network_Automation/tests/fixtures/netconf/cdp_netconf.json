@@ -16,142 +16,142 @@
       "run": {
         "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp"
       }
-    }
-  },
-  "interface": {
-    "GigabitEthernet": [
-      {
-        "name": "1",
-        "logging": {
-          "event": {
-            "link-status": null
+    },
+    "interface": {
+      "GigabitEthernet": [
+        {
+          "name": "1",
+          "logging": {
+            "event": {
+              "link-status": null
+            }
+          },
+          "mop": {
+            "enabled": "false",
+            "sysid": "false"
+          },
+          "cdp": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
+            "enable": "true",
+            "tlv": {
+              "app": null,
+              "server-location": null,
+              "location": null
+            }
+          },
+          "negotiation": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
+            "auto": "true"
+          },
+          "service-policy": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
+            "output": "WAN-QOS"
           }
         },
-        "mop": {
-          "enabled": "false",
-          "sysid": "false"
-        },
-        "cdp": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
-          "enable": "true",
-          "tlv": {
-            "app": null,
-            "server-location": null,
-            "location": null
-          }
-        },
-        "negotiation": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
-          "auto": "true"
-        },
-        "service-policy": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
-          "output": "WAN-QOS"
-        }
-      },
-      {
-        "name": "1.50",
-        "encapsulation": {
-          "dot1Q": {
-            "vlan-id": "10"
-          }
-        },
-        "standby": {
-          "version": "2",
-          "standby-list": {
-            "group-number": "10",
-            "ip": {
-              "address": "192.168.10.1"
-            },
-            "preempt": null,
-            "priority": "110"
-          }
-        }
-      },
-      {
-        "name": "1.98",
-        "encapsulation": {
-          "dot1Q": {
-            "vlan-id": "98",
-            "native": null
-          }
-        },
-        "ip": {
-          "address": {
-            "primary": {
-              "address": "192.168.255.20",
-              "mask": "255.255.255.0"
+        {
+          "name": "1.50",
+          "encapsulation": {
+            "dot1Q": {
+              "vlan-id": "10"
+            }
+          },
+          "standby": {
+            "version": "2",
+            "standby-list": {
+              "group-number": "10",
+              "ip": {
+                "address": "192.168.10.1"
+              },
+              "preempt": null,
+              "priority": "110"
             }
           }
-        }
-      },
-      {
-        "name": "2",
-        "logging": {
-          "event": {
-            "link-status": null
+        },
+        {
+          "name": "1.98",
+          "encapsulation": {
+            "dot1Q": {
+              "vlan-id": "98",
+              "native": null
+            }
+          },
+          "ip": {
+            "address": {
+              "primary": {
+                "address": "192.168.255.20",
+                "mask": "255.255.255.0"
+              }
+            }
           }
         },
-        "mop": {
-          "enabled": "false",
-          "sysid": "false"
-        },
-        "cdp": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
-          "enable": "false"
-        },
-        "negotiation": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
-          "auto": "true"
-        }
-      },
-      {
-        "name": "3",
-        "shutdown": null,
-        "logging": {
-          "event": {
-            "link-status": null
+        {
+          "name": "2",
+          "logging": {
+            "event": {
+              "link-status": null
+            }
+          },
+          "mop": {
+            "enabled": "false",
+            "sysid": "false"
+          },
+          "cdp": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
+            "enable": "false"
+          },
+          "negotiation": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
+            "auto": "true"
           }
         },
-        "mop": {
-          "enabled": "false",
-          "sysid": "false"
-        },
-        "cdp": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
-          "enable": "true",
-          "tlv": {
-            "app": null,
-            "server-location": null,
-            "location": null
+        {
+          "name": "3",
+          "shutdown": null,
+          "logging": {
+            "event": {
+              "link-status": null
+            }
+          },
+          "mop": {
+            "enabled": "false",
+            "sysid": "false"
+          },
+          "cdp": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
+            "enable": "true",
+            "tlv": {
+              "app": null,
+              "server-location": null,
+              "location": null
+            }
+          },
+          "negotiation": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
+            "auto": "true"
           }
         },
-        "negotiation": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
-          "auto": "true"
-        }
-      },
-      {
-        "name": "4",
-        "shutdown": null,
-        "logging": {
-          "event": {
-            "link-status": null
+        {
+          "name": "4",
+          "shutdown": null,
+          "logging": {
+            "event": {
+              "link-status": null
+            }
+          },
+          "mop": {
+            "enabled": "false",
+            "sysid": "false"
+          },
+          "cdp": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
+            "enable": "false"
+          },
+          "negotiation": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
+            "auto": "true"
           }
-        },
-        "mop": {
-          "enabled": "false",
-          "sysid": "false"
-        },
-        "cdp": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-cdp",
-          "enable": "false"
-        },
-        "negotiation": {
-          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
-          "auto": "true"
         }
-      }
-    ]
+      ]
+    }
   }
 }

@@ -27,19 +27,18 @@
       "source-interface": {
         "interface-name": "Loopback0"
       }
-    }
-  },
-  "service": {
-    "timestamps": {
-      "debug": {
-        "datetime": {
-          "msec": null
+    },
+    "service": {
+      "timestamps": {
+        "debug": {
+          "datetime": {
+            "msec": null
+          }
         }
       }
     }
   }
 }
-
 
 
 

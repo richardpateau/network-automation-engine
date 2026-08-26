@@ -1,5 +1,5 @@
 import pytest 
-from src.compliance.routing.static import check_static
+from src.compliance.routing.static.check import check_static
 
 @pytest.fixture
 def exp_static():

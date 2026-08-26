@@ -392,6 +392,7 @@ def build_dai(device_state):
         }
     running_config = device_state.get("running_config") or ""
     dai_interfaces = device_state.get("dai_interfaces") or ""
+    dai_interfaces = dai_interfaces.replace("\\n", "\n")
     parse = CiscoConfParse(running_config.splitlines())
     actual_dai = {
         "arp_inspection": False,
@@ -415,11 +416,11 @@ def build_dai(device_state):
     for config in dai_interfaces.splitlines():
         parts = config.split()
 
-        if len(parts) >= 4 and parts[0].startswith("Gi"):
+        if len(parts) >= 3 and parts[0].startswith("Gi"):
             interface = parts[0].lower()
             rate = safe_int(parts[2])
 
-            actual_dai["interfaces"][interface] = {
+            actual_dai["interfaces"][interface.lower()] = {
                 "rate_limit": rate,
                 "trusted": parts[1].lower() == "trusted",
             }

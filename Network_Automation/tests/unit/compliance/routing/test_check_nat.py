@@ -1,5 +1,5 @@
-import pytest 
-from src.compliance.routing.nat import check_nat
+import pytest
+from src.compliance.routing.nat.check import check_nat
 
 @pytest.fixture
 def exp_nat():
@@ -188,7 +188,7 @@ def test_check_nat_unexpected_dynamic():
     ok, failures = check_nat({}, actual)
 
     assert ok is False 
-    assert any("Unexpected Dynamic NAT Configuration Found" in f for f in failures)
+    assert any("(Dynamic NAT) Configuration Drift: Unexpected NAT Configuration Found" in f for f in failures)
 
 def test_check_nat_no_pool():
     expected = {
@@ -284,7 +284,7 @@ def test_check_nat_dynamic_start_ip():
             }
         ]
     }
-
+    ok, failures = check_nat(expected, actual)
     assert ok is False 
     assert any("(Dynamic NAT) Mismatched Pool Start IP" in f for f in failures)
     assert any(
@@ -394,7 +394,7 @@ def test_check_nat_dynamic_extra_pools():
     ok, failures = check_nat(expected, actual)
 
     assert ok is False
-    assert any("Unexpected Pool Found on Device | nat_pool_extra" in r for r in failures)
+    assert any("(Dynamic NAT) Unexpected Pool Found on Device" in r for r in failures)
 
 def test_check_nat_missing_inside():
     expected = {
