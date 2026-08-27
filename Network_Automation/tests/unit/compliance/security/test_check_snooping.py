@@ -241,5 +241,5 @@ def test_check_snooping_mismatched_option82():
 
 	ok, failures = check_snooping(expected, actual)
 	assert ok is False
-	assert any("(DHCP Snooping) Mismatched Option 82 Config" in f for f in failures)
+	assert any("(DHCP Snooping) Mismatched Option 82 Configuration" in f for f in failures)
 	assert any("Expected: True | Actual: False" in f for f in failures)

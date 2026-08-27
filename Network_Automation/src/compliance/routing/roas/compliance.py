@@ -1,11 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.restconf import collect_restconf_state
+from src.collectors.restconf.collector import collect_restconf_state
 from src.remediation.routing.roas import configure_roas
-from src.compliance.routing.roas_helpers import (
-    build_roas,
-    check_roas,
-)
-from config import DRY_RUN
+from src.collectors.restconf.builders import build_roas
+from src.compliance.routing.roas.check import check_roas
+from src.core.settings import DRY_RUN
 
 
 def compliance_roas(sesh, device_ip, context, device_state, device_result, log):
@@ -72,8 +70,8 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log):
         if result.get("status") == OperationalStatus.SUCCESS.value:
             roas_updated = True
         else:
-            device_result["status"] = OperationalStatus.FAILD_CONFIG.value
-            device_result["critical_issues"] = (
+            device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+            device_result["critical_issues"].append(
                 f"Failed to Remediate ROAS | Interface: {interface} | "
                 f"VLAN: {vlan} | IP/Mask: {ip}/{mask}"
             )

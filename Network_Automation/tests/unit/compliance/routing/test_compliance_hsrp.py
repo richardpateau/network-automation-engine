@@ -32,7 +32,7 @@ def exp_hsrp():
     return [
         {
             "group": 10,
-            "interface": "GigabitEthernet1",
+            "interface": "gigabitethernet1",
             "router_vlan": 10,
             "version": 2,
             "vip": "192.168.10.1"
@@ -60,7 +60,7 @@ def actual_hsrp():
 @patch("src.compliance.routing.hsrp.compliance.build_hsrp")
 @patch("src.compliance.routing.hsrp.compliance.check_hsrp")
 def test_compliance_hsrp_already_compliant(
-        mock_build_hsrp, mock_check_hsrp, mock_sesh, mock_context, mock_device_result, mock_log
+        mock_check_hsrp, mock_build_hsrp, mock_sesh, mock_context, mock_device_result, mock_log
 ):
     mock_build_hsrp.return_value = {}
     mock_check_hsrp.return_value = (True, [])
@@ -74,23 +74,21 @@ def test_compliance_hsrp_already_compliant(
     mock_log.info.assert_called()
     mock_log.warning.assert_not_called()
 
-
+@patch("src.compliance.routing.hsrp.compliance.collect_netconf_state")
 @patch("src.compliance.routing.hsrp.compliance.configure_hsrp")
 @patch("src.compliance.routing.hsrp.compliance.build_hsrp")
 @patch("src.compliance.routing.hsrp.compliance.check_hsrp")
 def test_compliance_hsrp_non_compliant_and_config_successful(
-        mock_check_hsrp, mock_build_hsrp, mock_configure_hsrp, mock_sesh,
+        mock_check_hsrp, mock_build_hsrp, mock_configure_hsrp, mock_collect_netconf_state, mock_sesh,
         mock_context, mock_device_result, mock_log
 ):
     mock_build_hsrp.return_value = {}
-    mock_check_hsrp.return_value = (False, ["(HSRP) Mismatched Virtual IP"],
-                                    True, []
-                                    )
+    mock_check_hsrp.side_effect = [(False, ["(HSRP) Mismatched Virtual IP"]), (True, [])]
     mock_configure_hsrp.return_value = {
         "status": "SUCCESS",
         "summary": "HSRP Configuration Successful"
     }
-
+    mock_collect_netconf_state.return_value = {}
     result = compliance_hsrp(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )

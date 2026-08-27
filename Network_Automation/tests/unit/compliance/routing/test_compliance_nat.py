@@ -84,25 +84,29 @@ def test_compliance_nat_already_compliant(
         "NAT Configuration Already Compliant" in r for r in result["actions_taken"]
     )
 
-
+@patch("src.compliance.routing.nat.compliance.collect_netconf_state")
 @patch("src.compliance.routing.nat.compliance.configure_nat")
 @patch("src.compliance.routing.nat.compliance.build_nat")
 @patch("src.compliance.routing.nat.compliance.check_nat")
 def test_compliance_nat_non_compliant_config_successful(
-    mock_configure_nat,
     mock_check_nat,
     mock_build_nat,
+    mock_configure_nat,
+    mock_collect_netconf_state,
     mock_sesh,
     mock_context,
     mock_device_result,
     mock_log,
 ):
     mock_build_nat.return_value = {}
-    mock_check_nat.return_value = (False, ["(NAT STATIC) Missing Static Configuration"])
+    mock_check_nat.side_effect = [(False, ["(NAT STATIC) Missing Static Configuration"]), 
+                                  (True, [])
+                                  ]
     mock_configure_nat.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "(NAT) Static Mapping Configuration Successful",
     }
+    mock_collect_netconf_state.return_value = {}
 
     result = compliance_nat(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
@@ -125,9 +129,9 @@ def test_compliance_nat_non_compliant_config_successful(
 @patch("src.compliance.routing.nat.compliance.build_nat")
 @patch("src.compliance.routing.nat.compliance.check_nat")
 def test_compliance_nat_config_failed(
-    mock_configure_nat,
     mock_check_nat,
     mock_build_nat,
+    mock_configure_nat,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -162,9 +166,9 @@ def test_compliance_nat_config_failed(
 @patch("src.compliance.routing.nat.compliance.build_nat")
 @patch("src.compliance.routing.nat.compliance.check_nat")
 def test_compliance_nat_dry_run(
-    mock_configure_nat,
-    mock_build_nat,
     mock_check_nat,
+    mock_build_nat,
+    mock_configure_nat,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -192,10 +196,10 @@ def test_compliance_nat_dry_run(
 @patch("src.compliance.routing.nat.compliance.build_nat")
 @patch("src.compliance.routing.nat.compliance.check_nat")
 def test_compliance_nat_post_validation_successful(
-    mock_collect_netconf_state,
-    mock_configure_nat,
-    mock_build_nat,
     mock_check_nat,
+    mock_build_nat,
+    mock_configure_nat,
+    mock_collect_netconf_state,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -236,10 +240,10 @@ def test_compliance_nat_post_validation_successful(
 @patch("src.compliance.routing.nat.compliance.build_nat")
 @patch("src.compliance.routing.nat.compliance.check_nat")
 def test_compliance_nat_post_validation_failed(
-    mock_collect_netconf_state,
-    mock_configure_nat,
-    mock_build_nat,
     mock_check_nat,
+    mock_build_nat,
+    mock_configure_nat,
+    mock_collect_netconf_state,
     mock_sesh,
     mock_context,
     mock_device_result,

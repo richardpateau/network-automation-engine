@@ -1,8 +1,8 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.dai import build_dai
-from src.collectors.cli import collect_device_state
-from src.compliance.dai_checks import check_dai
-from src.remediation.dai import configure_dai
+from src.collectors.cli.collector import collect_device_state
+from src.compliance.security.dai.check import check_dai
+from src.collectors.cli.builders import build_dai
+from src.remediation.security.dai import configure_dai
 from src.core.settings import DRY_RUN
 
 

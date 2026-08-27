@@ -1,7 +1,6 @@
 from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
-
 def configure_psecurity(conn, ps_data, log): 
 	interfaces = ps_data.get("interfaces", {})
 	ps_log = " | ".join(

@@ -1,12 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.restconf import collect_restconf_state
+from src.collectors.restconf.collector import collect_restconf_state
 from src.remediation.routing.ospf import configure_ospf
-from src.compliance.routing.ospf_helpers import (
-    build_ospf,
-    check_ospf,
-)
-from config import DRY_RUN
-
+from src.collectors.restconf.builders import build_ospf
+from src.compliance.routing.ospf.check import check_ospf
+from src.core.settings import DRY_RUN
 
 def compliance_ospf(sesh, device_ip, context, device_state, device_result, log):
     exp_ospf = context.get("ospf", [])
@@ -86,7 +83,7 @@ def compliance_ospf(sesh, device_ip, context, device_state, device_result, log):
             process_id = ospf_data.get("process_id", "")
             router_id = ospf_data.get("router_id", "")
             interfaces = ospf_data.get("interfaces", [])
-            interface = [i.get("name") for i in interfaces]
+            interface = [i for i in interfaces]
             ok, failures = check_ospf(ospf_data, new_ospf_state)
 
             log_extra = {

@@ -141,7 +141,7 @@ def test_check_dai_actaul_dai_extra_vlans():
 	ok, failures = check_dai(expected, actual)
 	assert ok is False 
 	assert any("(DAI) Drift: Extra VLAN(s) Found" in f for f in failures)
-	assert any("[20, 30, 30]" in f for f in failures)
+	assert any("VLAN: [20, 30, 40]" in f for f in failures)
 
 def test_check_dai_actaul_dai_log_buffer_enabled():
 	expected =  {

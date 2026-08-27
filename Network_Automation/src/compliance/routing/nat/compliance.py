@@ -1,11 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.netconf import collect_netconf_state
+from src.collectors.netconf.collector import collect_netconf_state
 from src.remediation.routing.nat import configure_nat
-from src.compliance.routing.nat_helpers import (
-    build_nat,
-    check_nat,
-)
-from config import DRY_RUN
+from src.compliance.routing.nat.check import check_nat
+from src.collectors.netconf.builders import build_nat
+from src.core.settings import DRY_RUN
 
 
 def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
@@ -89,18 +87,18 @@ def compliance_nat(sesh, device_ip, context, device_state, device_result, log):
                 device_result["actions_taken"].append(
                     f"[DRY_RUN] Would Configure NAT | {summary_str}"
                 )
-                continue
-            result = configure_nat(sesh, exp_nat, log)
-            summary = result.get("summary")
-            if summary:
-                device_result["actions_taken"].append(summary)
-            if result.get("status") == OperationalStatus.SUCCESS.value:
-                nat_updated = True
             else:
-                device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-                device_result["critical_issues"].append(
-                    f"Failed To Remediate NAT | {summary_str}"
-                )
+                result = configure_nat(sesh, exp_nat, log)
+                summary = result.get("summary")
+                if summary:
+                    device_result["actions_taken"].append(summary)
+                if result.get("status") == OperationalStatus.SUCCESS.value:
+                    nat_updated = True
+                else:
+                    device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+                    device_result["critical_issues"].append(
+                        f"Failed To Remediate NAT | {summary_str}"
+                    )
 
     if nat_updated and not DRY_RUN:
         new_state = collect_netconf_state(sesh, log)

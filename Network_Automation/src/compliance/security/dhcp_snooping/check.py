@@ -48,8 +48,8 @@ def check_snooping(expected_snooping, actual_config):
                 )
     if actual_config.get("option82") != expected_snooping.get("option82"):
         failures.append(
-                f"(DHCP Snooping) Mismatched Option 82 Config | "
-                f"Expected: {int_value.get('option82')} | "
-                f"Actual: {actual.get('option82')}"
+                "(DHCP Snooping) Mismatched Option 82 Configuration | "
+                f"Expected: {expected_snooping.get('option82')} | "
+                f"Actual: {actual_config.get('option82')}"
             )
     return len(failures) == 0, failures

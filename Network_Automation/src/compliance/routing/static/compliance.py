@@ -1,11 +1,10 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.netconf import collect_netconf_state
-from src.remediation.routing.static_routes import configure_static
-from src.compliance.routing.static_helpers import (
-    build_static,
-    check_static,
-)
-from config import DRY_RUN
+from src.collectors.netconf.collector import collect_netconf_state
+from src.remediation.routing.static import configure_static
+from src.collectors.netconf.builders import build_static
+from src.compliance.routing.static.check import check_static
+from src.core.settings import DRY_RUN
+
 
 
 def compliance_static(sesh, device_ip, context, device_state, device_result, log):

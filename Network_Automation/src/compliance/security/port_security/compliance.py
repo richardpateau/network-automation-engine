@@ -1,10 +1,10 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.port_security import build_port_security
-from src.collectors.cli import collect_device_state
-from src.compliance.port_security_checks import check_port_security
-from src.remediation.port_security import configure_port_security
+from src.collectors.cli.builders import build_port_security
+from src.collectors.cli.collector import collect_device_state
+from src.compliance.security.port_security.check import check_port_security
+from src.remediation.security.port_security import configure_psecurity
 from src.core.settings import DRY_RUN
-
+from src.utils.helpers import safe_int
 
 def compliance_port_security(
     sesh, device_ip, context, device_state, device_result, log
@@ -78,7 +78,7 @@ def compliance_port_security(
                     f"[DRY_RUN] Would Configure Port Security | {ps_str}"
                 )
             else:
-                result = configure_port_security(sesh, exp_ps, log)
+                result = configure_psecurity(sesh, exp_ps, log)
                 summary = result.get("summary")
 
                 if summary:

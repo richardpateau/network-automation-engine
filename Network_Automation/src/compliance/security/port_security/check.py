@@ -14,7 +14,7 @@ def check_port_security(expected_psecurity, actual_config):
         actual = act_psecurity.get(interface)
         if not actual:
             failures.append(
-                f"(Port Security) Interface Not Configured with Port Security | "
+                f"(Port Security) Expected Interface Not Configured with Port Security | "
                 f"Interface: {interface}"
             )
             continue

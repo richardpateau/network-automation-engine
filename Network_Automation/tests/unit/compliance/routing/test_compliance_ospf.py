@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from src.compliance.routing.ospf import compliance_ospf
+from src.compliance.routing.ospf.compliance import compliance_ospf
 from src.core.enums import OperationalStatus
 
 
@@ -46,12 +46,12 @@ def mock_context(exp_ospf):
 @patch("src.compliance.routing.ospf.compliance.check_ospf")
 @patch("src.compliance.routing.ospf.compliance.build_ospf")
 def test_compliance_ospf_already_compliant(
-    mock_build_ospf,
-    mock_check_ospf,
-    mock_sesh,
-    mock_context,
-    mock_device_result,
-    mock_log,
+        mock_build_ospf,
+        mock_check_ospf,
+        mock_sesh,
+        mock_context,
+        mock_device_result,
+        mock_log,
 ):
     mock_build_ospf.return_value = {}
     mock_check_ospf.return_value = (True, [])
@@ -65,26 +65,27 @@ def test_compliance_ospf_already_compliant(
     assert result["initial_issues"] == []
     assert any("OSPF Already Compliant" in r for r in result["actions_taken"])
 
-
+@patch("src.compliance.routing.ospf.compliance.collect_restconf_state")
 @patch("src.compliance.routing.ospf.compliance.configure_ospf")
 @patch("src.compliance.routing.ospf.compliance.check_ospf")
 @patch("src.compliance.routing.ospf.compliance.build_ospf")
 def test_compliance_ospf_non_compliant_and_config_successful(
-    mock_configure_ospf,
-    mock_build_ospf,
-    mock_check_ospf,
-    mock_sesh,
-    mock_context,
-    mock_device_result,
-    mock_log,
+        mock_build_ospf,
+        mock_check_ospf, 
+        mock_configure_ospf,
+        mock_collect_restconf_state,
+        mock_sesh,
+        mock_context,
+        mock_device_result,
+        mock_log,
 ):
     mock_build_ospf.return_value = {}
-    mock_check_ospf.return_value = (False, ["(OSPF) Mismatched Router ID"])
+    mock_check_ospf.side_effect = [(False, ["(OSPF) Mismatched Router ID"]), (True, [])]
     mock_configure_ospf.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "OSPF Configuration Successful",
     }
-
+    mock_collect_restconf_state.return_value = {}
     result = compliance_ospf(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
@@ -95,18 +96,19 @@ def test_compliance_ospf_non_compliant_and_config_successful(
     assert any("OSPF Configuration Successful" in r for r in result["actions_taken"])
     assert result["status"] == OperationalStatus.SUCCESS.value
 
-
+@patch("src.compliance.routing.ospf.compliance.collect_restconf_state")
 @patch("src.compliance.routing.ospf.compliance.configure_ospf")
 @patch("src.compliance.routing.ospf.compliance.check_ospf")
 @patch("src.compliance.routing.ospf.compliance.build_ospf")
 def test_compliance_ospf_config_failed(
-    mock_configure_ospf,
-    mock_build_ospf,
-    mock_check_ospf,
-    mock_sesh,
-    mock_context,
-    mock_device_result,
-    mock_log,
+        mock_build_ospf,
+        mock_check_ospf, 
+        mock_configure_ospf,
+        mock_collect_restconf_state,
+        mock_sesh,
+        mock_context,
+        mock_device_result,
+        mock_log,
 ):
     mock_build_ospf.return_value = {}
     mock_check_ospf.return_value = (False, ["(OSPF) Mismatched Router ID"])
@@ -118,7 +120,7 @@ def test_compliance_ospf_config_failed(
     result = compliance_ospf(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
-
+    mock_collect_restconf_state.return_value = {}
     mock_log.warning.assert_called_once()
     assert any("(OSPF) Mismatched Router ID" in r for r in result["initial_issues"])
     assert any("Failed to Configure OSPF" in r for r in result["actions_taken"])
@@ -131,13 +133,13 @@ def test_compliance_ospf_config_failed(
 @patch("src.compliance.routing.ospf.compliance.check_ospf")
 @patch("src.compliance.routing.ospf.compliance.build_ospf")
 def test_compliance_ospf_dry_run(
-    mock_configure_ospf,
-    mock_build_ospf,
-    mock_check_ospf,
-    mock_sesh,
-    mock_context,
-    mock_device_result,
-    mock_log,
+        mock_build_ospf,
+        mock_check_ospf, 
+        mock_configure_ospf,
+        mock_sesh,
+        mock_context,
+        mock_device_result,
+        mock_log,
 ):
     mock_build_ospf.return_value = {}
     mock_check_ospf.return_value = (False, ["(OSPF) Mismatched Router ID"])
@@ -147,11 +149,10 @@ def test_compliance_ospf_dry_run(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
 
-
     mock_log.warning.assert_called_once()
     mock_configure_ospf.assert_not_called()
     assert any("(OSPF) Mismatched Router ID" in r for r in result["initial_issues"])
-    assert any("[DRY_RUN] Would Configure OSPF" in r for r in result["actions_taken"] )
+    assert any("[DRY_RUN] Would Configure OSPF" in r for r in result["actions_taken"])
 
 
 @patch("src.compliance.routing.ospf.compliance.collect_restconf_state")
@@ -159,14 +160,14 @@ def test_compliance_ospf_dry_run(
 @patch("src.compliance.routing.ospf.compliance.check_ospf")
 @patch("src.compliance.routing.ospf.compliance.build_ospf")
 def test_compliance_ospf_post_validation_successful(
-    mock_collect_restconf_state,
-    mock_configure_ospf,
-    mock_build_ospf,
-    mock_check_ospf,
-    mock_sesh,
-    mock_context,
-    mock_device_result,
-    mock_log,
+        mock_build_ospf,
+        mock_check_ospf, 
+        mock_configure_ospf,
+        mock_collect_restconf_state,
+        mock_sesh,
+        mock_context,
+        mock_device_result,
+        mock_log,
 ):
     mock_build_ospf.return_value = {}
     mock_check_ospf.side_effect = [(False, ["(OSPF) Mismatched Router ID"]), (True, [])]
@@ -180,7 +181,9 @@ def test_compliance_ospf_post_validation_successful(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
 
-	mock_collect_restconf_state.assert_called_once()
+    mock_collect_restconf_state.assert_called_once()
+
+
     mock_log.info.assert_called_once()
     mock_log.error.assert_not_called()
     mock_log.warning.assert_called_once()
@@ -198,14 +201,14 @@ def test_compliance_ospf_post_validation_successful(
 @patch("src.compliance.routing.ospf.compliance.check_ospf")
 @patch("src.compliance.routing.ospf.compliance.build_ospf")
 def test_compliance_ospf_post_validation_failed(
-    mock_collect_restconf_state,
-    mock_configure_ospf,
-    mock_build_ospf,
-    mock_check_ospf,
-    mock_sesh,
-    mock_context,
-    mock_device_result,
-    mock_log,
+        mock_build_ospf,
+        mock_check_ospf, 
+        mock_configure_ospf,
+        mock_collect_restconf_state,
+        mock_sesh,
+        mock_context,
+        mock_device_result,
+        mock_log
 ):
     mock_build_ospf.return_value = {}
     mock_check_ospf.side_effect = [
@@ -221,16 +224,17 @@ def test_compliance_ospf_post_validation_failed(
     result = compliance_ospf(
         mock_sesh, "192.168.1.1", mock_context, {}, mock_device_result, mock_log
     )
-	
-	mock_log.error.assert_called_once()
+
+    mock_log.error.assert_called_once()
+
+
     mock_log.info.assert_not_called()
     mock_collect_restconf_state.assert_called_once()
-	mock_log.warning.assert_called_once()
+    mock_log.warning.assert_called_once()
     assert any("(OSPF) Mismatched Router ID" in r for r in result["initial_issues"])
     assert any("OSPF Successfully Configured" in r for r in result["actions_taken"])
     assert result["status"] == OperationalStatus.FAILED_VALIDATION.value
     assert any("(OSPF) Mismatched Router ID" in r for r in result["critical_issues"])
-
 
 
 def test_compliance_ospf_empty(mock_sesh, mock_device_result, mock_log):

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from src.compliance.security.dai import compliance_dai
+from src.compliance.security.dai.compliance import compliance_dai
 from src.core.enums import OperationalStatus
 
 
@@ -69,7 +69,7 @@ def test_compliance_dai_already_compliant(
     )
     assert result["initial_issues"] == []
 
-
+@patch("src.compliance.security.dai.compliance.collect_device_state")
 @patch("src.compliance.security.dai.compliance.configure_dai")
 @patch("src.compliance.security.dai.compliance.build_dai")
 @patch("src.compliance.security.dai.compliance.check_dai")
@@ -77,18 +77,19 @@ def test_compliance_dai_non_compliant_config_successful(
     mock_check_dai,
     mock_build_dai,
     mock_configure_dai,
+    mock_collect_device_state,
     mock_sesh,
     mock_context,
     mock_device_result,
     mock_log,
 ):
     mock_build_dai.return_value = {}
-    mock_check_dai.return_value = (False, ["(DAI) Missing VLAN(s)"])
+    mock_check_dai.side_effect = [(False, ["(DAI) Missing VLAN(s)"]),(True, [])]
     mock_configure_dai.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "DAI Configuration Successfully Configured",
     }
-
+    mock_collect_device_state.return_value = {}
     result = compliance_dai(
         mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
     )
@@ -165,10 +166,10 @@ def test_compliance_dai_dry_run(
 @patch("src.compliance.security.dai.compliance.build_dai")
 @patch("src.compliance.security.dai.compliance.check_dai")
 def test_compliance_dai_post_validation_successful(
-    mock_collect_device_state,
     mock_check_dai,
     mock_build_dai,
     mock_configure_dai,
+    mock_collect_device_state,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -205,10 +206,10 @@ def test_compliance_dai_post_validation_successful(
 @patch("src.compliance.security.dai.compliance.build_dai")
 @patch("src.compliance.security.dai.compliance.check_dai")
 def test_compliance_dai_post_validation_failed(
-    mock_collect_device_state,
     mock_check_dai,
     mock_build_dai,
     mock_configure_dai,
+    mock_collect_device_state,
     mock_sesh,
     mock_context,
     mock_device_result,

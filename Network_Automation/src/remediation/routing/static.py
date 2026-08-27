@@ -2,6 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
+
 def configure_static(session, device_ip, static_data, log):
     static = static_data.get("static", [])
     static_log = " | ".join(
@@ -29,41 +30,41 @@ def configure_static(session, device_ip, static_data, log):
                     f"{static_log} | Transport: NETCONF"
                 )
             }
+        else:
+            for s in static:
+                template = templates.get(s.get("type"))
+                if not template:
+                    continue
+                commands = template.render(
+                    static=s
+                )
 
-        for s in static:
-            template = templates.get(s.get("type"))
-            if not template:
-                continue
-            commands = template.render(
-                static=s
+                session.edit_config(
+                    target="running",
+                    config=commands
+                )
+
+            log.info(
+                "static_config",
+                extra={
+                    "device_ip": device_ip,
+                    "component": "static_automation",
+                    "event_type": "static_config",
+                    "status": StepStatus.SUCCESS.value,
+                    "message": (
+                        f"Static Routes Configuration Successful | "
+                        f"{static_log} | Transport: NETCONF"
+                    )
+                }
+
             )
-
-	        session.edit_config(
-	            target="running",
-	            config=commands
-	        )
-
-        log.info(
-            "static_config",
-            extra={
-                "device_ip": device_ip,
-                "component": "static_automation",
-                "event_type": "static_config",
-                "status": StepStatus.SUCCESS.value,
-                "message": (
-                    f"Static Routes Configuration Successful | "
+            return {
+                "status": OperationalStatus.SUCCESS.value,
+                "summary": (
+                    f"Static Route Configuration Successful | "
                     f"{static_log} | Transport: NETCONF"
                 )
             }
-
-        )
-        return {
-            "status": OperationalStatus.SUCCESS.value,
-            "summary": (
-                f"Static Route Configuration Successful | "
-                f"{static_log} | Transport: NETCONF"
-            )
-        }
 
     except Exception as e:
         log.error(
@@ -81,12 +82,12 @@ def configure_static(session, device_ip, static_data, log):
             }
 
         )
-        return {
-            "status": OperationalStatus.ERROR.value,
-            "summary": (
-                f"Try/Exception Error | Static Route Configuration | "
-                f"{static_log} | Transport: NETCONF | "
-                f"Error: {str(e)}"
-            ),
-            "error": str(e)
-        }
+    return {
+        "status": OperationalStatus.ERROR.value,
+        "summary": (
+            f"Try/Exception Error | Static Route Configuration | "
+            f"{static_log} | Transport: NETCONF | "
+            f"Error: {str(e)}"
+        ),
+        "error": str(e)
+    }
