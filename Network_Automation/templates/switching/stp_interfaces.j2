@@ -1,0 +1,21 @@
+interface {{ interface }}
+
+{% if stp_int.get("portfast") %}
+ spanning-tree portfast
+{% endif %}
+
+{% if stp_int.get("bpdu_guard") %}
+ spanning-tree bpduguard enable
+{% endif %}
+
+{% if stp_int.get("root_guard") %}
+ spanning-tree guard root
+{% endif %}
+
+{% if stp_int.get("loop_guard") %}
+ spanning-tree guard loop
+{% endif %}
+
+{% if stp_int.get("bpdu_filter") %}
+ spanning-tree bpdufilter enable
+{% endif %}

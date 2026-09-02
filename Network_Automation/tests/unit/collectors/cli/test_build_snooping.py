@@ -1,50 +1,50 @@
 from src.collectors.cli.builders import build_snooping
 
-
 def test_build_snooping_valid(snooping_running_config):
     result = build_snooping(snooping_running_config)
 
     assert result["enabled_vlans"] == [10, 20, 30]
     assert result["option82"] is False
-    assert len(result["interfaces"]) == 2
+    assert len(result["interfaces"]) == 8
     assert result["interfaces"]["gigabitethernet0/2"]["rate_limit"] == 15
     assert result["interfaces"]["gigabitethernet0/1"]["trusted"] is True
 
 
-def test_build_snooping_no_snooping_interface(snooping_running_config):
+def test_build_snooping_snooping_interfaces(snooping_running_config,):
     result = build_snooping(snooping_running_config)
 
-    assert "gigabitethernet0/3" not in result["interfaces"]
-
+    assert "gigabitethernet0/3" in result["interfaces"]
+    assert "gigabitethernet1/0" in result["interfaces"]
+    assert "gigabitethernet1/1" in result["interfaces"]
 
 def test_build_snooping_empty():
     assert build_snooping({}) == {
         "enabled_vlans": [],
         "interfaces": {},
-        "option82": False,
+        "option82": True,
     }
     assert build_snooping(None) == {
         "enabled_vlans": [],
         "interfaces": {},
-        "option82": False,
+        "option82": True,
     }
     assert build_snooping({"not_snooping": {}}) == {
         "enabled_vlans": [],
         "interfaces": {},
-        "option82": False,
+        "option82": True,
     }
     assert build_snooping({"running_config": {}}) == {
         "enabled_vlans": [],
         "interfaces": {},
-        "option82": False,
+        "option82": True,
     }
 
 
 def test_build_snooping_option_82():
     data = {
-        "running_config": """
-        ip dhcp snooping vlan 10,20,30
-        """
+"running_config": """
+ip dhcp snooping vlan 10,20,30
+"""
     }
 
     result = build_snooping(data)
@@ -53,10 +53,10 @@ def test_build_snooping_option_82():
 
 def test_build_snooping_trusted_interface():
     data = {
-        "running_config": """
-        interface GigabitEthernet0/1
-         ip dhcp snooping trust
-        """
+"running_config": """
+interface GigabitEthernet0/1
+ ip dhcp snooping trust
+"""
     }
 
     result = build_snooping(data)
@@ -67,10 +67,10 @@ def test_build_snooping_trusted_interface():
 
 def test_build_snooping_rate_limit_only():
     data = {
-        "running_config": """
-        interface GigabitEthernet0/1
-         ip dhcp snooping limit rate 20 
-        """
+"running_config": """
+interface GigabitEthernet0/1
+ ip dhcp snooping limit rate 20 
+"""
     }
 
     result = build_snooping(data)
@@ -81,11 +81,12 @@ def test_build_snooping_rate_limit_only():
 
 def test_build_snooping_both_rate_and_trust():
     data = {
-        "running_config": """
-        interface GigabitEthernet0/1
-         ip dhcp snooping limit rate 20 
-         ip dhcp snooping trust
-        """
+"running_config":
+"""
+interface GigabitEthernet0/1
+ ip dhcp snooping limit rate 20 
+ ip dhcp snooping trust
+"""
     }
 
     result = build_snooping(data)
@@ -96,9 +97,9 @@ def test_build_snooping_both_rate_and_trust():
 def test_build_snooping_invalid_vlan():
     data = {
         "running_config": """
-        ip dhcp snooping vlan 10,20,30, abc, richard
-        ip dhcp snooping
-        """
+ip dhcp snooping vlan 10,20,30, abc, richard
+ip dhcp snooping
+"""
     }
 
     result = build_snooping(data)

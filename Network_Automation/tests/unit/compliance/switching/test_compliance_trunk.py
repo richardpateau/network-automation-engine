@@ -56,6 +56,7 @@ def test_compliance_trunk_already_compliant(
     assert any("Trunk Interface Already Compliant" in r for r in result["actions_taken"])
     assert result["initial_issues"] == []
 
+@patch("src.compliance.switching.trunk.compliance.collect_device_state")
 @patch("src.compliance.switching.trunk.compliance.configure_trunk")
 @patch("src.compliance.switching.trunk.compliance.build_trunk")
 @patch("src.compliance.switching.trunk.compliance.check_trunk")
@@ -65,7 +66,7 @@ def test_compliance_trunk_non_complaint_config_succesful(
     ): 
     
     mock_build_trunk.return_value = {}
-    mock_check_trunk.return_value = (False, ["(Trunk) Mismatch Found - Allowed VLANs"])
+    mock_check_trunk.side_effect = [(False, ["(Trunk) Mismatch Found - Allowed VLANs"]),(True, [])]
     mock_configure_trunk.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "Trunk Port Configuration Successful"

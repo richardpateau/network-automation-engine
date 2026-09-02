@@ -5,7 +5,6 @@ from src.collectors.cli.builders import build_dai
 from src.remediation.security.dai import configure_dai
 from src.core.settings import DRY_RUN
 
-
 def compliance_dai(sesh, device_ip, context, device_state, device_result, log):
     exp_dai = context.get("dai", {})
     act_dai = build_dai(device_state)

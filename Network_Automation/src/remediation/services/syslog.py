@@ -14,10 +14,8 @@ def configure_syslog_netmiko(conn, syslog_data, log):
 			for h in hosts
 		)
 
-	try: 
-		template_syslog = template_env.get_template("SYSLOG_NETMIKO.j2")
-
-		if DRY_RUN: 
+	try:
+		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
 				"summary": (
@@ -28,6 +26,8 @@ def configure_syslog_netmiko(conn, syslog_data, log):
 						f"Severity: {trap_level} | Transport: NETMIKO"
 				)
 			}
+
+		template_syslog = template_env.get_template("services/syslog_netmiko.j2")
 
 		commands_syslog = template_syslog.render(
 				facility=facility,
@@ -124,8 +124,8 @@ def configure_syslog_netconf(session, syslog_data, log):
 		)
 
 	try: 
-		template_timestamps = template_env.get_template("SYS_Time_NC.j2")
-		template_syslog = template_env.get_template("SYSLOG_NC.j2")
+		template_timestamps = template_env.get_template("services/service_timestamps_netconf.j2")
+		template_syslog = template_env.get_template("services/syslog_netconf.j2")
 
 		if DRY_RUN: 
 			return {

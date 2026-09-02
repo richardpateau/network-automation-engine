@@ -1,0 +1,37 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <policy>
+        {% for c in class_maps %}
+        <class-map xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-policy">
+            <name>{{ c.name }}</name>
+            <prematch>{{ c.match_type }}</prematch>
+            <match>
+                <protocol>
+                    <protocols-list>
+                        <protocols>{{ c.protocol }}</protocols>
+                    </protocols-list>
+                </protocol>
+            </match>
+        </class-map>
+        {% endfor %}
+        <policy-map xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-policy">
+            <name>{{ policy_name }}</name>
+            {% for c in class_maps %}
+            <class>
+                <name>{{ c.name }}</name>
+                <action-list>
+                    <action-type>{{ c.action_type }}</action-type>
+                    {% if c.action_type == "priority" %}
+                    <priority>
+                        <percent>{{ c.priority }}</percent>
+                    </priority>
+                    {% elif c.action_type == "bandwidth" %}
+                    <bandwidth>
+                        <percent>{{ c.bandwidth }}</percent>
+                    </bandwidth>
+                    {% endif %}
+                </action-list>
+            </class>
+            {% endfor %}
+        </policy-map>
+    </policy>
+</native>

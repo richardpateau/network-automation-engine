@@ -1,0 +1,19 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <interface>
+        <{{ interface_type }}>
+            <name>{{ interface_num }}</name>
+            <ip>
+                {% if role == "outside" %}
+                <nat xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-nat">
+                    <outside/>
+                </nat>
+                {% endif %}
+                {% if role == "inside" %}
+                <nat xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-nat">
+                    <inside/>
+                </nat>
+                {% endif %}
+            </ip>
+        </{{ interface_type }}>
+    </interface>
+</native>

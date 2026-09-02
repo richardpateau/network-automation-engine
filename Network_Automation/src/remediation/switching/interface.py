@@ -11,7 +11,7 @@ def configure_interface(conn, interface_data, log):
 	else: 
 		state = "shutdown"
 	try: 
-		template = template_env.get_template("interface.j2")
+		template = template_env.get_template("switching/interface.j2")
 		commands = template.render(
 				interface=interface,
 				description=description,

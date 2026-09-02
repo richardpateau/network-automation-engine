@@ -52,10 +52,10 @@ def configure_nat(session, nat_data, log):
         log_parts.append(static_log)
     nat_log = " | ".join(log_parts) if log_parts else "No NAT Configuration"
     try:
-        template_dynamic = template_env.get_template("NAT_POOL_NC.j2")
-        template_pat = template_env.get_template("PAT_NC.j2")
-        template_static = template_env.get_template("NAT_STATIC_NC.j2")
-        template_interface = template_env.get_template("NAT_INT_NC.j2")
+        template_dynamic = template_env.get_template("routing/nat_dynamic_netconf.j2")
+        template_pat = template_env.get_template("routing/nat_pat_netconf.j2")
+        template_static = template_env.get_template("routing/nat_static_netconf.j2")
+        template_interface = template_env.get_template("routing/nat_interface_netconf.j2")
 
         all_commands = []
         interface_commands = []

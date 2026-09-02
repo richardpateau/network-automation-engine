@@ -55,7 +55,7 @@ def test_configure_syslog_netmiko_successful(mock_conn_netmiko, syslog_data, moc
 
 @patch("src.remediation.services.syslog.DRY_RUN", False)
 def test_configure_syslog_netmiko_failed(mock_conn_netmiko, syslog_data, mock_log):
-	mock_conn.send_config_set.side_effect = Exception("Connection lost")
+	mock_conn_netmiko.send_config_set.side_effect = Exception("Connection lost")
 	result = configure_syslog_netmiko(mock_conn_netmiko, syslog_data, mock_log)
 
 	assert result["status"] == OperationalStatus.ERROR.value 

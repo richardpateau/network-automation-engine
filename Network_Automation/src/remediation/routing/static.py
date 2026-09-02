@@ -2,19 +2,17 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-
-def configure_static(session, device_ip, static_data, log):
-    static = static_data.get("static", [])
+def configure_static(session, static_data, log):
     static_log = " | ".join(
         f"Network Address: {s.get('network_address')} | Mask: {s.get('mask')} | "
         f"AD: {s.get('AD', 'N/A')} | Exit Interface : {s.get('exit_interface', 'N/A')} | "
-        f"Next Hop IP: {s.get('next_hop', 'N/A')}"
-        for s in static
+        f"Next Hop IP: {', '.join(s.get('next_hop', 'N/A'))}"
+        for s in static_data
     )
     try:
-        temp_recursive = template_env.get_template("RECURSIVE.j2")
-        temp_exit_int = template_env.get_template("EXIT_INT.j2")
-        temp_full = template_env.get_template("FULLY_SPECIFIC.j2")
+        temp_recursive = template_env.get_template("routing/static_recursive_netconf.j2")
+        temp_exit_int = template_env.get_template("routing/static_directly_connected_netconf.j2")
+        temp_full = template_env.get_template("routing/static_fully_specified_netconf.j2")
 
         templates = {
             "recursive": temp_recursive,
@@ -31,7 +29,7 @@ def configure_static(session, device_ip, static_data, log):
                 )
             }
         else:
-            for s in static:
+            for s in static_data:
                 template = templates.get(s.get("type"))
                 if not template:
                     continue
@@ -47,7 +45,7 @@ def configure_static(session, device_ip, static_data, log):
             log.info(
                 "static_config",
                 extra={
-                    "device_ip": device_ip,
+                    "session.device_ip": session.device_ip,
                     "component": "static_automation",
                     "event_type": "static_config",
                     "status": StepStatus.SUCCESS.value,
@@ -70,7 +68,7 @@ def configure_static(session, device_ip, static_data, log):
         log.error(
             "static_config",
             extra={
-                "device_ip": device_ip,
+                "session.device_ip": session.device_ip,
                 "component": "static_automation",
                 "event_type": "static_config",
                 "status": StepStatus.ERROR.value,
@@ -82,12 +80,12 @@ def configure_static(session, device_ip, static_data, log):
             }
 
         )
-    return {
-        "status": OperationalStatus.ERROR.value,
-        "summary": (
-            f"Try/Exception Error | Static Route Configuration | "
-            f"{static_log} | Transport: NETCONF | "
-            f"Error: {str(e)}"
-        ),
-        "error": str(e)
-    }
+        return {
+            "status": OperationalStatus.ERROR.value,
+            "summary": (
+                f"Try/Exception Error | Static Route Configuration | "
+                f"{static_log} | Transport: NETCONF | "
+                f"Error: {str(e)}"
+            ),
+            "error": str(e)
+        }

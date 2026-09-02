@@ -1,3 +1,4 @@
+from src.utils.helpers import normalize_to_list
 def check_qos(expected_qos, actual_config): 
 	failures = []
 	exp_policies = normalize_to_list(expected_qos.get("policies", []))
@@ -37,7 +38,7 @@ def check_qos(expected_qos, actual_config):
 					)
 		for exp_class in exp_classes: 
 			exp_name = exp_class.get("name", "")
-			actual = actual_by_name(exp_name)
+			actual = actual_by_name.get(exp_name)
 			if not actual:
 				failures.append(
 						f"(QOS) Missing Class Map | {exp_name}"

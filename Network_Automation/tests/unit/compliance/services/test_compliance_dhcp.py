@@ -80,7 +80,7 @@ def test_compliance_dhcp_already_compliant(
     )
     assert result["initial_issues"] == []
 
-
+@patch("src.compliance.services.dhcp.compliance.collect_netconf_state")
 @patch("src.compliance.services.dhcp.compliance.configure_dhcp")
 @patch("src.compliance.services.dhcp.compliance.build_dhcp")
 @patch("src.compliance.services.dhcp.compliance.check_dhcp")
@@ -88,18 +88,19 @@ def test_compliance_dhcp_non_compliant_config_successful(
     mock_check_dhcp,
     mock_build_dhcp,
     mock_configure_dhcp,
+    mock_collect_netconf_state,
     mock_sesh,
     mock_context,
     mock_device_result,
     mock_log,
 ):
     mock_build_dhcp.return_value = {}
-    mock_check_dhcp.return_value = (False, ["(DHCP) Mismatched Lease Duration"])
+    mock_check_dhcp.side_effect = [(False, ["(DHCP) Mismatched Lease Duration"]), (True, [])]
     mock_configure_dhcp.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "DHCP Successfully Configured",
     }
-
+    mock_collect_netconf_state.return_value = {}
     result = compliance_dhcp(
         mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
     )
@@ -239,7 +240,7 @@ def test_compliance_dhcp_post_validation_failed(
         "summary": "DHCP Successfully Configured",
     }
 
-    result = compliance_dhcp(mock_sesh, mock_context, {}, mock_device_result, mock_log)
+    result = compliance_dhcp(mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log)
 
     mock_log.warning.assert_called_once()
     mock_collect_netconf_state.assert_called_once()

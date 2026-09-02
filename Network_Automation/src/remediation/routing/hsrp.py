@@ -15,7 +15,7 @@ def configure_hsrp(session, hsrp_data, log):
 	preempt = hsrp_data.get("preempt", "")
 	router_vlan = hsrp_data.get("router_vlan", "")
 	try: 
-		template = template_env.get_template("HSRP_NETCONF.j2")
+		template = template_env.get_template("routing/hsrp_netconf.j2")
 		commands = template.render(
 				interface_type=interface_type,
 				int_num=int_num,

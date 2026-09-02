@@ -1,8 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cli import collect_device_state
+from src.collectors.cli.collector import collect_device_state
+from src.collectors.cli.builders import build_trunk
+from src.compliance.switching.trunk.check import check_trunk
 from src.remediation.switching.trunk import configure_trunk
-from src.compliance.switching.trunk_helpers import (build_trunk,check_trunk,)
-from config import DRY_RUN
+from src.core.settings import DRY_RUN
 
 def compliance_trunk(sesh, device_ip, context, device_state, device_result, log):
     exp_trunk = context.get("trunk_ports", [])

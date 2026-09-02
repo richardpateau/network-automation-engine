@@ -56,7 +56,7 @@ def test_configure_dhcp_successful(mock_session, dhcp_data, mock_log):
 	assert "users" in result["summary"]
 	assert "192.168.10.0" in result["summary"]
 	assert "10.10.10.5" in result["summary"]
-	mock_session.edit_config.
+	assert mock_session.edit_config.call_count == 3
 	mock_log.info.assert_called_once()
 
 @patch("src.remediation.services.dhcp.DRY_RUN", False) 

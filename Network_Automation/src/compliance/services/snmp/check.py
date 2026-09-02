@@ -1,4 +1,4 @@
-from src.utils import normalize_to_list
+from src.utils.helpers import normalize_to_list
 def check_snmp(expected_snmp, actual_config): 
 	failures = []
 	exp_communities = expected_snmp.get("communities", [])
@@ -45,7 +45,7 @@ def check_snmp(expected_snmp, actual_config):
 
 	for name, ip, version in extra: 
 		failures.append(
-				f"(SNMP) Extra SNMP Found | Name: {name} | IP: {ip} | "
+				f"(SNMP) Extra SNMP Host Found | Name: {name} | IP: {ip} | "
 				f"Version: {version}"
 			)
 	act_lookup = {(a.get("snmp_name")): a for a in act_hosts}
@@ -53,13 +53,13 @@ def check_snmp(expected_snmp, actual_config):
 		actual = act_lookup.get(e.get("snmp_name"))
 		if not actual: 
 			failures.append(
-					f"(SNMP) Community Name Not Found | Name: {e.get('snmp_name')}"
+					f"(SNMP) Missing SNMP Host | Name: {e.get('snmp_name')}"
 				)
 			continue
 		if actual.get("snmp_ip") != e.get("snmp_ip"): 
 			failures.append(
-					f"(SNMP) Mismatched SNMP IP Found | Name: {e.get('snmp_name')} | "
-					f"Expected IP: {e.get('snmp_ip')} | Actual: {actual.get('snmp_ip')}"
+					f"(SNMP) Mismatched SNMP Host IP | Name: {e.get('snmp_name')} | "
+					f"Expected: {e.get('snmp_ip')} | Actual: {actual.get('snmp_ip')}"
 				)
 		if actual.get("snmp_version") != e.get("snmp_version"): 
 			failures.append(
@@ -68,7 +68,7 @@ def check_snmp(expected_snmp, actual_config):
 				)
 	if expected_snmp.get("location") != actual_config.get("location"): 
 		failures.append(
-				f"(SNMP) SNMP Location Mismath | Expected: {expected_snmp.get('location')} | "
+				f"(SNMP) SNMP Location Mismatch | Expected: {expected_snmp.get('location')} | "
 				f"Actual: {actual_config.get('location')}" 
 			)
 	exp_traps = expected_snmp.get("traps", {})

@@ -1,8 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cli import collect_device_state
+from src.collectors.cli.collector import collect_device_state
+from src.collectors.cli.builders import build_access
+from src.compliance.switching.access.check import check_access
 from src.remediation.switching.access import configure_access
-from src.compliance.switching.access_helpers import (build_access,check_access,)
-from config import DRY_RUN
+from src.core.settings import DRY_RUN
 
 def compliance_access(sesh, device_ip, context, device_state, device_result, log):
     exp_access = context.get("access_ports", [])

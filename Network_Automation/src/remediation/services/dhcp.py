@@ -21,12 +21,8 @@ def configure_dhcp(session, dhcp_data, log):
 			f"Helper IP: {h.get('helper_ip')} | Interface: {h.get('interface_name')}"
 			for h in helper
 		)
-	try: 
-		template_excl = template_env.get_template("DHCP_EXCL_NC.j2")
-		template_help = template_env.get_template("DHCP_HELP_NC.j2")
-		template_pool = template_env.get_template("DHCP_POOL_NC.j2")
-
-		if DRY_RUN: 
+	try:
+		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
 				"summary": (
@@ -34,6 +30,10 @@ def configure_dhcp(session, dhcp_data, log):
 						f"{excluded_log} | {pool_log} | {helper_log}"
 				)
 			}
+		template_excl = template_env.get_template("services/dhcp_excluded_netconf.j2")
+		template_help = template_env.get_template("services/dhcp_helper_netconf.j2")
+		template_pool = template_env.get_template("services/dhcp_pool_netconf.j2")
+
 		if excluded_addresses:
 			commands = template_excl.render(excluded_addresses=excluded_addresses)
 			session.edit_config(

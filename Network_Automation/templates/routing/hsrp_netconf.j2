@@ -1,0 +1,35 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <interface>
+        <{{ interface_type }}>
+            <name>{{ int_num }}</name>
+            <standby>
+                <version>{{ version  }}</version>
+                <standby-list>
+                    <group-number>{{ group }}</group-number>
+                    <ip>
+                        <address>{{ vip }}</address>
+                    </ip>
+                    {% if preempt %}
+                    <preempt/>
+                    {% endif %}
+                    <priority>{{ priority }}</priority>
+                </standby-list>
+            </standby>
+        </{{ interface_type }}>
+    </interface>
+</native>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

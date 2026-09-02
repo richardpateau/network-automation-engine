@@ -1,0 +1,35 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <ip>
+       <dhcp>
+           {% for p in pools %}
+            <pool xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-dhcp">
+                <id>{{ p.pool_name }}</id>
+                {% if p.lease_days or p.lease_hours or p.lease_minutes %}
+                <lease>
+                    <lease-value>
+                        {% if p.lease_days %}
+                        <days>{{ p.lease_days }}</days>
+                            {% endif %}
+                        {% if p.lease_hours %}
+                        <hours>{{ p.lease_hours }}</hours>
+                        {% endif %}
+                        {% if p.lease_minutes %}
+                        <minutes>{{ p.lease_minutes }}</minutes>
+                        {% endif %}
+                    </lease-value>
+                </lease>
+                {% endif %}
+                <default-router>
+                    <default-router-list>{{ p.default_gateway }}</default-router-list>
+                </default-router>
+                <network>
+                    <primary-network>
+                        <number>{{ p.pool_ip }}</number>
+                        <mask>{{ p.mask }}</mask>
+                    </primary-network>
+                </network>
+            </pool>
+            {% endfor %}
+       </dhcp>
+    </ip>
+</native>

@@ -85,7 +85,7 @@ def port_security_running_config():
 @pytest.fixture
 def snooping_running_config():
     fixture_path = (
-            Path(__file__).parent / "fixtures" / "cli" / "running_config_snoopoing.txt"
+            Path(__file__).parent / "fixtures" / "cli" / "running_config_snooping.txt"
     )
 
     with open(fixture_path) as f:

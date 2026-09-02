@@ -1,6 +1,5 @@
 from src.collectors.cli.builders import build_snmp_netmiko
 
-
 def test_build_snmp_valid(snmp_running_config):
     result = build_snmp_netmiko(snmp_running_config)
 
@@ -45,7 +44,7 @@ interface GigabitEthernet0/0
 
 def test_build_snmp_lowercase(snmp_running_config):
     result = build_snmp_netmiko(snmp_running_config)
-
+    print(snmp_running_config)
     assert result["communities"][0]["permission"] == "ro"
     assert result["communities"][1]["permission"] == "rw"
 

@@ -1,13 +1,20 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cli import collect_device_state
-from src.remediation.switching.stp.global_config import configure_stp_global
-from src.compliance.switching.stp.helpers import build_stp_global, check_stp_global
-from src.remediation.switching.stp.interfaces import configure_stp_interfaces
-from src.compliance.switching.stp.helpers import (
+from src.collectors.cli.collector import collect_device_state
+
+from src.collectors.cli.builders import (
+    build_stp_global,
     build_stp_interfaces,
+)
+
+from src.compliance.switching.stp.check import (
+    check_stp_global,
     check_stp_interfaces,
 )
-from config import DRY_RUN
+
+from src.remediation.switching.stp import configure_stp_global
+from src.remediation.switching.stp import configure_stp_interfaces
+
+from src.core.settings import DRY_RUN
 
 
 def compliance_stp_global(sesh, device_ip, context, device_state, device_result, log):

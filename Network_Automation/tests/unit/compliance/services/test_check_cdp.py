@@ -50,7 +50,7 @@ def test_check_cdp_enabled_mismatch():
 		}
 	}
 
-	ok, failures = check_cdp(expected, actual)
+	ok,failures = check_cdp(expected, actual)
 	assert ok is False
 	assert any("(CDP) Operational State Mismatch" in f for f in failures)
 	assert any("Expected: True | Actual: False" in f for f in failures)
@@ -76,9 +76,9 @@ def test_check_cdp_timer_mismatch(timer):
 		}
 	}
 
-	ok, failures = check_cdp(expected, actual)
+	ok,failures = check_cdp(expected, actual)
 	assert ok is False
-	assert any("(CDP) Timer Mismath" in f for f in failures)
+	assert any("(CDP) Timer Mismatch" in f for f in failures)
 	assert any(f"Expected: 60 | Actual: {timer}" in f for f in failures)
 
 @pytest.mark.parametrize("holdtime", [100, 120, 200, 204, 240])

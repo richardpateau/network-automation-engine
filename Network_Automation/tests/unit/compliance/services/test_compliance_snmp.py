@@ -56,13 +56,13 @@ def patch_transports(transport):
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_already_compliant(
-		mock_sesh, mock_context, mock_device_result, mock_log
+		mock_sesh, mock_context, mock_device_result, mock_log, transport
 	):
 	
 	mock_sesh.transport = transport
 	transport_patch = patch_transports(transport)
 
-	with patch(transport_patch["build_snmp"]) as mock_build_snmp, \ 
+	with patch(transport_patch["build_snmp"]) as mock_build_snmp,\
 		 patch(transport_patch["check_snmp"]) as mock_check_snmp:
 
 		mock_build_snmp.return_value = {}
@@ -79,22 +79,24 @@ def test_compliance_snmp_already_compliant(
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_non_compliant_config_successful(
-		mock_sesh, mock_context, mock_device_result, mock_log
+		mock_sesh, mock_context, mock_device_result, mock_log, transport
 	):
 	
 	mock_sesh.transport = transport
 	transport_patch = patch_transports(transport)
 
-	with patch(transport_patch["configure_snmp"]) as mock_configure_snmp, \
-		 patch(transport_patch["build_snmp"]) as mock_build_snmp, \ 
+	with patch(transport_patch["collect_snmp_state"]) as mock_collect_snmp_state,\
+		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp,\
+		 patch(transport_patch["build_snmp"]) as mock_build_snmp,\
 		 patch(transport_patch["check_snmp"]) as mock_check_snmp:
 
 		mock_build_snmp.return_value = {}
-		mock_check_snmp.return_value = (False, ["(SNMP) Mismatched Community Permission"])
+		mock_check_snmp.side_effect = [(False, ["(SNMP) Mismatched Community Permission"]),(True, [])]
 		mock_configure_snmp.return_value = {
 			"status": OperationalStatus.SUCCESS.value, 
 			"summary": "SNMP Successfully Configured"
 		}
+		mock_collect_snmp_state.return_value = {}
 		result = compliance_snmp(
 				mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
 			)
@@ -106,14 +108,14 @@ def test_compliance_snmp_non_compliant_config_successful(
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_non_compliant_config_failed(
-		mock_sesh, mock_context, mock_device_result, mock_log
+		mock_sesh, mock_context, mock_device_result, mock_log, transport
 	):
 	
 	mock_sesh.transport = transport
 	transport_patch = patch_transports(transport)
 
-	with patch(transport_patch["configure_snmp"]) as mock_configure_snmp, \
-		 patch(transport_patch["build_snmp"]) as mock_build_snmp, \ 
+	with patch(transport_patch["configure_snmp"]) as mock_configure_snmp,\
+		 patch(transport_patch["build_snmp"]) as mock_build_snmp,\
 		 patch(transport_patch["check_snmp"]) as mock_check_snmp:
 
 		mock_build_snmp.return_value = {}
@@ -129,20 +131,20 @@ def test_compliance_snmp_non_compliant_config_failed(
 		mock_log.warning.assert_called_once()
 		assert any("(SNMP) Mismatched Community Permission" in r for r in result["initial_issues"])
 		assert any("Failed To Configure SNMP" in r for r in result["actions_taken"])
-		assert any("Failed To Remediate SNMP" in r for r in result["actions_taken"])
+		assert any("Failed To Remediate SNMP" in r for r in result["critical_issues"])
 		assert result["status"] == OperationalStatus.FAILED_CONFIG.value 
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_dry_run(
-		mock_sesh, mock_context, mock_device_result, mock_log
+		mock_sesh, mock_context, mock_device_result, mock_log, transport
 	):
 	
 	mock_sesh.transport = transport
 	transport_patch = patch_transports(transport)
 
-	with patch("src.compliance.services.snmp.compliance.DRY_RUN", True), \
-		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp, \
-		 patch(transport_patch["build_snmp"]) as mock_build_snmp, \ 
+	with patch("src.compliance.services.snmp.compliance.DRY_RUN", True),\
+		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp,\
+		 patch(transport_patch["build_snmp"]) as mock_build_snmp,\
 		 patch(transport_patch["check_snmp"]) as mock_check_snmp:
 
 		mock_build_snmp.return_value = {}
@@ -161,15 +163,15 @@ def test_compliance_snmp_dry_run(
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_post_validation_successful(
-		mock_sesh, mock_context, mock_device_result, mock_log
+		mock_sesh, mock_context, mock_device_result, mock_log, transport
 	):
 	
 	mock_sesh.transport = transport
 	transport_patch = patch_transports(transport)
 
-	with patch(transport_patch["collect_snmp_state"]) as mock_collect_snmp_state, \
-		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp, \
-		 patch(transport_patch["build_snmp"]) as mock_build_snmp, \ 
+	with patch(transport_patch["collect_snmp_state"]) as mock_collect_snmp_state,\
+		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp,\
+		 patch(transport_patch["build_snmp"]) as mock_build_snmp,\
 		 patch(transport_patch["check_snmp"]) as mock_check_snmp:
 
 		mock_build_snmp.return_value = {}
@@ -196,15 +198,15 @@ def test_compliance_snmp_post_validation_successful(
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_post_validation_failed(
-		mock_sesh, mock_context, mock_device_result, mock_log
+		mock_sesh, mock_context, mock_device_result, mock_log, transport
 	):
 	
 	mock_sesh.transport = transport
 	transport_patch = patch_transports(transport)
 
-	with patch(transport_patch["collect_snmp_state"]) as mock_collect_snmp_state, \
-		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp, \
-		 patch(transport_patch["build_snmp"]) as mock_build_snmp, \ 
+	with patch(transport_patch["collect_snmp_state"]) as mock_collect_snmp_state,\
+		 patch(transport_patch["configure_snmp"]) as mock_configure_snmp,\
+		 patch(transport_patch["build_snmp"]) as mock_build_snmp,\
 		 patch(transport_patch["check_snmp"]) as mock_check_snmp:
 
 		mock_build_snmp.return_value = {}
@@ -232,7 +234,7 @@ def test_compliance_snmp_post_validation_failed(
 
 @pytest.mark.parametrize("transport", TRANSPORT)
 def test_compliance_snmp_empty(
-		mock_sesh, mock_device_result, mock_log 
+		mock_sesh, mock_device_result, mock_log, transport
 	):
 	mock_sesh.transport = transport
 	result = compliance_snmp(

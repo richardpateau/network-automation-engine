@@ -1,10 +1,11 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cli import collect_device_state
+from src.collectors.cli.collector import collect_device_state
+from src.collectors.cli.builders import build_vlan
+from src.compliance.switching.vlan.check import check_vlan
 from src.remediation.switching.vlan import configure_vlan
-from src.compliance.switching.vlan_helpers import (build_vlan,check_vlan,)
-from config import DRY_RUN
+from src.core.settings import DRY_RUN
 
-def compliance_vlans(sesh, device_ip, context, device_state, device_result, log):
+def compliance_vlan(sesh, device_ip, context, device_state, device_result, log):
     exp_vlans = context.get("vlans", [])
     act_vlans = build_vlan(device_state)
     vlan_updated = False
@@ -50,6 +51,12 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log)
                 "message": "VLAN Configuration Non-Compliant"
             }
         )
+        if DRY_RUN:
+            device_result["actions_taken"].append(
+                f"[DRY_RUN] Would Configure VLAN | VLAN: {vlan_id} | "
+                f"Name: {name}"
+            )
+            continue
     
         result = configure_vlan(sesh, vlan_data, log)
         summary = result.get("summary")
@@ -58,7 +65,11 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log)
         if result.get("status") == OperationalStatus.SUCCESS.value:
             vlan_updated = True
         else:
-            device_result["status"] = OperationalStatus.FAILED_CONFIG.value 
+            device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+            device_result["critical_issues"].append(
+                f"Failed To Remediate VLAN | VLAN: {vlan_id} | "
+                f"Name: {name}"
+            )
     
     if vlan_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)

@@ -20,7 +20,7 @@ def configure_snooping(conn, snoop_data, log):
 		 	for i, v in interfaces.items()
 		)
 	try: 
-		template = template_env.get_template("SNOOPING_NET.j2")
+		template = template_env.get_template("security/dhcp_snooping.j2")
 		if DRY_RUN: 
 			return {
 				"status": OperationalStatus.DRY_RUN.value,

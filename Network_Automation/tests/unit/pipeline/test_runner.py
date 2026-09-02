@@ -171,7 +171,7 @@ def test_run_pipeline_return_multiple_exceptions(
 	}
 	context = {"vlans": {}, "interfaces": {}, "ospf": {}}
 	mock_resolve.return_value = ["vlans", "interfaces", "ospf"]
-
+	device_state = {}
 	result = run_pipeline(
 		pipeline, context, mock_session, device_state , mock_device_result, mock_log
 		)

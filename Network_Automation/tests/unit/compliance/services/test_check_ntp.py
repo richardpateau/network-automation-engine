@@ -74,7 +74,7 @@ def test_check_ntp_extra_key_id(id_num):
 
 @pytest.mark.parametrize("ip", 
 		[
-			("192.168.1.1"),
+			("192.168.1.11"),
 			("172.15.1.1"), 
 			("203.0.113.1"),
 			("205.10.10.1")
@@ -119,7 +119,7 @@ def test_check_ntp_wrong_server_id(id_num):
 
 @pytest.mark.parametrize("ip", 
 		[
-			("192.168.1.1"),
+			("192.168.1.11"),
 			("172.15.1.1"), 
 			("203.0.113.1"),
 			("205.10.10.1")

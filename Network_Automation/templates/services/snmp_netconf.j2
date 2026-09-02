@@ -1,0 +1,39 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <snmp-server>
+        {% for c in communities %}
+        <community xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-snmp">
+            <name>{{ c.snmp_name }}</name>
+            <access-list-name>{{ c.permission }}</access-list-name>
+        </community>
+        {% endfor %}
+        <contact xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-snmp">{{ contact }}</contact>
+        {% if traps %}
+        <enable xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-snmp">
+            <enable-choice>
+                <traps>
+                    {% if traps.get("config") %}
+                    <config/>
+                    {% endif %}
+                    {% if traps.get("snmp") %}
+                    <snmp>
+                        <authentication/>
+                        <coldstart/>
+                        <linkdown/>
+                        <linkup/>
+                        <warmstart/>
+                    </snmp>
+                    {% endif %}
+                </traps>
+            </enable-choice>
+        </enable>
+        {% endif %}
+        {% for h in hosts %}
+        <host xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-snmp">
+            <ip-address>{{ h.snmp_ip }}</ip-address>
+            <community-or-user>{{ h.snmp_name }}</community-or-user>
+            <version>{{ h.snmp_version }}</version>
+        </host>
+        {% endfor %}
+        <location xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-snmp">{{ location }}</location>
+    </snmp-server>
+</native>

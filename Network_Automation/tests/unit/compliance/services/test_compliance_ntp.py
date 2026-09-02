@@ -61,7 +61,7 @@ def test_compliance_ntp_already_compliant(
     mock_log.warning.assert_not_called()
     assert any("NTP Already Compliant" in r for r in result["actions_taken"])
 
-
+@patch("src.compliance.services.ntp.compliance.collect_netconf_state")
 @patch("src.compliance.services.ntp.compliance.configure_ntp")
 @patch("src.compliance.services.ntp.compliance.build_ntp")
 @patch("src.compliance.services.ntp.compliance.check_ntp")
@@ -69,18 +69,19 @@ def test_compliance_ntp_non_compliant_config_successful(
     mock_check_ntp,
     mock_build_ntp,
     mock_configure_ntp,
+    mock_collect_netconf_state,
     mock_sesh,
     mock_context,
     mock_device_result,
     mock_log,
 ):
     mock_build_ntp.return_value = {}
-    mock_check_ntp.return_value = (False, ["(NTP) Mismatched Server Key ID"])
+    mock_check_ntp.side_effect = [(False, ["(NTP) Mismatched Server Key ID"]), (True, [])]
     mock_configure_ntp.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "NTP Configuration Successful",
     }
-
+    mock_collect_netconf_state.return_value = {}
     result = compliance_ntp(
         mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
     )

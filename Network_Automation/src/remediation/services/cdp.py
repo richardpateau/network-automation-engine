@@ -11,9 +11,8 @@ def configure_cdp_netmiko(conn, cdp_data, log):
 	     f"Interface/Enabled: {i}/{v.get('enabled')}" 
 		 for i, v in interfaces.items()
 		)
-	try: 
-		template = template_env.get_template("CDP_NET.j2")
-		if DRY_RUN: 
+	try:
+		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
 				"summary": (
@@ -23,7 +22,7 @@ def configure_cdp_netmiko(conn, cdp_data, log):
 						f"Transport: {conn.transport}"
 				)
 			}
-		
+		template = template_env.get_template("services/cdp_netmiko.j2")
 		commands = template.render(
 				timer=timer,
 				holdtime=holdtime,
@@ -103,10 +102,8 @@ def configure_cdp_netconf(session, cdp_data, log):
 	     f"Interface/Enabled: {i}/{v.get('enabled')}" 
 		 for i, v in interfaces.items()
 		)
-	try: 
-		template_global = template_env.get_template("CDP_NC.j2")
-		template_int = template_env.get_template("CDP_INT_NC.j2")
-		if DRY_RUN: 
+	try:
+		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
 				"summary": (
@@ -116,6 +113,8 @@ def configure_cdp_netconf(session, cdp_data, log):
 						f"Transport: {session.transport}"
 				)
 			}
+		template_global = template_env.get_template("services/cdp_netconf.j2")
+		template_int = template_env.get_template("services/cdp_interface_netconf.j2")
 		global_commands = template_global.render(
 				holdtime=holdtime, 
 				timer=timer,
@@ -138,7 +137,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 				)
 			session.edit_config(target="running", config=int_commands)
 
-		log.error(
+		log.info(
 			"cdp_config",
 	        extra={
 	            "device_ip": session.device_ip,
@@ -168,7 +167,7 @@ def configure_cdp_netconf(session, cdp_data, log):
 			}
 
 	except Exception as e: 
-		log.info(
+		log.error(
 	        "cdp_config",
 	        extra={
 	            "device_ip": session.device_ip,

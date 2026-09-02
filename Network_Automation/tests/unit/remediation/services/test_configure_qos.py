@@ -55,6 +55,7 @@ def test_configure_qos_successful(mock_session, qos_data, mock_log):
 	assert mock_session.edit_config.call_count == 2
 	mock_log.info.assert_called_once()
 
+
 @patch("src.remediation.services.qos.DRY_RUN", False)
 def test_configure_qos_failed(mock_session, qos_data, mock_log): 
 	mock_session.edit_config.side_effect = Exception("Connection lost")

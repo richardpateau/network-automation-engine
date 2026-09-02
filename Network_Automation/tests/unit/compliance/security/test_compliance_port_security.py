@@ -71,7 +71,7 @@ def test_compliance_dai_already_compliant(
 @patch("src.compliance.security.port_security.compliance.build_port_security")
 @patch("src.compliance.security.port_security.compliance.check_port_security")
 def test_compliance_dai_non_compliant_config_successful(
-        mock_configure_psecurity, mock_check_port_security, mock_build_port_security, mock_collect_device_state,
+        mock_check_port_security, mock_build_port_security, mock_configure_psecurity, mock_collect_device_state,
         mock_sesh, mock_context, mock_device_result, mock_log
 ):
     mock_build_port_security.return_value = {}

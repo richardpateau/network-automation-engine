@@ -56,20 +56,22 @@ def test_compliance_interface_already_compliant(
     assert any("Interface Configuration Already Compliant" in r for r in result["actions_taken"])
     assert result["initial_issues"] == []
 
+@patch("src.compliance.switching.interface.compliance.collect_device_state")
 @patch("src.compliance.switching.interface.compliance.configure_interface")
 @patch("src.compliance.switching.interface.compliance.build_interface")
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_non_compliant_config_successful(
-        mock_check_interface, mock_build_interface, mock_configure_interface,
+        mock_check_interface, mock_build_interface, mock_configure_interface, mock_collect_device_state,
         mock_sesh, mock_context, mock_device_result, mock_log
     ):
     
     mock_build_interface.return_value = {}
-    mock_check_interface.return_value = (False, ["Mismatched Interface State"])
+    mock_check_interface.side_effect = [(False, ["Mismatched Interface State"]), (True, [])]
     mock_configure_interface.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "Interface Configuration Successful"
     }
+    mock_collect_device_state.return_value = {}
     result = compliance_interface(
             mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
         )

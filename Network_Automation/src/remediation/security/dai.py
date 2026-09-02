@@ -15,7 +15,7 @@ def configure_dai(conn, dai_data, log):
 	buffer_log = f"Enabled: {log_buffer.get('enabled')} | Entries: {log_buffer.get('entries')}"
 	
 	try: 
-		template = template_env.get_template("DAI_NET.j2")
+		template = template_env.get_template("security/dai.j2")
 
 		if DRY_RUN: 
 			return {

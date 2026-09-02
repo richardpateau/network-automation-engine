@@ -46,7 +46,7 @@ def patch_for_transport(transport):
 			"build_cdp": "src.compliance.services.cdp.compliance.build_cdp_netconf",
 			"check_cdp": "src.compliance.services.cdp.compliance.check_cdp",
 			"configure_cdp": "src.compliance.services.cdp.compliance.configure_cdp_netconf",
-			"collect_cdp_state": "src.compliance.service.cdp.compliance.collect_netconf_state"
+			"collect_cdp_state": "src.compliance.services.cdp.compliance.collect_netconf_state"
 		}
 
 	if transport == "NETMIKO": 
@@ -54,7 +54,7 @@ def patch_for_transport(transport):
 			"build_cdp": "src.compliance.services.cdp.compliance.build_cdp_netmiko",
 			"check_cdp": "src.compliance.services.cdp.compliance.check_cdp",
 			"configure_cdp": "src.compliance.services.cdp.compliance.configure_cdp_netmiko",
-			"collect_cdp_state": "src.compliance.service.cdp.compliance.collect_device_state"
+			"collect_cdp_state": "src.compliance.services.cdp.compliance.collect_device_state"
 		}
 
 @pytest.mark.parametrize("transport", TRANSPORTS)
@@ -65,7 +65,7 @@ def test_compliance_cdp_already_compliant(
 	mock_sesh.transport = transport 
 	patch_transport = patch_for_transport(transport)
 
-	with patch(patch_transport["build_cdp"]) as mock_build_cdp, \ 
+	with patch(patch_transport["build_cdp"]) as mock_build_cdp,\
 		 patch(patch_transport["check_cdp"]) as mock_check_cdp: 
 
 		mock_build_cdp.return_value = {}
@@ -89,17 +89,18 @@ def test_compliance_cdp_non_compliant_config_successful(
 	mock_sesh.transport = transport 
 	patch_transport = patch_for_transport(transport)
 
-	with patch(patch_transport["configure_cdp"]) as mock_configure_cdp, \
-		 patch(patch_transport["build_cdp"]) as mock_build_cdp, \ 
-		 patch(patch_transport["check_cdp"]) as mock_check_cdp: 
+	with (patch(patch_transport["collect_cdp_state"]) as mock_collect_device_state,\
+		 patch(patch_transport["configure_cdp"]) as mock_configure_cdp,\
+		 patch(patch_transport["build_cdp"]) as mock_build_cdp,\
+		 patch(patch_transport["check_cdp"]) as mock_check_cdp):
 
 		mock_build_cdp.return_value = {}
-		mock_check_cdp.return_value = (False, ["(CDP) Timer Mismatch"])
+		mock_check_cdp.side_effect = [(False, ["(CDP) Timer Mismatch"]), (True, [])]
 		mock_configure_cdp.return_value = {
 			"status": OperationalStatus.SUCCESS.value,
 			"summary": "CDP Successfully Configured"
 		}
-
+		mock_collect_device_state.return_value = {}
 		result = compliance_cdp(
 				mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
 			 )
@@ -117,8 +118,8 @@ def test_compliance_cdp_non_compliant_config_failed(
 	mock_sesh.transport = transport 
 	patch_transport = patch_for_transport(transport)
 
-	with patch(patch_transport["configure_cdp"]) as mock_configure_cdp, \
-		 patch(patch_transport["build_cdp"]) as mock_build_cdp, \ 
+	with patch(patch_transport["configure_cdp"]) as mock_configure_cdp,\
+		 patch(patch_transport["build_cdp"]) as mock_build_cdp,\
 		 patch(patch_transport["check_cdp"]) as mock_check_cdp: 
 
 		mock_build_cdp.return_value = {}
@@ -146,9 +147,9 @@ def test_compliance_cdp_dry_run(
 	mock_sesh.transport = transport 
 	patch_transport = patch_for_transport(transport)
 
-	with patch("src.compliance.services.cdp.compliance.DRY_RUN", True), \
-	     patch(patch_transport["configure_cdp"]) as mock_configure_cdp, \
-		 patch(patch_transport["build_cdp"]) as mock_build_cdp, \ 
+	with patch("src.compliance.services.cdp.compliance.DRY_RUN", True),\
+	     patch(patch_transport["configure_cdp"]) as mock_configure_cdp,\
+		 patch(patch_transport["build_cdp"]) as mock_build_cdp,\
 		 patch(patch_transport["check_cdp"]) as mock_check_cdp: 
 
 		mock_build_cdp.return_value = {}
@@ -174,9 +175,9 @@ def test_compliance_cdp_post_validation_successful(
 	mock_sesh.transport = transport 
 	patch_transport = patch_for_transport(transport)
 
-	with patch(patch_transport["collect_cdp_state"]) as mock_collect_cdp_state, \
-		 patch(patch_transport["configure_cdp"]) as mock_configure_cdp, \
-		 patch(patch_transport["build_cdp"]) as mock_build_cdp, \ 
+	with patch(patch_transport["collect_cdp_state"]) as mock_collect_cdp_state,\
+		 patch(patch_transport["configure_cdp"]) as mock_configure_cdp,\
+		 patch(patch_transport["build_cdp"]) as mock_build_cdp,\
 		 patch(patch_transport["check_cdp"]) as mock_check_cdp: 
 
 		mock_build_cdp.return_value = {}
@@ -209,9 +210,9 @@ def test_compliance_cdp_post_validation_failed(
 	mock_sesh.transport = transport 
 	patch_transport = patch_for_transport(transport)
 
-	with patch(patch_transport["collect_cdp_state"]) as mock_collect_cdp_state, \
-		 patch(patch_transport["configure_cdp"]) as mock_configure_cdp, \
-		 patch(patch_transport["build_cdp"]) as mock_build_cdp, \ 
+	with patch(patch_transport["collect_cdp_state"]) as mock_collect_cdp_state,\
+		 patch(patch_transport["configure_cdp"]) as mock_configure_cdp,\
+		 patch(patch_transport["build_cdp"]) as mock_build_cdp,\
 		 patch(patch_transport["check_cdp"]) as mock_check_cdp: 
 
 		mock_build_cdp.return_value = {}

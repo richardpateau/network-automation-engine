@@ -1,0 +1,23 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <logging>
+        <facility>{{ facility }}</facility>
+        <trap>
+            <severity>{{ trap_level }}</severity>
+        </trap>
+        <host>
+            {% for h in hosts %}
+            <ipv4-host-list>
+                <ipv4-host>{{ h }}</ipv4-host>
+            </ipv4-host-list>
+            {% endfor %}
+        </host>
+        {% if source_interface %}
+        <source-interface-conf>
+            <interface-name-non-vrf>{{ source_interface }}</interface-name-non-vrf>
+        </source-interface-conf>
+        <source-interface>
+            <interface-name>{{ source_interface }}</interface-name>
+        </source-interface>
+        {% endif %}
+    </logging>
+</native>

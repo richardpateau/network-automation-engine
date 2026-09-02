@@ -1,8 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cli import collect_device_state
+from src.collectors.cli.collector import collect_device_state
+from src.collectors.cli.builders import build_etherchannel
+from src.compliance.switching.etherchannel.check import check_etherchannel
 from src.remediation.switching.etherchannel import configure_etherchannel
-from src.compliance.switching.etherchannel_helpers import (build_etherchannel,check_etherchannel,)
-from config import DRY_RUN
+from src.core.settings import DRY_RUN
 
 def compliance_etherchannel(sesh, device_ip, context, device_state, device_result, log):
     exp_ether = context.get("etherchannel", {})

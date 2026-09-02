@@ -1,7 +1,7 @@
 from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
-def configure_psecurity(conn, ps_data, log): 
+def configure_psecurity(conn, ps_data, log):
 	interfaces = ps_data.get("interfaces", {})
 	ps_log = " | ".join(
 			f"Interface: {i} | Enabled: {v.get('enabled')} | Maximum: {v.get('maximum')} | "
@@ -19,9 +19,9 @@ def configure_psecurity(conn, ps_data, log):
 		for i, v in interfaces.items()
 	]
 
-	try: 
-		template = template_env.get_template("PS_NETMIKO.j2")
-		if DRY_RUN: 
+	try:
+		template = template_env.get_template("security/port_security.j2")
+		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
 				"summary": (

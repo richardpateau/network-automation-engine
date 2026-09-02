@@ -1,8 +1,8 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.ntp import build_ntp
-from src.collectors.state import collect_netconf_state
-from src.compliance.ntp_checks import check_ntp
-from src.remediation.ntp import configure_ntp
+from src.collectors.netconf.builders import build_ntp
+from src.collectors.netconf.collector import collect_netconf_state
+from src.compliance.services.ntp.check import check_ntp
+from src.remediation.services.ntp import configure_ntp
 from src.core.settings import DRY_RUN
 
 

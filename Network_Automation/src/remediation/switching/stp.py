@@ -2,7 +2,6 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-
 def configure_stp_global(conn, stp_data, log):
     mode = stp_data.get("mode", "")
     vlan_priorities = stp_data.get("vlan_priorities", {})
@@ -10,7 +9,7 @@ def configure_stp_global(conn, stp_data, log):
         f"VLAN: {v} Priority: {p}" for v, p in vlan_priorities.items()
     )
     try:
-        template = template_env.get_template("STP_GLOBAL.j2")
+        template = template_env.get_template("switching/stp_global.j2")
         commands = (
             template.render(mode=mode, vlan_priorities=vlan_priorities)
             .splitlines()
@@ -85,7 +84,7 @@ def configure_stp_interfaces(conn, stp_data, log):
     stp_int = stp_data.get("stp", {})
     stp_log = " | ".join(f"{s}:{b}" for s, b in stp_int.items())
     try:
-        template = template_env.get_template("STP_INTERFACES.j2")
+        template = template_env.get_template("switching/stp_interfaces.j2")
         commands = template.render(interface=interface, stp_int=stp_int).splitlines()
         if DRY_RUN:
             return {

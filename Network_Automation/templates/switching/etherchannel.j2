@@ -1,0 +1,12 @@
+{% for g, v in groups.items() %}
+
+{% for interface in v.get('interfaces', []) %}
+interface {{ interface }}
+ channel-group {{ g }} mode {{ v.get('mode') }}
+{% endfor %}
+
+interface Port-channel{{ g }}
+ description {{ v.get('description') }}
+ switchport mode {{ v.get('switchport_mode') }}
+
+{% endfor %}

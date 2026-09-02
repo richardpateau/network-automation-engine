@@ -13,7 +13,7 @@ def configure_etherchannel(conn, eth_data, log):
 		)
 
 	try: 
-		template = template_env.get_template("etherchannel_net.j2")
+		template = template_env.get_template("switching/etherchannel.j2")
 		
 		if DRY_RUN: 
 			return {

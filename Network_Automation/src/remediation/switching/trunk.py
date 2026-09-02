@@ -6,21 +6,21 @@ def configure_trunk(conn, trunk_data, log):
 	trunk_interface = trunk_data.get("trunk_interface", "")
 	allowed_vlans = trunk_data.get("allowed_vlans", "")
 
-	try: 
-		template = template_env.get_template("trunk_ports.j2")
+	try:
+		if DRY_RUN:
+			return {
+				"status": OperationalStatus.DRY_RUN.value,
+				"summary": (f"[DRY_RUN] Would Configure Trunk Interface | "
+							f"Interface: {trunk_interface} | "
+							f"Allowed VLANs: {allowed_vlans}"
+							)
+			}
+		template = template_env.get_template("switching/trunk.j2")
 		commands = template.render(
 				trunk_interface=trunk_interface,
 				allowed_vlans=allowed_vlans
 			).splitlines()
 
-		if DRY_RUN:
-			return {
-				"status": OperationalStatus.DRY_RUN.value,
-				"summary": (f"[DRY_RUN] Would Configure Trunk Interface | "
-                			f"Interface: {trunk_interface} | "
-                			f"Allowed VLANs: {allowed_vlans}"
-                	)
-			}
 
 		conn.send_config_set(commands)
 

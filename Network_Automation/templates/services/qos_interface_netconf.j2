@@ -1,0 +1,14 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <interface>
+        <{{ interface_type }}>
+            <name>{{ interface_num }}</name>
+            <service-policy xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-policy">
+                {% if direction == "output" %}
+                <output>{{ policy_name }}</output>
+                {% elif direction == "input" %}
+                <input>{{ policy_name }}</input>
+                {% endif %}
+            </service-policy>
+        </{{ interface_type }}>
+    </interface>
+</native>

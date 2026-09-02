@@ -55,21 +55,22 @@ def test_compliance_vlan_already_compliant(
     assert any("VLAN Already Compliant" in r for r in result["actions_taken"])
     assert result["initial_issues"] == []
 
+@patch("src.compliance.switching.vlan.compliance.collect_device_state")
 @patch("src.compliance.switching.vlan.compliance.configure_vlan")
 @patch("src.compliance.switching.vlan.compliance.build_vlan")
 @patch("src.compliance.switching.vlan.compliance.check_vlan")
 def test_compliance_vlan_non_compliant_config_successful(
-        mock_check_vlan, mock_build_vlan, mock_configure_vlan, 
+        mock_check_vlan, mock_build_vlan, mock_configure_vlan, mock_collect_device_state,
         mock_sesh, mock_context, mock_device_result, mock_log
     ): 
     
     mock_build_vlan.return_value = {}
-    mock_check_vlan.return_value = (False, ["VLAN Name Mismatch"])
+    mock_check_vlan.side_effect = [(False, ["VLAN Name Mismatch"]), (True, [])]
     mock_configure_vlan.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "VLAN Configuration Successful"
     }
-
+    mock_collect_device_state.return_value = {}
     result = compliance_vlan(
             mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
         )

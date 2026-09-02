@@ -1,10 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.qos import build_qos
-from src.collectors.netconf import collect_netconf_state
-from src.compliance.qos_checks import check_qos
-from src.remediation.qos import configure_qos
+from src.collectors.netconf.builders import build_qos
+from src.collectors.netconf.collector import collect_netconf_state
+from src.compliance.services.qos.check import check_qos
+from src.remediation.services.qos import configure_qos
 from src.core.settings import DRY_RUN
-
 
 def compliance_qos(sesh, device_ip, context, device_state, device_result, log):
     exp_qos = context.get("qos", {})

@@ -1,0 +1,23 @@
+{% if enabled %}
+cdp run
+{% else %}
+no cdp run
+{% endif %}
+
+{% if timer is not none %}
+cdp timer {{ timer }}
+{% endif %}
+
+{% if holdtime is not none %}
+cdp holdtime {{ holdtime }}
+{% endif %}
+
+{% for interface, data in interfaces.items() %}
+interface {{ interface }}
+{% if data.get("enabled") == true %}
+ cdp enable
+{% elif data.get("enabled") == false %}
+ no cdp enable
+{% endif %}
+exit
+{% endfor %}

@@ -2,12 +2,12 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_access(conn, access_data, log): 
+def configure_access(conn, access_data, log):
 	access_interface = access_data.get("access_interface", "")
 	access_vlan = access_data.get("access_vlan", "")
 
-	try: 
-		template = template_env.get_template("access_port.j2")
+	try:
+		template = template_env.get_template("switching/access.j2")
 		commands = template.render(
 				access_interface=access_interface,
 				access_vlan=access_vlan

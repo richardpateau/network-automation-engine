@@ -12,7 +12,7 @@ def configure_ospf(session, ospf_data, log):
 			for n in network_list
 		)
 	try: 
-		template = template_env.get_template("OSPF.j2")
+		template = template_env.get_template("routing/ospf_restconf.j2")
 		commands = template.render(
 				process_id=process_id,
 				router_id=router_id,
@@ -33,7 +33,7 @@ def configure_ospf(session, ospf_data, log):
 			)
 		if response.status_code not in [200,201,204]: 
 			return {
-                "status": OperationalStatus.CONFIG_FAILED.value,
+                "status": OperationalStatus.FAILED_CONFIG.value,
                 "summary": (
                 			f"OSPF config failed {response.text}"
                 		    f"Process ID: {process_id} | "

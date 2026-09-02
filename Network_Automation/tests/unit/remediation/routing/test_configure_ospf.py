@@ -53,7 +53,7 @@ def test_configure_ospf_successful(mock_session, ospf_data, mock_log):
 @patch("src.remediation.routing.ospf.DRY_RUN", False)
 def test_configure_ospf_failed(mock_session, ospf_data, mock_log): 
 	mock_session.patch.side_effect = Exception("Connection lost")
-	result = configure_ospf(mock_session, hsrp_data, mock_log)	
+	result = configure_ospf(mock_session, ospf_data, mock_log)
 	
 	assert result["status"] == OperationalStatus.ERROR.value 
 	assert "error" in result

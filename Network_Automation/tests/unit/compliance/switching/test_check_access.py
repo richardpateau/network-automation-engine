@@ -69,7 +69,7 @@ def test_check_access_vlan_mismatch():
 	assert any("Actual: 20" in f for f in failures)
 
 @pytest.mark.parametrize("interface", ["gigabitethernet3", "fastethernet1", "gigabitethernet1/0"])
-def test_check_access_extra_interface():
+def test_check_access_extra_interface(interface):
 	expected = [
 		{
 			"access_interface": "gigabitethernet1",

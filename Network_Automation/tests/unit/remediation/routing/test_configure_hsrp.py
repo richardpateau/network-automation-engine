@@ -1,4 +1,4 @@
-import pytest 
+import pytest
 from unittest.mock import MagicMock, patch
 from src.remediation.routing.hsrp import configure_hsrp
 from src.core.enums import OperationalStatus
@@ -28,7 +28,7 @@ def hsrp_data():
 
 @patch("src.remediation.routing.hsrp.DRY_RUN", True)
 def test_configure_hsrp_dry_run(mock_session, hsrp_data, mock_log):
-	result = configure_static(mock_session, hsrp_data, mock_log)
+	result = configure_hsrp(mock_session, hsrp_data, mock_log)
 
 	assert result["status"] == OperationalStatus.DRY_RUN.value
 	assert "DRY_RUN" in result["summary"]
@@ -36,9 +36,9 @@ def test_configure_hsrp_dry_run(mock_session, hsrp_data, mock_log):
 	assert "Version: 2" in result["summary"]
 	mock_session.edit_config.assert_not_called()
 
-@patch("src.remediation.routing.hrsp.DRY_RUN", False)
+@patch("src.remediation.routing.hsrp.DRY_RUN", False)
 def test_configure_hsrp_successful(mock_session, hsrp_data, mock_log):
-	result = configure_static(mock_session, hsrp_data, mock_log)
+	result = configure_hsrp(mock_session, hsrp_data, mock_log)
 
 	assert result["status"] == OperationalStatus.SUCCESS.value
 	assert "Interface: gigabitethernet1" in result["summary"]
@@ -50,7 +50,7 @@ def test_configure_hsrp_successful(mock_session, hsrp_data, mock_log):
 @patch("src.remediation.routing.hsrp.DRY_RUN", False)
 def test_configure_hsrp_failed(mock_session, hsrp_data, mock_log):
 	mock_session.edit_config.side_effect = Exception("Connection lost")
-	result = configure_static(mock_session, hsrp_data, mock_log)	
+	result = configure_hsrp(mock_session, hsrp_data, mock_log)	
 	
 	assert result["status"] == OperationalStatus.ERROR.value 
 	assert "error" in result

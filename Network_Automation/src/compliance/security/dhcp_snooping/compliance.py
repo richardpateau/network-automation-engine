@@ -1,10 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.snooping import build_snooping
-from src.collectors.cli import collect_device_state
-from src.compliance.snooping_checks import check_snooping
-from src.remediation.snooping import configure_snooping
+from src.collectors.cli.builders import build_snooping
+from src.collectors.cli.collector import collect_device_state
+from src.compliance.security.dhcp_snooping.check import check_snooping
+from src.remediation.security.dhcp_snooping import configure_snooping
 from src.core.settings import DRY_RUN
-
 
 def compliance_snooping(sesh, device_ip, context, device_state, device_result, log):
     exp_snooping = context.get("dhcp_snooping", {})

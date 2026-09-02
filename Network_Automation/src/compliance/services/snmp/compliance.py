@@ -1,8 +1,10 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.snmp import build_snmp_netconf, build_snmp_netmiko
-from src.collectors.state import collect_netconf_state, collect_device_state
-from src.compliance.snmp_checks import check_snmp
-from src.remediation.snmp import configure_snmp_netconf, configure_snmp_netmiko
+from src.collectors.netconf.builders import build_snmp_netconf
+from src.collectors.cli.builders import build_snmp_netmiko
+from src.collectors.netconf.collector import collect_netconf_state
+from src.collectors.cli.collector import collect_device_state
+from src.compliance.services.snmp.check import check_snmp
+from src.remediation.services.snmp import configure_snmp_netconf, configure_snmp_netmiko
 from src.core.settings import DRY_RUN
 
 

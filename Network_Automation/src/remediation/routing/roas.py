@@ -8,12 +8,15 @@ def configure_roas(session, roas_data, log):
 	router_vlan = roas_data.get("router_vlan", "")
 	ip = roas_data.get("ip", "")
 	mask = roas_data.get("mask", "")
-	new_int = re.search(r'[\d./]+$', interface).group()
+	match = re.match(r"([A-Za-z]+)([\d.]+)$", interface)
 
+	interface_type = match.group(1)
+	interface_num = match.group(2)
 	try: 
-		template = template_env.get_template("restconf_roas.j2")
+		template = template_env.get_template("routing/roas_restconf.j2")
 		commands = template.render(
-				new_interface=new_int,
+				interface_type=interface_type,
+				interface_num=interface_num,
 				router_vlan=router_vlan,
 				ip=ip,
 				mask=mask
@@ -33,7 +36,7 @@ def configure_roas(session, roas_data, log):
 			)
 		if response.status_code not in [200,201,204]: 
 			return {
-                "status": OperationalStatus.CONFIG_FAILED.value,
+                "status": OperationalStatus.FAILED_CONFIG.value,
                 "summary": (f"ROAS config failed {response.text}"
                 		    f"Interface: {interface} | VLAN: {router_vlan} | "
 						    f"IP: {ip}/{mask}"
@@ -69,7 +72,7 @@ def configure_roas(session, roas_data, log):
 		log.error(
             "roas_config",
             extra={
-                "device_ip": sessiondevice_ip,
+                "device_ip": session.device_ip,
                 "component": "roas_automation",
                 "event_type": "roas_config",
                 "transport": session.transport,

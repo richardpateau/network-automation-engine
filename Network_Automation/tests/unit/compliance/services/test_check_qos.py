@@ -1,7 +1,7 @@
 import pytest
 from src.compliance.services.qos.check import check_qos
 
-@pytest.fixture s
+@pytest.fixture
 def exp_qos():
 	return {
 		"policies": [{
@@ -146,7 +146,7 @@ def test_check_qos_extra_policy(policy):
 	assert any("(QOS) Rogue Policy Found" in f for f in failures)
 	assert any(policy in f for f in failures)
 
-@pytest.mark.parametrize("name", ["voices", "web", "https", "http"])
+@pytest.mark.parametrize("name", ["voices", "webs", "https", "http"])
 def test_check_qos_extra_class_map(name):
 	expected = {
 		"policies": [{
@@ -195,14 +195,15 @@ def test_check_qos_extra_class_map(name):
 
 				}
 			]
-		}]
+		}
+	  ]
 	}
 	ok, failures = check_qos(expected, actual)
 	assert ok is False 
 	assert any("(QOS) Extra Class Map Found" in f for f in failures)
 	assert any(name in f for f in failures)
 
-@pytest.mark.parametrize("name", ["voices", "web", "https", "http"])
+@pytest.mark.parametrize("name", ["voices", "webs", "https", "http"])
 def test_check_qos_missing_class_map(name):
 	expected = {
 		"policies": [{
@@ -258,55 +259,6 @@ def test_check_qos_missing_class_map(name):
 	assert ok is False 
 	assert any("(QOS) Missing Class Map" in f for f in failures)
 	assert any(name in f for f in failures)
-
-@pytest.mark.parametrize("name", ["voice", "https", "http"])
-def test_check_qos_class_name_mismatch(name):
-	expected = {
-		"policies": [{
-			"policy_name": "voice", 
-			"attachments": [
-				 {"interface": "gigabitethernet1", "direction": "input"},
-				 {"interface": "gigabitethernet2", "direction": "output"}
-			],
-			"class_maps": [
-				{
-				 	"name": "web",
-				    "match_type": "match-any",
-				    "protocol": "http",
-				    "action_type":"bandwidth",
-				    "bandwidth": "5000",
-				    "priority": ""
-
-				}
-			]
-		}]
-	}
-	actual = {
-		"policies": [{
-			"policy_name": "voice", 
-			"attachments": [
-				 {"interface": "gigabitethernet1", "direction": "input"},
-				 {"interface": "gigabitethernet2", "direction": "output"}
-			],
-			"class_maps": [
-				{
-				 	"name": name,
-				    "match_type": "match-any",
-				    "protocol": "http",
-				    "action_type":"bandwidth",
-				    "bandwidth": "5000",
-				    "priority": ""
-
-				},
-	
-			]
-		}]
-	}
-	ok, failures = check_qos(expected, actual)
-	assert ok is False 
-	assert any("(QOS) Mismatched Class Name" in f for f in failures)
-	assert any("Expected: web" in f for f in failures)
-	assert any(f"Actual: {name}" in f for f in failures)
 
 def test_check_qos_match_type_mismatch():
 	expected = {

@@ -27,7 +27,7 @@ def build_access(device_state):
     actual_access = {}
 
     for access_int, access_values in device_state_access.items():
-        operational_mode = access_values.get("operational_mode", "").lower()
+        operational_mode = access_values.get("operational_mode", "").strip().lower()
 
         if "access" not in operational_mode or "trunk" in operational_mode:
             continue
@@ -95,9 +95,9 @@ def build_stp_global(device_state):
     if not device_state:
         return {}
     stp = device_state.get("stp")
-    
-    if not stp: 
-        return  {}
+
+    if not stp:
+        return {}
     actual_stp = {
         "mode": "",
         "vlan_priorities": {},
@@ -129,15 +129,19 @@ def build_stp_global(device_state):
 def build_stp_interfaces(device_state):
     if not device_state:
         return {}
+
     running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
     act_stp_int = {}
+
     for interface in parse.find_objects(r"^interface"):
         parts = interface.text.split()
+
         if len(parts) < 2:
             continue
 
         name = parts[1].strip().lower()
+
         act_stp_int[name] = {
             "portfast": False,
             "bpdu_guard": False,
@@ -145,19 +149,25 @@ def build_stp_interfaces(device_state):
             "loop_guard": False,
             "bpdu_filter": False,
         }
-        for config in interface.children:
-            text = config.text.strip()
 
-            if "portfast" in text:
+        for config in interface.children:
+            text = config.text.strip().lower()
+
+            if text.startswith("spanning-tree portfast"):
                 act_stp_int[name]["portfast"] = True
-            if "bpduguard" in text:
+
+            elif text == "spanning-tree bpduguard enable":
                 act_stp_int[name]["bpdu_guard"] = True
-            if "guard loop" in text:
-                act_stp_int[name]["loop_guard"] = True
-            if "guard root" in text:
+
+            elif text == "spanning-tree guard root":
                 act_stp_int[name]["root_guard"] = True
-            if "bpdufilter" in text:
+
+            elif text == "spanning-tree guard loop":
+                act_stp_int[name]["loop_guard"] = True
+
+            elif text == "spanning-tree bpdufilter enable":
                 act_stp_int[name]["bpdu_filter"] = True
+
     return act_stp_int
 
 
@@ -165,7 +175,7 @@ def build_stp_interfaces(device_state):
 def build_snmp_netmiko(device_state):
     if not device_state:
         return {}
-    running_config = device_state.get("running_config") 
+    running_config = device_state.get("running_config")
     if not running_config:
         return {}
     parse = CiscoConfParse(running_config.splitlines())
@@ -177,7 +187,7 @@ def build_snmp_netmiko(device_state):
         "contact": "",
     }
 
-    for s in parse.find_objects(r"^snmp-server community"):
+    for s in parse.find_objects(r"(?i)^snmp-server community"):
         parts = s.text.split()
 
         actual_snmp["communities"].append(
@@ -211,27 +221,27 @@ def build_snmp_netmiko(device_state):
 def build_syslog_netmiko(device_state):
     if not device_state:
         return {
-        "hosts": [],
-        "trap_level": "",
-        "source_interface": "",
-        "timestamps": False,
-    }
+            "hosts": [],
+            "trap_level": "",
+            "source_interface": "",
+            "timestamps": False,
+        }
     state_logging = device_state.get("syslog")
     if not state_logging:
         return {
-        "hosts": [],
-        "trap_level": "",
-        "source_interface": "",
-        "timestamps": False,
-    }
+            "hosts": [],
+            "trap_level": "",
+            "source_interface": "",
+            "timestamps": False,
+        }
     logging = state_logging.get("logging", {})
     if not logging:
         return {
-        "hosts": [],
-        "trap_level": "",
-        "source_interface": "",
-        "timestamps": False,
-    }
+            "hosts": [],
+            "trap_level": "",
+            "source_interface": "",
+            "timestamps": False,
+        }
     actual_syslog = {
         "hosts": [],
         "trap_level": "",
@@ -336,8 +346,8 @@ def build_port_security(device_state):
             if "port-security mac-address sticky" in full_config:
                 ps_config["sticky"] = True
             if (
-                "switchport port-security mac-address" in full_config
-                and "sticky" not in full_config
+                    "switchport port-security mac-address" in full_config
+                    and "sticky" not in full_config
             ):
                 ps_config["mac_addresses"].append(config[-1])
             if ps_config["enabled"] and ps_config["violation"] is None:
@@ -348,10 +358,12 @@ def build_port_security(device_state):
 # DHCP SNOOPING
 def build_snooping(device_state):
     if not device_state:
-        return {"enabled_vlans": [], "interfaces": {}, "option82": False}
+        return {"enabled_vlans": [], "interfaces": {}, "option82": True}
     running_config = device_state.get("running_config") or ""
-    actual_snooping = {"enabled_vlans": [], "interfaces": {}, "option82": False}
+    actual_snooping = {"enabled_vlans": [], "interfaces": {}, "option82": True}
     parse = CiscoConfParse(running_config.splitlines())
+    for p in parse.find_objects(r"^no ip dhcp snooping information"):
+        actual_snooping["option82"] = False
     for p in parse.find_objects(r"^ip dhcp snooping"):
         full_config = p.text.strip()
         config = p.text.split()
@@ -359,15 +371,16 @@ def build_snooping(device_state):
             vlan = config[-1].split(",")
             vlan_list = [safe_int(v) for v in vlan if v.isdigit()]
             actual_snooping["enabled_vlans"] = vlan_list
-    for p in parse.find_objects(r"^no ip dhcp snooping"):
-        if "no ip dhcp snooping information" in full_config:
-            actual_snooping["option82"] = False
-        else:
-            actual_snooping["option82"] = True
     for p in parse.find_objects(r"^interface"):
-        part = p.text.split().lower()
-        interface_name = part[-1]
-
+        part = p.text.split()
+        interface_name = part[-1].lower()
+        actual_snooping["interfaces"].setdefault(
+            interface_name,
+            {
+                "rate_limit": None,
+                "trusted": False,
+            }
+        )
         for child in p.children:
             full_config = child.text.strip()
             config = child.text.split()
@@ -376,6 +389,7 @@ def build_snooping(device_state):
                 actual_snooping["interfaces"][interface_name]["rate_limit"] = safe_int(
                     config[-1]
                 )
+
             if "snooping trust" in full_config:
                 actual_snooping["interfaces"][interface_name]["trusted"] = True
     return actual_snooping
@@ -458,6 +472,7 @@ def build_etherchannel(device_state):
                     },
                 )
                 group_entry["enabled"] = True
+                actual_ether["enabled"] = True
                 group_entry["interfaces"].append(interface_name)
 
                 if mode in ["active", "passive"]:
@@ -467,16 +482,16 @@ def build_etherchannel(device_state):
                 else:
                     group_entry["type"] = "static"
     for p in parse.find_objects(r"^interface Port-channel"):
-        config = p.text.strip().split().lower()
+        config = p.text.strip().split()
         group = safe_int(config[-1][12:])
         group_entry = actual_ether["groups"].get(group)
         if not group_entry:
             continue
         for c in p.children:
-            full_config = c.text.strip().lower()
+            full_config = c.text.strip()
             config = c.text.strip().split()
             if full_config.startswith("description"):
-                group_entry["description"] = " ".join(config[1:])
+                group_entry["description"] = " ".join(config[1:]).lower()
             elif full_config.startswith("switchport mode"):
-                group_entry["switchport_mode"] = config[-1]
+                group_entry["switchport_mode"] = config[-1].lower()
     return actual_ether

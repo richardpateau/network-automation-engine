@@ -1,0 +1,23 @@
+{% for c in communities %}
+snmp-server community {{ c.snmp_name }} {{ c.permission }}
+{% endfor %}
+
+{% if contact %}
+snmp-server contact {{ contact }}
+{% endif %}
+
+{% if location %}
+snmp-server location {{ location }}
+{% endif %}
+
+{% for h in hosts %}
+snmp-server host {{ h.snmp_ip }} version {{ h.version }} {{ h.snmp_name }}
+{% endfor %}
+
+{% if traps.get("snmp") %}
+snmp-server enable traps snmp authentication linkdown linkup coldstart warmstart
+{% endif %}
+
+{% if traps.get("config") %}
+snmp-server enable traps config
+{% endif %}

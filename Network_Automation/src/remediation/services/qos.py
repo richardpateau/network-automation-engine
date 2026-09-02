@@ -1,11 +1,11 @@
 from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
-import re 
+import re
 def configure_qos(session, qos_data, log):
-	policy_name = qos.get("policy_name", "")
-	attachments = qos.get("attachments", [])
-	class_maps = qos.get("class_maps", [])
+	policy_name = qos_data.get("policy_name", "")
+	attachments = qos_data.get("attachments", [])
+	class_maps = qos_data.get("class_maps", [])
 	attachment_log = " | ".join(
 			f"{a.get('interface')} {a.get('direction')}"
 			for a in attachments
@@ -14,12 +14,7 @@ def configure_qos(session, qos_data, log):
 			f"{c.get('name')} {c.get('protocol')} {c.get('action_type')} {c.get('bandwidth')}"
 			for c in class_maps
 		)
-	try: 
-		policy_template = template_env.get_template("QOS_NETCONF.j2")
-		policy_commands = policy_template.render(
-				class_maps=class_maps,
-				policy_name=policy_name
-			)
+	try:
 		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
@@ -30,26 +25,37 @@ def configure_qos(session, qos_data, log):
 						f"Transport: {session.transport}"
 				)
 			}
-		policy_response = session.edit_config(
+		policy_template = template_env.get_template("services/qos_netconf.j2")
+		policy_commands = policy_template.render(
+				class_maps=class_maps,
+				policy_name=policy_name
+			)
+
+		session.edit_config(
 					target="running",
 					config=policy_commands
 				)
-		
-		interface_template = template_env.get_template("INTERFACE_NETCONF.j2")
+
+		interface_template = template_env.get_template("services/qos_interface_netconf.j2")
 		for a in attachments:
 			interface = a.get("interface", "")
 			direction = a.get("direction", "")
-			interface_type = re.split(r'\d', interface, maxsplit=1)[0]
+
+			match = re.match(r"([A-Za-z]+)([\d.]+)$", interface)
+
+			interface_type = match.group(1)
+			interface_num = match.group(2)
+
 			attachment_commands = interface_template.render(
-					interface_type=interface_type,
-					interface=interface,
-					direction=direction,
-					policy_name=policy_name
-				)
-			interface_response = session.edit_config(
-					target="running",
-					config=attachment_commands
-				)
+				interface_type=interface_type,
+				interface_num=interface_num,
+				direction=direction,
+				policy_name=policy_name
+			)
+			session.edit_config(
+				target="running",
+				config=attachment_commands
+			)
 		log.info(
 			"qos_config",
             extra={
@@ -79,7 +85,7 @@ def configure_qos(session, qos_data, log):
                 	)
 			}
 
-	except Exception as e: 
+	except Exception as e:
 		log.error(
             "qos_config",
             extra={

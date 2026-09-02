@@ -1,19 +1,14 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.syslog import (
-    build_syslog_netconf,
-    build_syslog_netmiko,
-)
-from src.collectors.state import (
-    collect_netconf_state,
-    collect_device_state,
-)
-from src.compliance.syslog_checks import check_syslog
-from src.remediation.syslog import (
+from src.collectors.netconf.builders import build_syslog_netconf
+from src.collectors.cli.builders import build_syslog_netmiko
+from src.collectors.netconf.collector import collect_netconf_state
+from src.collectors.cli.collector import collect_device_state
+from src.compliance.services.syslog.check import check_syslog
+from src.remediation.services.syslog import (
     configure_syslog_netconf,
     configure_syslog_netmiko,
 )
 from src.core.settings import DRY_RUN
-
 
 def compliance_syslog(sesh, device_ip, context, device_state, device_result, log):
     exp_syslog = context.get("syslog", {})

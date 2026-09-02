@@ -55,21 +55,22 @@ def test_compliance_access_already_compliant(
     assert any("Access Interface Already Compliant" in r for r in result["actions_taken"])
     assert result["initial_issues"] == []
 
+@patch("src.compliance.switching.access.compliance.collect_device_state")
 @patch("src.compliance.switching.access.compliance.configure_access")
 @patch("src.compliance.switching.access.compliance.build_access")
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_non_compliant_config_successful(
-        mock_check_access, mock_build_access, mock_configure_access, mock_sesh, mock_context, 
-        mock_device_result, mock_log
+        mock_check_access, mock_build_access, mock_configure_access, mock_collect_device_state,
+        mock_sesh, mock_context, mock_device_result, mock_log
     ): 
     
     mock_build_access.return_value = {}
-    mock_check_access.return_value = (False, ["Mismatched Access Port VLAN"])
+    mock_check_access.side_effect = [(False, ["Mismatched Access Port VLAN"]), (True, [])]
     mock_configure_access.return_value = {
         "status": OperationalStatus.SUCCESS.value, 
         "summary": "Access Port Successfully Configured"
     }
-    
+    mock_collect_device_state.return_value = {}
     result = compliance_access(
             mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
         )
@@ -166,10 +167,10 @@ def test_compliance_access_post_validation_failed(
     ): 
     
     mock_build_access.return_value = {}
-    mock_check_access.return_value = [(False, ["Mismatched Access Port VLAN"]),
+    mock_check_access.side_effect = [(False, ["Mismatched Access Port VLAN"]),
                                      (False, ["Mismatched Access Port VLAN"])
                                      ] 
-    mock_configure_access.side_effect = {
+    mock_configure_access.return_value = {
         "status": OperationalStatus.SUCCESS.value, 
         "summary": "Access Port Successfully Configured"
     }

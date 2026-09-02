@@ -99,16 +99,18 @@ def test_compliance_syslog_non_compliant_config_successful(
     mock_sesh.transport = transport
     patch_targets = patch_for_transport(transport)
 
-    with patch(patch_targets["configure_syslog"]) as mock_configure_syslog, patch(
-        patch_targets["build_syslog"]
-    ) as mock_build_syslog, patch(patch_targets["check_syslog"]) as mock_check_syslog:
+    with patch(patch_targets["collect_syslog_state"]) as mock_collect_syslog_state,\
+         patch(patch_targets["configure_syslog"]) as mock_configure_syslog,\
+         patch(patch_targets["build_syslog"]) as mock_build_syslog,\
+         patch(patch_targets["check_syslog"]) as mock_check_syslog:
+        
         mock_build_syslog.return_value = {}
-        mock_check_syslog.return_value = (False, ["(SYSLOG) Mismatched Trap Level"])
+        mock_check_syslog.side_effect = [(False, ["(SYSLOG) Mismatched Trap Level"]),(True, [])]
         mock_configure_syslog.return_value = {
             "status": OperationalStatus.SUCCESS.value,
             "summary": "Syslog Configuration Successfully Configured",
         }
-
+        mock_collect_syslog_state.return_value = {}
         result = compliance_syslog(
             mock_sesh,
             mock_sesh.device_ip,

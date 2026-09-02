@@ -1,0 +1,21 @@
+{% if enabled_vlans %}
+ip dhcp snooping
+ip dhcp snooping vlan {{ enabled_vlans | join(',') }}
+{% endif %}
+
+{% if option82 %}
+ip dhcp snooping information option
+{% endif %}
+
+{% for i in interface_list %}
+interface {{ i.interface }}
+
+{% if i.rate_limit %}
+ ip dhcp snooping limit rate {{ i.rate_limit }}
+{% endif %}
+
+{% if i.trusted %}
+ ip dhcp snooping trust
+{% endif %}
+
+{% endfor %}

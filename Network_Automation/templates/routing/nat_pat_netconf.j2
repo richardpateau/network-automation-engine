@@ -1,0 +1,17 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <ip>
+        <nat xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-nat">
+            <inside>
+                <source>
+                    <list>
+                        <id>{{ pat.acl }}</id>
+                        <interface>
+                            <name>{{ pat.interface }}</name>
+                            <overload/>
+                        </interface>
+                    </list>
+                </source>
+            </inside>
+        </nat>
+    </ip>
+</native>

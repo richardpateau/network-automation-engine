@@ -63,16 +63,17 @@ def test_compliance_etherchannel_already_compliant(
 	assert any("Etherchannel Configuration Already Compliant" in r for r in result["actions_taken"])
 	assert result["initial_issues"] == []
 
+@patch("src.compliance.switching.etherchannel.compliance.collect_device_state")
 @patch("src.compliance.switching.etherchannel.compliance.configure_etherchannel")
 @patch("src.compliance.switching.etherchannel.compliance.build_etherchannel")
 @patch("src.compliance.switching.etherchannel.compliance.check_etherchannel")
 def test_compliance_etherchannel_non_compliant_config_successful(
-		mock_check_etherchannel, mock_build_etherchannel, mock_configure_etherchannel,
+		mock_check_etherchannel, mock_build_etherchannel, mock_configure_etherchannel, mock_collect_device_state,
 		mock_sesh, mock_context, mock_device_result, mock_log
 	):
 	
 	mock_build_etherchannel.return_value = {}
-	mock_check_etherchannel.return_value = (False, ["(Etherchannel) Mode Mismatch"])
+	mock_check_etherchannel.side_effect = [(False, ["(Etherchannel) Mode Mismatch"]), (True, [])]
 	mock_configure_etherchannel.return_value = {
 		"status": OperationalStatus.SUCCESS.value,
 		"summary": "Etherchannel Configuration Successful"

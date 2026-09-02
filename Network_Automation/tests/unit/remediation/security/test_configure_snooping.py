@@ -34,7 +34,7 @@ def test_configure_snooping_dry_run(mock_conn, snooping_data, mock_log):
 	assert result["status"] == OperationalStatus.DRY_RUN.value 
 	assert "DRY_RUN" in result["summary"]
 	assert "gigabitethernet1" in result["summary"]
-	assert "VLANs: [10,20,30,40,50]" in result["summary"]
+	assert "VLANs: [10, 20, 30, 40, 50]" in result["summary"]
 	mock_conn.send_config_set.assert_not_called()
 
 @patch("src.remediation.security.dhcp_snooping.DRY_RUN", False)
@@ -45,8 +45,8 @@ def test_configure_snooping_successful(mock_conn, snooping_data, mock_log):
 	assert "gigabitethernet1" in result["summary"]
 	assert "VLANs: [10, 20, 30, 40, 50]" in result["summary"]
 	assert "Rate Limit: 30" in result["summary"]
- 	assert mock_conn.send_config_set.call_count == 2
- 	mock_log.info.assert_called_once()
+	assert mock_conn.send_config_set.call_count == 2
+	mock_log.info.assert_called_once()
 
 @patch("src.remediation.security.dhcp_snooping.DRY_RUN", False)
 def test_configure_snooping_failed(mock_conn, snooping_data, mock_log):

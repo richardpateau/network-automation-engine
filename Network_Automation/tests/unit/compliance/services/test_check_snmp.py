@@ -91,7 +91,7 @@ def test_check_snmp_permission_mismatch():
 		"communities": [{"snmp_name": "private", "permission": "rw"}
 						],
 		"hosts": [{"snmp_name": "private",
-					"snmp_ip": "10.10.10.50",
+					"snmp_ip": "10.10.10.50",	
 					"snmp_version": "2c" }],
 		"traps": {"snmp": True, "syslog": True, "config": True},
 		"location": "new york datacenter rack 10",
@@ -277,7 +277,7 @@ def test_check_snmp_location_mismatch(location):
 	ok, failures = check_snmp(expected, actual)
 
 	assert ok is False
-	assert any("(SNMP) SNMP Location Mismath" in f for f in failures)
+	assert any("(SNMP) SNMP Location Mismatch" in f for f in failures)
 	assert any("Expected: new york datacenter rack 10" in f for f in failures)
 	assert any(f"Actual: {location}" in f for f in failures)
 
@@ -331,7 +331,7 @@ def test_check_snmp_trap_syslog_mismatch():
 	}
 	ok, failures = check_snmp(expected, actual)
 
-	assert ok is True 
+	assert ok is False 
 	assert any("(SNMP) Mismatched Traps | Syslog" in f for f in failures)
 	assert any("Expected: True" in f for f in failures)
 	assert any("Actual: False" in f for f in failures)
@@ -358,7 +358,7 @@ def test_check_snmp_trap_snmp_mismatch():
 		"contact": "network-team@example.com"
 	}
 	ok, failures = check_snmp(expected, actual)
-	assert ok is True 
+	assert ok is False 
 	assert any("(SNMP) Mismatched Traps | SNMP" in f for f in failures)
 	assert any("Expected: True" in f for f in failures)
 	assert any("Actual: False" in f for f in failures)

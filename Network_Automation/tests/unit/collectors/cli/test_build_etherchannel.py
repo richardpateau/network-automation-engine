@@ -53,14 +53,14 @@ def test_build_etherchannel_empty():
 )
 def test_build_etherchannel_types(mode, expected_type):
     data = {
-        "running_config": f"""
-		interface GigabitEthernet0/1
-		 switchport trunk encapsulation dot1q
-		 switchport mode trunk
-		 ip arp inspection trust
-		 negotiation auto
-		 channel-group 1 mode {mode}
-		 """
+"running_config": f"""
+interface GigabitEthernet0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ ip arp inspection trust
+ negotiation auto
+ channel-group 1 mode {mode}
+ """
     }
 
     result = build_etherchannel(data)
@@ -71,14 +71,14 @@ def test_build_etherchannel_types(mode, expected_type):
 @pytest.mark.parametrize("group", [1, 10, 20, 100])
 def test_build_etherchannel_group(group):
     data = {
-        "running_config": f"""
-		interface GigabitEthernet0/1
-		 switchport trunk encapsulation dot1q
-		 switchport mode trunk
-		 ip arp inspection trust
-		 negotiation auto
-		 channel-group {group} mode active
-		 """
+"running_config": f"""
+interface GigabitEthernet0/1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ ip arp inspection trust
+ negotiation auto
+ channel-group {group} mode active
+ """
     }
     result = build_etherchannel(data)
 
@@ -96,14 +96,14 @@ def test_build_etherchannel_group(group):
 )
 def test_build_etherchannel_description(description):
     data = {
-        "running_config": f"""
-		interface GigabitEthernet0/1
- 		 channel-group 1 mode active
-		interface Port-channel1
-		 description {description}
-		 switchport trunk encapsulation dot1q
-		 switchport mode trunk
-		"""
+"running_config": f"""
+interface GigabitEthernet0/1
+ channel-group 1 mode active
+interface Port-channel1
+ description {description}
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+"""
     }
 
     result = build_etherchannel(data)
@@ -113,12 +113,12 @@ def test_build_etherchannel_description(description):
 
 def test_build_etherchannel_no_group():
     data = {
-        "running_config": """
-		interface Port-channel1
-		 description uplink to core
-		 switchport trunk encapsulation dot1q
-		 switchport mode trunk
-		"""
+"running_config": """
+interface Port-channel1
+ description uplink to core
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+"""
     }
 
     result = build_etherchannel(data)
@@ -128,11 +128,12 @@ def test_build_etherchannel_no_group():
 
 def test_build_etherchannel_no_switchport_no_description():
     data = {
-        "running_config": """
-		interface GigabitEthernet0/1
- 		 channel-group 1 mode active
-		interface Port-channel1
-		"""
+"running_config":
+"""
+interface GigabitEthernet0/1
+ channel-group 1 mode active
+interface Port-channel1
+"""
     }
 
     result = build_etherchannel(data)

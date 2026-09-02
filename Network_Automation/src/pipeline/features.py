@@ -1,7 +1,28 @@
+from src.compliance.switching.vlan.compliance import compliance_vlan
+from src.compliance.switching.interface.compliance import compliance_interface
+from src.compliance.switching.access.compliance import compliance_access
+from src.compliance.switching.trunk.compliance import compliance_trunk
+from src.compliance.switching.etherchannel.compliance import compliance_etherchannel
+from src.compliance.switching.stp.compliance import compliance_stp_global, compliance_stp_interfaces
+from src.compliance.routing.ospf.compliance import compliance_ospf
+from src.compliance.routing.roas.compliance import compliance_roas
+from src.compliance.routing.hsrp.compliance import compliance_hsrp
+from src.compliance.routing.static.compliance import compliance_static
+from src.compliance.routing.nat.compliance import compliance_nat
+from src.compliance.security.dai.compliance import compliance_dai
+from src.compliance.security.dhcp_snooping.compliance import compliance_snooping
+from src.compliance.security.port_security.compliance import compliance_port_security
+from src.compliance.services.cdp.compliance import compliance_cdp
+from src.compliance.services.dhcp.compliance import compliance_dhcp
+from src.compliance.services.ntp.compliance import compliance_ntp
+from src.compliance.services.qos.compliance import compliance_qos
+from src.compliance.services.snmp.compliance import compliance_snmp
+from src.compliance.services.syslog.compliance import compliance_syslog
+
 PIPELINE = {
 
     "vlans": {
-        "function": compliance_vlans,
+        "function": compliance_vlan,
         "depends_on": [],
         "context_key": "vlans",
     	"transport": "NETMIKO",
@@ -50,7 +71,7 @@ PIPELINE = {
     },
 
     "stp_interfaces": {
-        "function": compliance_stp_int,
+        "function": compliance_stp_interfaces,
         "depends_on": [
             "vlans",
             "etherchannel"
@@ -173,7 +194,7 @@ PIPELINE = {
         "context_key": "syslog",
     },
 	"cdp": {
-		    "function": configure_cdp,
+		    "function": compliance_cdp,
 		    "depends_on": [
 		        "interfaces"
 		    ],

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from src.compliance.security.dhcp_snooping import compliance_snooping
+from src.compliance.security.dhcp_snooping.compliance import (compliance_snooping)
 from src.core.enums import OperationalStatus
 
 
@@ -69,28 +69,27 @@ def test_compliance_snooping_already_compliant(
         for r in result["actions_taken"]
     )
 
-
+@patch("src.compliance.security.dhcp_snooping.compliance.collect_device_state")
 @patch("src.compliance.security.dhcp_snooping.compliance.configure_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.build_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.check_snooping")
 def test_compliance_snooping_non_compliant_configuration_successful(
-    mock_configure_snooping,
     mock_check_snooping,
     mock_build_snooping,
+    mock_configure_snooping,
+    mock_collect_device_state,
     mock_sesh,
     mock_context,
     mock_device_result,
     mock_log,
 ):
     mock_build_snooping.return_value = {}
-    mock_check_snooping.return_value = (
-        False,
-        ["(DHCP Snooping) Missing VLAN(s) On Device"],
-    )
+    mock_check_snooping.side_effect = [(False,["(DHCP Snooping) Missing VLAN(s) On Device"]), (True, [])]
     mock_configure_snooping.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "DHCP Snooping Successfully Configured",
     }
+    mock_collect_device_state.return_value = {}
 
     result = compliance_snooping(
         mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
@@ -111,9 +110,9 @@ def test_compliance_snooping_non_compliant_configuration_successful(
 @patch("src.compliance.security.dhcp_snooping.compliance.build_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.check_snooping")
 def test_compliance_snooping_non_compliant_and_configuration_failed(
-    mock_configure_snooping,
     mock_check_snooping,
     mock_build_snooping,
+    mock_configure_snooping,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -153,9 +152,9 @@ def test_compliance_snooping_non_compliant_and_configuration_failed(
 @patch("src.compliance.security.dhcp_snooping.compliance.build_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.check_snooping")
 def test_compliance_snooping_dry_run(
-    mock_configure_snooping,
     mock_check_snooping,
     mock_build_snooping,
+    mock_configure_snooping,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -188,10 +187,10 @@ def test_compliance_snooping_dry_run(
 @patch("src.compliance.security.dhcp_snooping.compliance.build_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.check_snooping")
 def test_compliance_snooping_post_validation_success(
-    mock_collect_device_state,
-    mock_configure_snooping,
     mock_check_snooping,
     mock_build_snooping,
+    mock_configure_snooping,
+    mock_collect_device_state,
     mock_sesh,
     mock_context,
     mock_device_result,
@@ -234,10 +233,10 @@ def test_compliance_snooping_post_validation_success(
 @patch("src.compliance.security.dhcp_snooping.compliance.build_snooping")
 @patch("src.compliance.security.dhcp_snooping.compliance.check_snooping")
 def test_compliance_snooping_post_validation_failed(
-    mock_collect_device_state,
-    mock_configure_snooping,
     mock_check_snooping,
     mock_build_snooping,
+    mock_configure_snooping,
+    mock_collect_device_state,
     mock_sesh,
     mock_context,
     mock_device_result,

@@ -48,7 +48,7 @@ def test_configure_roas_successful(mock_session, roas_data, mock_log):
 @patch("src.remediation.routing.roas.DRY_RUN", False)
 def test_configure_roas_failed(mock_session, roas_data, mock_log): 
 	mock_session.patch.side_effect = Exception("Connection lost")
-	result = configure_roas(mock_session, hsrp_data, mock_log)	
+	result = configure_roas(mock_session, roas_data, mock_log)
 	
 	assert result["status"] == OperationalStatus.ERROR.value 
 	assert "error" in result

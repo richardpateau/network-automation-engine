@@ -16,7 +16,7 @@ def configure_ntp(session, ntp_data, log):
 		for n in ntp_servers
 		)
 	try: 
-		template = template_env.get_template("NTP.j2")
+		template = template_env.get_template("services/ntp_netconf.j2")
 		commands = template.render(
 				ntp_keys=ntp_keys,
 				ntp_servers=ntp_servers

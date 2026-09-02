@@ -1,0 +1,5 @@
+spanning-tree mode {{ mode }}
+
+{% for vlan, priority in vlan_priorities.items() %}
+spanning-tree vlan {{ vlan }} priority {{ priority }}
+{% endfor %}

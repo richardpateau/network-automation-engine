@@ -78,7 +78,7 @@ def test_compliance_qos_already_compliant(
     assert any("QOS Already Compliant" in r for r in result["actions_taken"])
     assert result["initial_issues"] == []
 
-
+@patch("src.compliance.services.qos.compliance.collect_netconf_state")
 @patch("src.compliance.services.qos.compliance.configure_qos")
 @patch("src.compliance.services.qos.compliance.build_qos")
 @patch("src.compliance.services.qos.compliance.check_qos")
@@ -86,17 +86,19 @@ def test_compliance_qos_non_compliant_config_successful(
     mock_check_qos,
     mock_build_qos,
     mock_configure_qos,
+    mock_collect_netconf_state,
     mock_sesh,
     mock_context,
     mock_device_result,
     mock_log,
 ):
     mock_build_qos.return_value = {}
-    mock_check_qos.return_value = (False, ["Expected Class Map Missing"])
+    mock_check_qos.side_effect = [(False, ["Expected Class Map Missing"]), (True, [])]
     mock_configure_qos.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "QOS Successfully Configured",
     }
+    mock_collect_netconf_state.return_value = {}
     result = compliance_qos(
         mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
     )

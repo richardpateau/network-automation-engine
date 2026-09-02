@@ -1,0 +1,29 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <ip>
+        <nat xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-nat">
+        {% for dynamic in nat.dynamic %}
+             <pool>
+                <id>{{ dynamic.pool_name }}</id>
+                <start-address>{{ dynamic.start_ip }}</start-address>
+                <end-address>{{ dynamic.end_ip }}</end-address>
+                <netmask>{{ dynamic.mask }}</netmask>
+            </pool>
+
+            {% for acl in dynamic.acls %}
+            <inside>
+                <source>
+                    <list>
+                        <id>{{ acl }}</id>
+                        <pool-with-vrf>
+                            <pool>
+                                <name>{{ dynamic.pool_name }}</name>
+                            </pool>
+                        </pool-with-vrf>
+                    </list>
+                </source>
+            </inside>
+            {% endfor %}
+        {% endfor %}
+        </nat>
+    </ip>
+</native>

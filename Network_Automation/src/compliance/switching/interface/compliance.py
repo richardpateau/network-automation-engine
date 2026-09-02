@@ -1,9 +1,9 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cli import collect_device_state
+from src.collectors.cli.collector import collect_device_state
+from src.collectors.cli.builders import build_interface
+from src.compliance.switching.interface.check import check_interface
 from src.remediation.switching.interface import configure_interface
-from src.compliance.switching.interface_helpers import (build_interface,check_interface,)
-from config import DRY_RUN
-
+from src.core.settings import DRY_RUN
 def compliance_interface(sesh, device_ip, context, device_state, device_result, log):
     exp_interfaces = context.get("interfaces", [])
     act_interfaces = build_interface(device_state)

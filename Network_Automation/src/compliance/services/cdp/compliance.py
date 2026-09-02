@@ -1,10 +1,11 @@
 from src.core.enums import StepStatus, OperationalStatus
-from src.collectors.cdp import build_cdp_netconf, build_cdp_netmiko
-from src.collectors.state import collect_netconf_state, collect_device_state
-from src.compliance.cdp_checks import check_cdp
-from src.remediation.cdp import configure_cdp_netconf, configure_cdp_netmiko
+from src.collectors.netconf.builders import build_cdp_netconf
+from src.collectors.cli.builders import build_cdp_netmiko
+from src.collectors.netconf.collector import collect_netconf_state
+from src.collectors.cli.collector import collect_device_state
+from src.compliance.services.cdp.check import check_cdp
+from src.remediation.services.cdp import configure_cdp_netconf, configure_cdp_netmiko
 from src.core.settings import DRY_RUN
-
 
 def compliance_cdp(sesh, device_ip, context, device_state, device_result, log):
     exp_cdp = context.get("cdp", {})
@@ -111,7 +112,7 @@ def compliance_cdp(sesh, device_ip, context, device_state, device_result, log):
             new_state = collect_netconf_state(sesh, log)
             new_cdp = build_cdp_netconf(new_state)
         if sesh.transport == "NETMIKO":
-            new_state = collect_device_state(sesh, log)
+            new_state = collect_device_state(sesh)
             new_cdp = build_cdp_netmiko(new_state)
 
         if exp_cdp:

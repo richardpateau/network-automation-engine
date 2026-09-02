@@ -1,0 +1,19 @@
+<native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+    <ip>
+        <route>
+            {% for s in static %}
+            <ip-route-interface-forwarding-list>
+                <prefix>{{ s.network_address }}</prefix>
+                <mask>{{ s.mask }}</mask>
+                <fwd-list>
+                    <fwd>{{ s.ip }}</fwd>
+                    {% if s.name %}
+                    <name>{{ name }}</name>
+                    {% endif %}
+                    <metric>{{ snmetric }}</metric>
+                </fwd-list>
+            {% endfor %}
+            </ip-route-interface-forwarding-list>
+        </route>
+    </ip>
+</native>

@@ -14,11 +14,11 @@ def configure_snmp_netmiko(conn, snmp_data, log):
 			for c in communities
 		)
 	hosts_log = " | ".join(
-			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('version')}"
+			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('snmp_version')}"
 			for h in hosts
 		)
 	try: 
-		template = template_env.get_template("SNMP_NETMIKO.j2")
+		template = template_env.get_template("services/snmp_netmiko.j2")
 
 		if DRY_RUN: 
 			return {
@@ -120,11 +120,11 @@ def configure_snmp_netconf(session, snmp_data, log):
 			for c in communities
 		)
 	hosts_log = " | ".join(
-			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('version')}"
+			f"SNMP IP: {h.get('snmp_ip')} | Version: {h.get('snmp_version')}"
 			for h in hosts
 		)
 	try: 
-		template_netconf = template_env.get_template("SNMP_NC.j2")
+		template_netconf = template_env.get_template("services/snmp_netconf.j2")
 
 		if DRY_RUN: 
 			return {
