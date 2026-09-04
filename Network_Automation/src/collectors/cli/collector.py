@@ -23,23 +23,23 @@ def collect_device_state(conn):
     except Exception:
         device_state["stp"] = {}
     try:
-        device_state["running_config"] = conn.send_command("show run")
+        device_state["running_config"] = conn.connection.send_command("show run")
     except Exception:
         device_state["running_config"] = ""
     try:
-        device_state["syslog"] = conn.send_command("show logging", use_genie=True)
+        device_state["syslog"] = conn.connection.send_command("show logging", use_genie=True)
     except Exception:
         device_state["syslog"] = {}
     try:
-        device_state["cdp"] = conn.send_command("show cdp")
+        device_state["cdp"] = conn.connection.send_command("show cdp")
     except Exception:
         device_state["cdp"] = ""
     try:
-        device_state["cdp_interface"] = conn.send_command("show cdp interface")
+        device_state["cdp_interface"] = conn.connection.send_command("show cdp interface")
     except Exception:
         device_state["cdp_interface"] = ""
     try:
-        device_state["dai_interfaces"] = conn.send_command(
+        device_state["dai_interfaces"] = conn.connection.send_command(
             "show ip arp inspection interfaces"
         )
 

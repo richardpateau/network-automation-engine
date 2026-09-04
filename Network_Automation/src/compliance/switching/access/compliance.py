@@ -1,7 +1,7 @@
 from src.core.enums import StepStatus, OperationalStatus
 from src.collectors.cli.collector import collect_device_state
 from src.collectors.cli.builders import build_access
-from src.compliance.switching.access.check import check_access
+from src.compliance.switching.access.check import check_access, check_rogue_access
 from src.remediation.switching.access import configure_access
 from src.core.settings import DRY_RUN
 
@@ -13,7 +13,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
         access_interface = access_data.get("access_interface", None)
         access_vlan = access_data.get("access_vlan", None)
 
-        ok, failures = check_access(access_data, act_access)
+        ok, failures = check_access([access_data], act_access)
 
         log_extra = {
             "device_ip": device_ip,
@@ -73,7 +73,30 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
                         f"Interface: {access_interface} | "
                         f"VLAN: {access_vlan}"
                     )
+    rogue_ok, rogue_failures = check_rogue_access(
+        exp_access,
+        act_access
+    )
 
+    if not rogue_ok:
+        device_result["initial_issues"].extend(rogue_failures)
+
+        log.warning(
+            "access_interface_rogue",
+            extra={
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "access_interface",
+                "transport": sesh.transport,
+                "interface": "",
+                "vlan_id": "",
+                "compliant": False,
+                "failures_count": len(rogue_failures),
+                "failures": rogue_failures,
+                "status": StepStatus.FAILED.value,
+                "message": "Rogue Access Interface Detected"
+            }
+        )
     if access_updated and not DRY_RUN:
         new_state = collect_device_state(sesh, log)
         new_access = build_access(new_state)
@@ -82,7 +105,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
             access_interface = access_data.get("access_interface", None)
             access_vlan = access_data.get("access_vlan", None)
 
-            ok, failures = check_access(access_data, new_access)
+            ok, failures = check_access([access_data], new_access)
 
             log_extra = {
                 "device_ip": device_ip,

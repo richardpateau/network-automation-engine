@@ -1,5 +1,5 @@
 import pytest
-from src.compliance.switching.vlan.check import check_vlan
+from src.compliance.switching.vlan.check import check_vlan, check_rogue_vlan
 
 
 @pytest.fixture
@@ -59,8 +59,8 @@ def test_check_vlan_extra_vlan(vlan):
 		vlan: {"name": "management"}
 	}
 
-	ok, failures = check_vlan(expected, actual)
+	ok, failures = check_rogue_vlan(expected, actual)
 	assert ok is False 
 	assert any("Rogue VLAN Detected" in f for f in failures)
-	assert any(f"ID: {vlan}" in f for f in failures)
+	assert any(f"VLAN: {vlan}" in f for f in failures)
 	assert any("management" in f for f in failures)

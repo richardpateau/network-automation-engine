@@ -14,7 +14,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
         description = int_data.get("description", "")
         should_be_up = int_data.get("should_be_up", False)
 
-        ok, failures = check_interface(int_data, act_interfaces)
+        ok, failures = check_interface([int_data], act_interfaces)
 
         log_extra = {
             "device_ip": device_ip,
@@ -65,7 +65,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
                     f"Should Be Up: {should_be_up}"
                 )
         else: 
-            result = configure_interface(sesh, int_data, log)
+            result = configure_interface([int_data], log)
             summary = result.get("summary")
             if summary:
                 device_result["actions_taken"].append(summary)

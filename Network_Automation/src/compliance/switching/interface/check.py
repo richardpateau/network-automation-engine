@@ -5,7 +5,7 @@ def check_interface(expected_int, actual_config):
 	for k, v in exp_by_int.items():
 		actual = actual_config.get(k)
 		if not actual: 
-			failures.append("(Interface) Missing Interface")
+			failures.append(f"(Interface) Missing Interface | {k}")
 			continue 
 		if v.get('should_be_up') != actual.get('is_up'): 
 			failures.append(
