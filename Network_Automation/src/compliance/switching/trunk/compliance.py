@@ -1,7 +1,7 @@
 from src.core.enums import StepStatus, OperationalStatus
 from src.collectors.cli.collector import collect_device_state
 from src.collectors.cli.builders import build_trunk
-from src.compliance.switching.trunk.check import check_trunk
+from src.compliance.switching.trunk.check import check_trunk, check_rogue_trunk
 from src.remediation.switching.trunk import configure_trunk
 from src.core.settings import DRY_RUN
 
@@ -14,7 +14,7 @@ def compliance_trunk(sesh, device_ip, context, device_state, device_result, log)
         trunk_interface = trunk_data.get("trunk_interface", "")
         allowed_vlans = trunk_data.get("allowed_vlans", "")
 
-        ok, failures = check_trunk(trunk_data, act_trunk)
+        ok, failures = check_trunk([trunk_data], act_trunk)
 
         log_extra = {
             "device_ip": device_ip,
@@ -75,16 +75,39 @@ def compliance_trunk(sesh, device_ip, context, device_state, device_result, log)
                         f"Interface: {trunk_interface} | "
                         f"Allowed VLAN(s): {allowed_vlans}"
                     )
+    rogue_ok, rogue_failures = check_rogue_trunk(
+        exp_trunk,
+        act_trunk
+    )
 
+    if not rogue_ok:
+        device_result["initial_issues"].extend(rogue_failures)
+
+        log.warning(
+            "trunk_interface_rogue",
+            extra={
+                "device_ip": device_ip,
+                "component": "main_process",
+                "protocol": "trunk",
+                "transport": sesh.transport,
+                "trunk_interface": "",
+                "allowed_vlans": "",
+                "compliant": False,
+                "failure_count": len(rogue_failures),
+                "failures": rogue_failures,
+                "status": StepStatus.FAILED.value,
+                "message": "Rogue Trunk Interface Detected"
+            }
+        )
     if trunk_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_trunk = build_trunk(new_state)
 
         for trunk_data in exp_trunk:
             trunk_interface = trunk_data.get("trunk_interface", "")
             allowed_vlans = trunk_data.get("allowed_vlans", "")
 
-            ok, failures = check_trunk(trunk_data, new_trunk)
+            ok, failures = check_trunk([trunk_data], new_trunk)
 
             log_extra = {
             "device_ip": device_ip,
