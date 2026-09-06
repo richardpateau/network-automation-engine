@@ -471,7 +471,6 @@ def build_etherchannel(device_state):
                         "enabled": True,
                     },
                 )
-                group_entry["enabled"] = True
                 actual_ether["enabled"] = True
                 group_entry["interfaces"].append(interface_name)
 
@@ -494,4 +493,5 @@ def build_etherchannel(device_state):
                 group_entry["description"] = " ".join(config[1:]).lower()
             elif full_config.startswith("switchport mode"):
                 group_entry["switchport_mode"] = config[-1].lower()
+    actual_ether["enabled"] = bool(actual_ether["groups"])
     return actual_ether
