@@ -52,32 +52,32 @@ def check_stp_interfaces(expected_int, actual_config):
         portfast = value.get("stp", {}).get("portfast")
         if portfast != actual.get("portfast"):
             failures.append(
-                    "(STP Interface) Mismatched PortFast | "
+                    f"(STP Interface) Mismatched PortFast | Interface: {interface} | "
                     f"Should Be Configured? | Expected: {portfast} | "
                     f"Actual: {actual.get('portfast')}"
                 )
         bpdu_guard = value.get("stp", {}).get("bpdu_guard")
         if bpdu_guard != actual.get("bpdu_guard"):
             failures.append(
-                    "(STP Interface) Mismatched BPDU Guard | Should Be Configured? | "
+                    f"(STP Interface) Mismatched BPDU Guard | Should Be Configured? | Interface: {interface} | "
                     f"Expected: {bpdu_guard} | Actual: {actual.get('bpdu_guard')}"
                     )
         root_guard = value.get("stp", {}).get("root_guard")
         if root_guard != actual.get("root_guard"): 
             failures.append(
-                    "(STP Interface) Mismatched Root Guard | Should Be Configured? | "
+                    f"(STP Interface) Mismatched Root Guard | Interface: {interface} | Should Be Configured? | "
                     f"Expected: {root_guard} | Actual: {actual.get('root_guard')}"
                 )
         loop_guard = value.get("stp", {}).get("loop_guard")
         if loop_guard != actual.get("loop_guard"):
             failures.append(
-                    "(STP Interface) Mismatched Loop Guard | Should Be Configured? | "
+                    f"(STP Interface) Mismatched Loop Guard Interface: {interface} | Interface: {interface} | Should Be Configured? | "
                     f"Expected: {loop_guard} | Actual: {actual.get('loop_guard')}" 
                 )
         bpdu_filter = value.get("stp", {}).get("bpdu_filter")
         if bpdu_filter != actual.get('bpdu_filter'): 
             failures.append(
-                    "(STP Interface) Mismatched BPDU Filter | Should Be Configured? | "
+                    f"(STP Interface) Mismatched BPDU Filter | Interface: {interface} | Should Be Configured? | "
                     f"Expected: {bpdu_filter} | Actual: {actual.get('bpdu_filter')}"
                 )
     return len(failures) == 0, failures

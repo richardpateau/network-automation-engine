@@ -40,19 +40,11 @@ def check_dai(expected_dai, actual_config):
     exp_interfaces = expected_dai.get("interfaces", {})
     act_interfaces = actual_config.get("interfaces", {})
 
-    extra_int = act_interfaces.keys() - exp_interfaces.keys()
-
-    if extra_int:
-        for e in extra_int:
-            failures.append(
-                f"(DAI) Drift: Extra Interface Configured with DAI | "
-                f"Interface: {e}"
-            )
     for interface_name, int_value in exp_interfaces.items():
         actual = act_interfaces.get(interface_name)
         if not actual:
             failures.append(
-                f"(DAI) Missing Interface Not Configured with DAI | "
+                f"(DAI) Missing Interface during test | potential misconfig in SOT | "
                 f"Interface: {interface_name}"
             )
             continue

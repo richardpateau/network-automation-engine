@@ -24,7 +24,7 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
     mode = exp_stp.get("mode", "")
     vlan_priorities = exp_stp.get("vlan_priorities", {})
     priorities_log = " | ".join(
-        f"VLAN: {v} Priority: {p}" for v, p in vlan_priorities.items()
+        f"VLAN: {v} - Priority: {p}" for v, p in vlan_priorities.items()
     )
     if exp_stp:
         ok, failures = check_stp_global(exp_stp, act_stp)
@@ -90,7 +90,7 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
                     )
 
     if stp_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_stp = build_stp_global(new_state)
 
         ok, failures = check_stp_global(exp_stp, new_stp)
@@ -135,26 +135,37 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
     return device_result
 
 
+
 def compliance_stp_interfaces(
     sesh, device_ip, context, device_state, device_result, log
 ):
-    exp_stp_int = context.get("interfaces", {}).get("stp", {})
+    interfaces = context.get("interfaces", [])
     act_stp_int = build_stp_interfaces(device_state)
-    stp_int_updated = False
-    portfast = exp_stp_int.get("portfast", False)
-    bpdu_guard = exp_stp_int.get("bpdu_guard", False)
-    root_guard = exp_stp_int.get("root_guard", False)
-    loop_guard = exp_stp_int.get("loop_guard", False)
-    bpdu_filter = exp_stp_int.get("bpdu_filter", False)
 
-    if exp_stp_int:
-        ok, failures = check_stp_interfaces(exp_stp_int, act_stp_int)
+    for interface_data in interfaces:
+
+        interface = interface_data.get("interface", "")
+        stp_config = interface_data.get("stp", {})
+
+        portfast = stp_config.get("portfast", False)
+        bpdu_guard = stp_config.get("bpdu_guard", False)
+        root_guard = stp_config.get("root_guard", False)
+        loop_guard = stp_config.get("loop_guard", False)
+        bpdu_filter = stp_config.get("bpdu_filter", False)
+
+        stp_int_updated = False
+
+        ok, failures = check_stp_interfaces(
+            [interface_data],
+            act_stp_int
+        )
 
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
             "protocol": "stp_interfaces",
             "transport": sesh.transport,
+            "interface": interface,
             "portfast": portfast,
             "root_guard": root_guard,
             "loop_guard": loop_guard,
@@ -174,12 +185,17 @@ def compliance_stp_interfaces(
                     "message": "STP Interface Configuration Already Compliant",
                 },
             )
+
             device_result["actions_taken"].append(
                 "STP Interface Configuration Already Compliant | "
-                f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
-                f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
+                f"Interface: {interface} | "
+                f"BPDU Guard: {bpdu_guard} | "
+                f"Portfast: {portfast} | "
+                f"Root Guard: {root_guard} | "
+                f"Loop Guard: {loop_guard} | "
                 f"BPDU Filter: {bpdu_filter}"
             )
+
         else:
             device_result["initial_issues"].extend(failures)
 
@@ -191,75 +207,93 @@ def compliance_stp_interfaces(
                     "message": "STP Interface Configuration Non-Compliant",
                 },
             )
-            if DRY_RUN: 
+
+            if DRY_RUN:
                 device_result["actions_taken"].append(
-                        f"[DRY_RUN] Would Configure STP Interfaces | "
-                        f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
-                        f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
-                        f"BPDU Filter: {bpdu_filter}"
-                    )
-            else: 
-                result = configure_stp_interfaces(sesh, exp_stp_int, log)
+                    "[DRY_RUN] Would Configure STP Interface | "
+                    f"Interface: {interface} | "
+                    f"BPDU Guard: {bpdu_guard} | "
+                    f"Portfast: {portfast} | "
+                    f"Root Guard: {root_guard} | "
+                    f"Loop Guard: {loop_guard} | "
+                    f"BPDU Filter: {bpdu_filter}"
+                )
+
+            else:
+                result = configure_stp_interfaces(
+                    sesh,
+                    interface_data,
+                    log
+                )
+
                 summary = result.get("summary")
 
                 if summary:
                     device_result["actions_taken"].append(summary)
+
                 if result.get("status") == OperationalStatus.SUCCESS.value:
                     stp_int_updated = True
+
                 else:
-                    device_result["status"] = OperationalStatus.FAILED_CONFIG.value
-                    device_result["critical_issues"].append(
-                        "STP Interface Remediation Failed | "
-                        f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
-                        f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
-                        f"BPDU Filter: {bpdu_filter}"
+                    device_result["status"] = (
+                        OperationalStatus.FAILED_CONFIG.value
                     )
 
-    if stp_int_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
-        new_stp = build_stp_interfaces(new_state)
+                    device_result["critical_issues"].append(
+                        "STP Interface Remediation Failed | "
+                        f"Interface: {interface}"
+                    )
 
-        ok, failures = check_stp_interfaces(exp_stp_int, new_stp)
+        # Post-validation for this specific interface
+        if stp_int_updated and not DRY_RUN:
 
-        log_extra = {
-            "device_ip": device_ip,
-            "component": "main_process",
-            "protocol": "stp_interfaces",
-            "transport": sesh.transport,
-            "portfast": portfast,
-            "root_guard": root_guard,
-            "loop_guard": loop_guard,
-            "bpdu_guard": bpdu_guard,
-            "bpdu_filter": bpdu_filter,
-            "compliant": ok,
-            "failures_count": len(failures) if failures else 0,
-            "failures": failures,
-        }
+            new_state = collect_device_state(sesh, log)
+            new_stp = build_stp_interfaces(new_state)
 
-        if not ok:
-            log.error(
-                "stp_interfaces_post_validation_failed",
-                extra={
-                    **log_extra,
-                    "status": StepStatus.FAILED.value,
-                    "message": "STP Interfaces Post Validation Failed",
-                },
+            ok, failures = check_stp_interfaces(
+                [interface_data],
+                new_stp
             )
-            device_result["critical_issues"].extend(failures)
-            device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
-        else:
-            device_result["actions_taken"].append(
-                "STP Interface Configuration Post Validation Successful | "
-                f"BPDU Guard: {bpdu_guard} | Portfast: {portfast} | "
-                f"Root Guard: {root_guard} | Loop Guard: {loop_guard} | "
-                f"BPDU Filter: {bpdu_filter}"
-            )
-            log.info(
-                "stp_interfaces_post_validation_success",
-                extra={
-                    **log_extra,
-                    "status": StepStatus.SUCCESS.value,
-                    "message": "STP Interface Configuration Post Validation Successful",
-                },
-            )
+
+            if not ok:
+                log.error(
+                    "stp_interfaces_post_validation_failed",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.FAILED.value,
+                        "message": "STP Interfaces Post Validation Failed",
+                        "compliant": False,
+                        "failures": failures,
+                    },
+                )
+
+                device_result["critical_issues"].extend(failures)
+
+                device_result["status"] = (
+                    OperationalStatus.FAILED_VALIDATION.value
+                )
+
+            else:
+                device_result["actions_taken"].append(
+                    "STP Interface Configuration Post Validation Successful | "
+                    f"Interface: {interface} | "
+                    f"BPDU Guard: {bpdu_guard} | "
+                    f"Portfast: {portfast} | "
+                    f"Root Guard: {root_guard} | "
+                    f"Loop Guard: {loop_guard} | "
+                    f"BPDU Filter: {bpdu_filter}"
+                )
+
+                log.info(
+                    "stp_interfaces_post_validation_success",
+                    extra={
+                        **log_extra,
+                        "status": StepStatus.SUCCESS.value,
+                        "message": (
+                            "STP Interface Configuration "
+                            "Post Validation Successful"
+                        ),
+                    },
+                )
+
     return device_result
