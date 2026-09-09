@@ -37,9 +37,6 @@ def compliance_port_security(
             "enabled_count": sum(
                 1 for c in (interfaces or {}).values() if c.get("enabled")
             ),
-            "maximum_count": [
-                safe_int(i.get("maximum")) for i in (interfaces or {}).values()
-            ],
             "violation_modes": [
                 c.get("violation")
                 for c in (interfaces or {}).values()
@@ -60,7 +57,7 @@ def compliance_port_security(
                 },
             )
             device_result["actions_taken"].append(
-                "Port Security Configuration Already Compliant" f" | {ps_str}"
+                f"Port Security Configuration Already Compliant | {ps_str}"
             )
         else:
             log.warning(

@@ -20,7 +20,7 @@ def check_stp_global(expected_stp, actual_config):
 
         if missing:
             failures.append(
-                f"(STP) Missing VLANs | {sorted(missing)} "
+                f"(STP) Missing VLANs | {(sorted(missing))} "
             )
         if extra:
             failures.append(

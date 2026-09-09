@@ -11,7 +11,7 @@ def check_snooping(expected_snooping, actual_config):
             )
     if extra_vlans:
         failures.append(
-                f"(DHCP Snooping) Drift: Extra VLAN on Device | VLAN(s): {sorted(extra_vlans)}"
+                f"(DHCP Snooping) Drift: Rogue VLAN on Device | VLAN(s): {sorted(extra_vlans)}"
             )
     exp_interfaces = expected_snooping.get("interfaces", {})
     act_interfaces = actual_config.get("interfaces", {})
@@ -23,14 +23,14 @@ def check_snooping(expected_snooping, actual_config):
     if extra_int:
         for e in extra_int:
             failures.append(
-                    f"(DHCP Snooping) Extra Interface Configured with DHCP Snooping | "
+                    f"(DHCP Snooping) Extra Interface found | Potential SOT mismatch | "
                     f"Interface: {e}"
                 )
     for interface, int_value in exp_interfaces.items():
         actual = act_interfaces.get(interface)
         if not actual:
             failures.append(
-                    f"(DHCP Snooping) Missing Interface Configured w DHCP Snooping | "
+                    f"(DHCP Snooping) Missing Interface | Potential SOT mismatch | "
                     f"Interface: {interface}"
                 )
             continue
@@ -42,13 +42,13 @@ def check_snooping(expected_snooping, actual_config):
                 )
         if actual.get("trusted") != int_value.get("trusted"):
             failures.append(
-                    f"(DHCP Snooping) Trusted Interface Config Mismatched | "
+                    f"(DHCP Snooping) Trusted Interface Config Mismatched | Interface: {interface}"
                     f"Expected: {int_value.get('trusted')} | "
                     f"Actual: {actual.get('trusted')}"
                 )
     if actual_config.get("option82") != expected_snooping.get("option82"):
         failures.append(
-                "(DHCP Snooping) Mismatched Option 82 Configuration | "
+                "(DHCP Snooping) Mismatched Option 82 Configuration | Should be on? | "
                 f"Expected: {expected_snooping.get('option82')} | "
                 f"Actual: {actual_config.get('option82')}"
             )

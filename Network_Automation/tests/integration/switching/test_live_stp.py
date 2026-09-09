@@ -274,20 +274,19 @@ def test_live_wrong_stp_mode(sesh):
         device_result,
         log
     )
-
+    print(result)
     assert any(
         "Mismatched STP Mode" in r for r in result["initial_issues"]
     )
     assert any(
-        "Epxected: pvst | Actual: rapid-pvst" in r for r in result["initial_issues"]
+        "Expected: pvst | Actual: rapid_pvst" in r for r in result["initial_issues"]
     )
-
 
 @patch("src.compliance.switching.stp.compliance.DRY_RUN", True)
 def test_live_missing_vlans(sesh):
     context = {
         "stp": {
-            "mode": "pvst",
+            "mode": "rapid_pvst",
             "vlan_priorities": {
                 1: 32768,
                 10: 4096,
@@ -317,8 +316,9 @@ def test_live_missing_vlans(sesh):
         device_result,
         log
     )
+    print(result)
     assert any(
-        "(STP) Missing VLANs | 50" in r for r in result["initial_issues"]
+        "(STP) Missing VLANs | [50]" in r for r in result["initial_issues"]
     )
     assert any(
         "[DRY_RUN] Would Configure Global STP" in r for r in result["actions_taken"]
@@ -370,7 +370,7 @@ def test_live_rogue_vlans(sesh):
 def test_live_mismatched_priority(sesh):
     context = {
         "stp": {
-            "mode": "pvst",
+            "mode": "rapid_pvst",
             "vlan_priorities": {
                 1: 32768,
                 10: 4096,
@@ -399,13 +399,13 @@ def test_live_mismatched_priority(sesh):
         device_result,
         log
     )
-
+    print(result)
     assert any(
         "(STP) Mismatched Bridge Priority | VLAN: 30"
         in r for r in result["initial_issues"]
     )
     assert any(
-        "Epxected: 12281 | Actual: 12288" in r for r in result["initial_issues"]
+        "Expected: 12281 | Actual: 12288" in r for r in result["initial_issues"]
     )
 
 
@@ -449,7 +449,7 @@ def test_live_mismatched_port_fast_and_bpdu_guard(sesh):
 
     log = MagicMock()
 
-    result = compliance_stp_global(
+    result = compliance_stp_interfaces(
         sesh,
         "192.168.255.11",
         context,
@@ -457,7 +457,7 @@ def test_live_mismatched_port_fast_and_bpdu_guard(sesh):
         device_result,
         log
     )
-
+    print (result)
     assert any(
         "(STP Interface) Mismatched PortFast" in r for r in result["initial_issues"]
     )

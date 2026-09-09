@@ -158,7 +158,6 @@ def test_live_rogue_vlan(conn):
                )
     assert any("VLAN0010" in r for r in result["initial_issues"])
 
-@patch("src.compliance.switching.vlan.compliance.DRY_RUN", True)
 def test_live_missing_vlan(conn):
     class S:
         transport = "NETMIKO"
