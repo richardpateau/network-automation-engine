@@ -318,40 +318,50 @@ def build_cdp_netmiko(device_state):
 def build_port_security(device_state):
     if not device_state:
         return {"interfaces": {}}
+
     running_config = device_state.get("running_config") or ""
     parse = CiscoConfParse(running_config.splitlines())
-
     actual_psecurity = {"interfaces": {}}
+
     for p in parse.find_objects(r"^interface"):
-        interface_name = p.text.split()[1]
-        ps_config = actual_psecurity["interfaces"].setdefault(
-            interface_name.lower(),
-            {
-                "enabled": False,
-                "maximum": None,
-                "violation": None,
-                "sticky": False,
-                "mac_addresses": [],
-            },
-        )
+        interface_name = p.text.split()[1].lower()
+        ps_config = {
+            "enabled": False,
+            "maximum": 1,
+            "violation": None,
+            "sticky": False,
+            "mac_addresses": [],
+        }
+        has_ps = False
+
         for child in p.children:
             full_config = child.text.strip()
-            config = child.text.strip().split()
-            if "switchport port-security" == full_config:
+            config = full_config.split()
+
+            if full_config == "switchport port-security":
                 ps_config["enabled"] = True
-            if "port-security maximum" in full_config:
+                has_ps = True
+            elif "port-security maximum" in full_config:
                 ps_config["maximum"] = safe_int(config[-1])
-            if "port-security violation" in full_config:
+                has_ps = True
+            elif "port-security violation" in full_config:
                 ps_config["violation"] = config[-1]
-            if "port-security mac-address sticky" in full_config:
+                has_ps = True
+            elif "port-security mac-address sticky" in full_config:
                 ps_config["sticky"] = True
-            if (
-                    "switchport port-security mac-address" in full_config
-                    and "sticky" not in full_config
+                has_ps = True
+            elif (
+                "switchport port-security mac-address" in full_config
+                and "sticky" not in full_config
             ):
                 ps_config["mac_addresses"].append(config[-1])
+                has_ps = True
+
+        if has_ps:
             if ps_config["enabled"] and ps_config["violation"] is None:
                 ps_config["violation"] = "shutdown"
+            actual_psecurity["interfaces"][interface_name] = ps_config
+
     return actual_psecurity
 
 

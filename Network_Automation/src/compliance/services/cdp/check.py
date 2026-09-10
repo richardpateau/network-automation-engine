@@ -32,16 +32,23 @@ def check_cdp(expected_cdp, actual_config):
             f"(CDP) Rogue Interface Configured with CDP | {' | '.join(extra_interfaces)}"
         )
     for interface, int_value in exp_interfaces.items():
+        want_on = bool(int_value.get("enabled"))
         actual = act_interfaces.get(interface)
-        if not actual:
-            failures.append(
-                f"(CDP) Missing Interface Not Configured w/ CDP | Interface: {interface}"
-            )
-            continue
-        if actual.get("enabled") != int_value.get("enabled"):
-            failures.append(
-                f"(CDP) Interface Operational State Mismatch | Interface: {interface} | "
-                f"Expected: {int_value.get('enabled')} | "
-                f"Actual: {actual.get('enabled')}"
-            )
+
+        if want_on:
+            if not actual:
+                failures.append(
+                    f"(CDP) Missing Interface Not Configured w/ CDP | Interface: {interface}"
+                )
+            elif actual.get("enabled") is False:
+                failures.append(
+                    f"(CDP) Interface Operational State Mismatch | Interface: {interface} | "
+                    f"Expected: True | Actual: False"
+                )
+        else:
+            if actual:
+                failures.append(
+                    f"(CDP) Interface Operational State Mismatch | Interface: {interface} | "
+                    f"Expected: False | Actual: True"
+                )
     return len(failures) == 0, failures

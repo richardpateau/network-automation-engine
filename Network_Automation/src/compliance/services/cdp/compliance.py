@@ -73,7 +73,7 @@ def compliance_cdp(sesh, device_ip, context, device_state, device_result, log):
                 },
             )
             device_result["actions_taken"].append(
-                "CDP Configuration Already Compliant | " f"{cdp_str}"
+                f"CDP Configuration Already Compliant | {cdp_str}"
             )
         else:
             log.warning(
