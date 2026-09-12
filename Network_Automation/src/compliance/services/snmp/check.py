@@ -8,7 +8,7 @@ def check_snmp(expected_snmp, actual_config):
 	extra_c = act_tuple.keys() - exp_tuple.keys()
 	for name in extra_c: 
 		failures.append(
-				f"(SNMP) Drift Detected: Unexpected SNMP Community Found | "
+				f"(SNMP) Drift Detected: Rouge SNMP Community Found | "
 				f"Name: {name} | Permission: {act_tuple.get(name)}"
 			)
 	for name in exp_tuple: 

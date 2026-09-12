@@ -40,8 +40,8 @@ def test_live_build_cdp(sesh):
 	assert actual["enabled"] is True 
 	assert actual["timer"] == 60 
 	assert actual["holdtime"] == 180
-	assert actual["interfaces"]["gigabitethernet0/1"] is True 
-	assert actual["interfaces"]["gigabitethernet0/2"] is True 
+	assert actual["interfaces"]["gigabitethernet0/1"]["enabled"] is True 
+	assert actual["interfaces"]["gigabitethernet0/2"]["enabled"] is True 
 
 def test_live_check_cdp(sesh): 
 	state = collect_device_state(sesh)
@@ -114,6 +114,7 @@ def test_live_compliance_cdp(sesh):
     		"HoldTime: 180" in r for r in result["actions_taken"]
     	)
 
+@patch("src.compliance.services.cdp.compliance.DRY_RUN", True)
 def test_live_global_cdp_disabled_mismatched(sesh): 
 	context = {
 		"cdp": {
@@ -158,6 +159,7 @@ def test_live_global_cdp_disabled_mismatched(sesh):
     		"Expected: False | Actual: True" in r for r in result["initial_issues"]
     	)
 
+@patch("src.compliance.services.cdp.compliance.DRY_RUN", True)
 def test_live_mismatched_timer(sesh): 
 	context = {
 		"cdp": {
@@ -202,6 +204,7 @@ def test_live_mismatched_timer(sesh):
     		"Expected: 65 | Actual: 60" in r for r in result["initial_issues"]
     	)
 
+@patch("src.compliance.services.cdp.compliance.DRY_RUN", True)
 def test_live_mismatched_hold_timer(sesh): 
 	context = {
 		"cdp": {
@@ -246,6 +249,7 @@ def test_live_mismatched_hold_timer(sesh):
     		"Expected: 120 | Actual: 180" in r for r in result["initial_issues"]
     	)
 
+@patch("src.compliance.services.cdp.compliance.DRY_RUN", True)
 def test_live_rouge_interface(sesh): 
 	context = {
 		"cdp": {
@@ -253,13 +257,9 @@ def test_live_rouge_interface(sesh):
 			    "timer": 60, 
 			    "holdtime": 180,
 			    "interfaces": {
-			    	#inverting True to False
-			        "gigabitethernet0/1": {
-			            "enabled": False
-			        },
 			        "gigabitethernet0/2": {
 			            "enabled": True
-			        }
+			        },
 			    }
 			}
 		}
@@ -291,6 +291,7 @@ def test_live_rouge_interface(sesh):
     		"gigabitethernet0/1" in r for r in result["initial_issues"]
     	)
 
+@patch("src.compliance.services.cdp.compliance.DRY_RUN", True)
 def test_live_missing_interface(sesh): 
 	context = {
 		"cdp": {
@@ -304,7 +305,8 @@ def test_live_missing_interface(sesh):
 			        "gigabitethernet0/2": {
 			            "enabled": True
 			        },
-			        "gigabitethernet0/3": {
+			        #interface not on device | SOT error caught 
+			        "gigabitethernet2": {
 			            "enabled": True
 			        }
 			    }
@@ -335,6 +337,57 @@ def test_live_missing_interface(sesh):
     		"(CDP) Missing Interface Not Configured w/ CDP" in r for r in result["initial_issues"]
     	)
     assert any(
-    		"Interface: gigabitethernet0/3" in r for r in result["initial_issues"] 
+    		"Potential SOT Error" in r for r in result["initial_issues"]
     	)
-    
+    assert any(
+    		"Interface: gigabitethernet2" in r for r in result["initial_issues"] 
+    	)
+    assert any(
+    		"[DRY_RUN] Would Configure CDP" in r for r in result["actions_taken"]
+    	)
+
+@patch("src.compliance.services.cdp.compliance.DRY_RUN", True)
+def test_live_rogue_interface_on(sesh):
+	context = {
+		"cdp": {
+			    "enabled": True,
+			    "timer": 60, 
+			    "holdtime": 180,
+			    "interfaces": {
+			        "gigabitethernet0/1": {
+			            "enabled": True
+			        },
+			        #inverting g0/2 to False 
+			        "gigabitethernet0/2": {
+			            "enabled": False
+			        }
+			    }
+			}
+		}
+
+	state = collect_device_state(sesh)
+
+	device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_cdp(
+    		sesh,
+    		"192.168.255.11",
+    		context,
+    		state,
+    		device_result,
+    		log
+    	)
+
+    assert any(
+    		"(CDP) Interface Operational State Mismatch" in r for r in result["initial_issues"]
+    	)
+    assert any(
+    		"Expected: False | Actual: True" in r for r in result["initial_issues"]
+    	)

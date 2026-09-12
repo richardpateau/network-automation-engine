@@ -38,12 +38,8 @@ def check_cdp(expected_cdp, actual_config):
         if want_on:
             if not actual:
                 failures.append(
-                    f"(CDP) Missing Interface Not Configured w/ CDP | Interface: {interface}"
-                )
-            elif actual.get("enabled") is False:
-                failures.append(
-                    f"(CDP) Interface Operational State Mismatch | Interface: {interface} | "
-                    f"Expected: True | Actual: False"
+                    f"(CDP) Missing Interface Not Configured w/ CDP | Potential SOT Error | "
+                    f"Interface: {interface}"
                 )
         else:
             if actual:
