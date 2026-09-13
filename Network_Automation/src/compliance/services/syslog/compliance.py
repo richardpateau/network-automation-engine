@@ -21,13 +21,13 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
         raise ValueError(f"Unsupported Transport Method: {sesh.transport}")
     syslog_updated = False
 
-    syslog_log = []
+    syslog_log = ["Syslog"]
 
     if exp_syslog.get("facility"):
         syslog_log.append(f"Facility: {exp_syslog.get('facility', '')}")
     if exp_syslog.get("hosts"):
-        for h in exp_syslog.get("hosts", []):
-            syslog_log.append(f"SYSLOG HOST IP: {h}")
+        hosts = ", ".join(exp_syslog.get("hosts", []))
+        syslog_log.append(f"Syslog Host IP: {hosts}")
     if exp_syslog.get("source_interface"):
         syslog_log.append(f"Source Interface: {exp_syslog.get('source_interface', '')}")
     if "timestamps" in exp_syslog:

@@ -32,7 +32,7 @@ def check_syslog(expected_syslog, actual_config, transport):
 	if expected_syslog.get("timestamps") is True: 
 		if not actual_config.get("timestamps"):
 			failures.append(
-					f"(Syslog) Mismatched Timestamps Configuration | service timestamps log datetime msec | "
+					"(Syslog) Mismatched Timestamps Configuration | service timestamps log datetime msec | "
 					f"Expected: {expected_syslog.get('timestamps')} | "
 					f"Actual: {actual_config.get('timestamps')}"
 				)

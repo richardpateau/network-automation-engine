@@ -130,7 +130,7 @@ def test_live_compliance_snmp(sesh):
             "SNMP Configuration Already Compliant" in r for r in result["initial_issues"]
         )
     assert any(
-            "SNMP IP: 10.10.10.50 (private)" in r for r in result["initial_issues"]
+            "SNMP IP: 10.10.10.50 (community name = private)" in r for r in result["initial_issues"]
         )
 
 def test_live_rogue_snmp_community(sesh): 
@@ -185,7 +185,7 @@ def test_live_rogue_snmp_community(sesh):
             "(SNMP) Drift Detected: Rouge SNMP Community Found" in r for r in result["initial_issues"]
         )
     assert any(
-            "Name: private | Permission: rw" in r for r in result["initial_issues"]
+            "Name: private (permission: rw)" in r for r in result["initial_issues"]
         )
 
 def test_live_missing_community(sesh): 
@@ -248,5 +248,412 @@ def test_live_missing_community(sesh):
             "[DRY_RUN] Would Configure SNMP" in r for r in result["initial_issues"]
         )
     assert any(
-            "Community Name: private | "
+            "Community Name: extra_community (permission = rw)" in r for r in result["initial_issues"]
         )
+
+def test_live_mismatched_permission(sesh): 
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            #changing rw to ro 
+            {"snmp_name": "private","permission": "ro"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            {
+                "snmp_ip": "10.10.10.60",
+                "snmp_version": "2c",
+                "snmp_name": "private"
+            }
+        ],
+        "traps": {
+            "snmp": True,
+            "syslog": True,
+        },
+        "location": "Network-Lab",
+        "contact": "admin@example.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+    
+    assert any(
+            "(SNMP) Mismatched Community Permission" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Name: private" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Expected: ro | Actual: rw" in r for r in result["initial_issues"]
+        )
+
+def test_live_mismatched_contact(sesh): 
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            {"snmp_name": "private","permission": "rw"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            {
+                "snmp_ip": "10.10.10.60",
+                "snmp_version": "2c",
+                "snmp_name": "private"
+            }
+        ],
+        "traps": {
+            "snmp": True,
+            "syslog": True,
+        },
+        "location": "Network-Lab",
+        #changing example to gmail
+        "contact": "admin@gmail.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+
+    assert any(
+            "(SNMP) Mismatched Contact" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Expected: admin@gmail.com | Actual: admin@example.com" in r 
+            for r in result["initial_issues"]
+        )
+
+def test_live_extra_snmp_host_ip(sesh): 
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            {"snmp_name": "private","permission": "rw"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            {
+                "snmp_ip": "10.10.10.60",
+                "snmp_version": "2c",
+                "snmp_name": "private"
+            },
+            #adding host not on device 
+            {
+                "snmp_ip": "10.10.10.70",
+                "snmp_version": "2c",
+                "snmp_name": "voice_snmp"
+            }
+        ],
+        "traps": {
+            "snmp": True,
+            "syslog": True,
+        },
+        "location": "Network-Lab",
+        "contact": "admin@example.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+
+    assert any(
+            "(SNMP) Missing SNMP Host | Name: voice_snmp" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Host IP: 10.10.10.70" in r for r in result["initial_issues"]
+        )
+
+def test_live_mismatched_host_ip(sesh):
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            {"snmp_name": "private","permission": "rw"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            {   #changing 10.10.10.60 to .80
+                "snmp_ip": "10.10.10.80",
+                "snmp_version": "2c",
+                "snmp_name": "private"
+            }
+        ],
+        "traps": {
+            "snmp": True,
+            "syslog": True,
+        },
+        "location": "Network-Lab",
+        "contact": "admin@example.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+
+    assert any(
+            "(SNMP) Mismatched SNMP Host IP" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Name: private" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Expected: 10.10.10.80 | Actual: 10.10.10.80" in r for r in result["initial_issues"]
+        )
+
+def test_live_mismatched_version(sesh): 
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            {"snmp_name": "private","permission": "rw"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            { 
+                "snmp_ip": "10.10.10.60",
+                #changing 2c to 3 
+                "snmp_version": "3",
+                "snmp_name": "private"
+            }
+        ],
+        "traps": {
+            "snmp": True,
+            "syslog": True,
+        },
+        "location": "Network-Lab",
+        "contact": "admin@example.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+
+    assert any(
+            "(SNMP) Mismatched SNMP Version" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Name: private" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Expected: 3 | Actual: 2c" in r for r in result["initial_issues"]
+        )
+
+def test_live_mismatched_location(sesh): 
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            {"snmp_name": "private","permission": "rw"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            { 
+                "snmp_ip": "10.10.10.60",
+                "snmp_version": "2c",
+                "snmp_name": "private"
+            }
+        ],
+        "traps": {
+            "snmp": True,
+            "syslog": True,
+        },
+        #changing location
+        "location": "Network-Lab Florida",
+        "contact": "admin@example.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+
+    assert any(
+            "(SNMP) SNMP Location Mismatch" in r for r in result["initial_issues"]
+        )
+    assert any(
+            "Expected: network-lab florida | Actual: network-lab" in r for r in result["initial_issues"]
+        )
+
+def test_live_mismatched_traps(sesh):
+    context = {
+        "snmp": {
+        "communities": [
+            {"snmp_name": "public","permission": "ro"},
+            {"snmp_name": "private","permission": "rw"}
+        ],
+        "hosts": [
+            {
+                "snmp_ip": "10.10.10.50",
+                "snmp_version": "2c",
+                "snmp_name": "public"
+            },
+            { 
+                "snmp_ip": "10.10.10.60",
+                "snmp_version": "2c",
+                "snmp_name": "private"
+            }
+        ],
+        "traps": {
+            #inverting all traps to false 
+            "snmp": False,
+            "syslog": False,
+        },
+        "location": "Network-Lab",
+        "contact": "admin@example.com"
+        }
+    }
+
+    state = collect_device_state(sesh)
+
+     device_result = {
+        "actions_taken": [],
+        "initial_issues": [],
+        "critical_issues": [],
+        "status": "SUCCESS"
+    }
+
+    log = MagicMock()
+
+    result = compliance_snmp(
+            sesh,
+            "192.168.255.11",
+            context,
+            state,
+            device_result,
+            log
+        )
+
+    assert any(
+            "(SNMP) Mismatched Traps | Config" in r for in result["initial_issues"]
+        )
+    assert any(
+            "(SNMP) Mismatched Traps | SNMP" in r for r in result["initial_issues"]
+        )
+    

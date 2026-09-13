@@ -23,11 +23,11 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log):
     if exp_snmp.get("communities"):
         for c in exp_snmp.get("communities"):
             snmp_log.append(
-                f"Community Name: {c.get('snmp_name')} Permission: {c.get('permission')}"
+                f"Community Name: {c.get('snmp_name')} (permission: {c.get('permission')})"
             )
     if exp_snmp.get("hosts"):
         for h in exp_snmp.get("hosts"):
-            snmp_log.append(f"SNMP IP: {h.get('snmp_ip')} ({h.get('snmp_name')}) ")
+            snmp_log.append(f"SNMP IP: {h.get('snmp_ip')} (community name: {h.get('snmp_name')}) ")
     if exp_snmp.get("traps"):
         traps = exp_snmp.get("traps", {})
         snmp_log.append(

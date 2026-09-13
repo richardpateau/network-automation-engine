@@ -53,7 +53,7 @@ def check_snmp(expected_snmp, actual_config):
 		actual = act_lookup.get(e.get("snmp_name"))
 		if not actual: 
 			failures.append(
-					f"(SNMP) Missing SNMP Host | Name: {e.get('snmp_name')}"
+					f"(SNMP) Missing SNMP Host | Name: {e.get('snmp_name')} | Host IP: {actual.get('snmp_ip')}"
 				)
 			continue
 		if actual.get("snmp_ip") != e.get("snmp_ip"): 

@@ -223,6 +223,7 @@ def build_syslog_netmiko(device_state):
         return {
             "hosts": [],
             "trap_level": "",
+            "facility": "local7",
             "source_interface": "",
             "timestamps": False,
         }
@@ -231,6 +232,7 @@ def build_syslog_netmiko(device_state):
         return {
             "hosts": [],
             "trap_level": "",
+            "facility": "local7",
             "source_interface": "",
             "timestamps": False,
         }
@@ -239,12 +241,14 @@ def build_syslog_netmiko(device_state):
         return {
             "hosts": [],
             "trap_level": "",
+            "facility": "local7",
             "source_interface": "",
             "timestamps": False,
         }
     actual_syslog = {
         "hosts": [],
         "trap_level": "",
+        "facility": "local7",
         "source_interface": "",
         "timestamps": False,
     }
@@ -254,6 +258,10 @@ def build_syslog_netmiko(device_state):
         for p in parse.find_objects(r"^service timestamps"):
             if "log datetime msec" in p.text:
                 actual_syslog["timestamps"] = True
+        for p in parse.find_objects("r^logging"):
+            parts = p.text.split()
+            if "logging facility" in p.text:
+                actual_syslog["facility"] = parts[-1]
     trap_level = logging.get("trap", {}).get("level", "")
     if trap_level:
         actual_syslog["trap_level"] = trap_level.lower()
