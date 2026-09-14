@@ -1,3 +1,0 @@
-ip arp inspection vlan 10,20,30
-ip arp inspection log-buffer entries 100
-
