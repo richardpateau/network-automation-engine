@@ -92,7 +92,23 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+
+## Configuration
+
+Configure credentials and connection information through environment variables.
+
+**Do not commit credentials, API tokens, passwords, or `.env` files to Git.**
+
+```bash
+export NETBOX_URL="http://localhost:8000"
+export NETBOX_TOKEN="your-token"
+
+export NA_HOST="192.168.1.10"
+export NA_USER="username"
+export NA_PASS="password"
+export NA_TYPE="cisco_ios"
 ```
+Adjust the variables to match the configuration expected by the implementation.
 
 ## Configuration
 
@@ -120,15 +136,15 @@ python Hybrid_Automation.py
 
 The engine:
 
-1. Retrieves inventory and desired state from NetBox
-2. Connects to each device using its configured transport
-3. Collects the appropriate device state
-4. Builds a normalized representation
-5. Runs the compliance pipeline
-6. Remediates configuration drift when required
-7. Re-collects state after remediation
-8. Post-validates the resulting configuration
-9. Generates compliance reports
+    1. Retrieves inventory and desired state from NetBox
+    2. Connects to each device using its configured transport
+    3. Collects the appropriate device state
+    4. Builds a normalized representation
+    5. Runs the compliance pipeline
+    6. Remediates configuration drift when required
+    7. Re-collects state after remediation
+    8. Post-validates the resulting configuration
+    9. Generates compliance reports
 
 ## Testing
 
