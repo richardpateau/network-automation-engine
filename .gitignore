@@ -21,3 +21,6 @@ reports/*.txt
 Thumbs.db
 # If you put passwords in a file, add it here!
 
+
+# Scratch drafts (not part of the project)
+DRAFT_*.md
