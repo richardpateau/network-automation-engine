@@ -1,0 +1,194 @@
+{
+  "switchports": {
+    "GigabitEthernet0/0": {
+      "switchport_enable": true,
+      "switchport_mode": "static access",
+      "operational_mode": "static access",
+      "encapsulation": {
+        "administrative_encapsulation": "negotiate",
+        "operational_encapsulation": "native",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": false,
+      "access_vlan": "98",
+      "access_vlan_name": "management ",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "all",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet0/1": {
+      "switchport_enable": true,
+      "switchport_mode": "static access",
+      "operational_mode": "static access",
+      "encapsulation": {
+        "administrative_encapsulation": "negotiate",
+        "operational_encapsulation": "native",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": false,
+      "access_vlan": "20",
+      "access_vlan_name": "VOICE ",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "all",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet0/2": {
+      "switchport_enable": true,
+      "switchport_mode": "dynamic auto",
+      "operational_mode": "static access",
+      "encapsulation": {
+        "administrative_encapsulation": "negotiate",
+        "operational_encapsulation": "native",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": true,
+      "access_vlan": "1",
+      "access_vlan_name": "default",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "all",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet0/3": {
+      "switchport_enable": true,
+      "switchport_mode": "trunk",
+      "operational_mode": "trunk",
+      "encapsulation": {
+        "administrative_encapsulation": "dot1q",
+        "operational_encapsulation": "dot1q",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": true,
+      "access_vlan": "1",
+      "access_vlan_name": "default",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "10,20,30,40,50",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet1/0": {
+      "switchport_enable": true,
+      "switchport_mode": "trunk",
+      "operational_mode": "trunk",
+      "encapsulation": {
+        "administrative_encapsulation": "dot1q",
+        "operational_encapsulation": "dot1q",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": true,
+      "access_vlan": "1",
+      "access_vlan_name": "default",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "10,20,30,40",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet1/1": {
+      "switchport_enable": true,
+      "switchport_mode": "dynamic auto",
+      "operational_mode": "static access",
+      "encapsulation": {
+        "administrative_encapsulation": "negotiate",
+        "operational_encapsulation": "native",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": true,
+      "access_vlan": "1",
+      "access_vlan_name": "default",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "all",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet1/2": {
+      "switchport_enable": true,
+      "switchport_mode": "dynamic auto",
+      "operational_mode": "down",
+      "encapsulation": {
+        "administrative_encapsulation": "negotiate",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": true,
+      "access_vlan": "1",
+      "access_vlan_name": "default",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "all",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    },
+    "GigabitEthernet1/3": {
+      "switchport_enable": true,
+      "switchport_mode": "dynamic auto",
+      "operational_mode": "down",
+      "encapsulation": {
+        "administrative_encapsulation": "negotiate",
+        "native_vlan": "1",
+        "native_vlan_name": "default"
+      },
+      "negotiation_of_trunk": true,
+      "access_vlan": "1",
+      "access_vlan_name": "default",
+      "native_vlan_tagging": true,
+      "private_vlan": {
+        "native_vlan_tagging": true,
+        "encapsulation": "dot1q"
+      },
+      "trunk_vlans": "all",
+      "pruning_vlans": "2-1001",
+      "capture_mode": false,
+      "capture_vlans": "all",
+      "protected": false
+    }
+  }
+}

@@ -1,0 +1,35 @@
+============================================================
+NETWORK COMPLIANCE REPORT
+============================================================
+
+Report Time: 2026-10-28T15:07:31.394396
+Devices Audited: 1
+
+SUMMARY
+----------------
+Compliant: 0
+Non-Compliant: 1
+Failed: 0
+
+DEVICE DETAILS
+----------------
+
+Device: CORE-1
+Status: NON-COMPLIANT
+Issues:
+ - vlans pipeline failure
+ - interfaces pipeline failure
+ - etherchannel pipeline failure
+ - stp pipeline failure
+ - roas pipeline failure
+ - hsrp pipeline failure
+ - ospf pipeline failure
+ - nat pipeline failure
+ - dhcp_snooping pipeline failure
+ - dai pipeline failure
+ - port_security pipeline failure
+ - dhcp pipeline failure
+ - ntp pipeline failure
+ - snmp pipeline failure
+ - syslog pipeline failure
+ - cdp pipeline failure

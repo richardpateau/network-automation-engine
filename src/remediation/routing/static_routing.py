@@ -1,0 +1,93 @@
+import re 
+from src.core.settings import DRY_RUN
+from src.core.enums import StepStatus, OperationalStatus
+from src.remediation.template_env import template_env
+
+def configure_static(session, device_ip, static_data, log):
+    static = static_data.get("static", [])
+    static_log = " | ".join(
+        f"Network Address: {s.get('network_address')} | Mask: {s.get('mask')} | "
+        f"AD: {s.get('AD', 'N/A')} | Exit Interface : {s.get('exit_interface', 'N/A')} | "
+        f"Next Hop IP: {s.get('next_hop', 'N/A')}"
+        for s in static
+    )
+    try:
+        temp_recursive = template_env.get_template("RECURSIVE.j2")
+        temp_exit_int = template_env.get_template("EXIT_INT.j2")
+        temp_full = template_env.get_template("FULLY_SPECIFIC.j2")
+
+        templates = {
+            "recursive": temp_recursive,
+            "exit-interface": temp_exit_int,
+            "fully-specified": temp_full
+        }
+
+        if DRY_RUN:
+            return {
+                "status": OpStatus.DRY_RUN.value,
+                "summary": (
+                    f"[DRY_RUN] Would Configure Static Routes | "
+                    f"{static_log} | Transport: NETCONF"
+                )
+            }
+
+        for s in static:
+            template = templates.get(s.get("type"))
+            if not template:
+                continue
+            commands = template.render(
+                static=static
+            )
+
+        session.edit_config(
+            target="running",
+            config=commands
+        )
+
+        log.info(
+            "static_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "static_automation",
+                "event_type": "static_config",
+                "status": StepStatus.SUCCESS.value,
+                "detail": (
+                    f"Static Routes Configuration Successful | "
+                    f"{static_log} | Transport: NETCONF"
+                )
+            }
+
+        )
+        return {
+            "status": OpStatus.SUCCESS.value,
+            "summary": (
+                f"Static Route Configuration Successful | "
+                f"{static_log} | Transport: NETCONF"
+            )
+        }
+
+    except Exception as e:
+        log.info(
+            "static_config",
+            extra={
+                "device_ip": device_ip,
+                "component": "static_automation",
+                "event_type": "static_config",
+                "status": StepStatus.ERROR.value,
+                "error": str(e),
+                "detail": (f"Try/Exception Error | Static Route Configuration | "
+                            f"{static_log} | Transport: NETCONF | "
+                            f"Error: {str(e)}"
+                            )
+            }
+
+        )
+        return {
+            "status": OpStatus.ERROR.value,
+            "summary": (
+                f"Try/Exception Error | Static Route Configuration | "
+                f"{static_log} | Transport: NETCONF | "
+                f"Error: {str(e)}"
+            ),
+            "error": str(e)
+        }

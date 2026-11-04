@@ -1,0 +1,34 @@
+{
+  "ospf_restconf": {
+    "Cisco-IOS-XE-native:router": {
+      "Cisco-IOS-XE-ospf:router-ospf": {
+        "ospf": {
+          "process-id": [
+            {
+              "id": 1,
+              "network": [
+                {
+                  "ip": "192.168.10.0",
+                  "wildcard": "0.0.0.255",
+                  "area": 0
+                }
+              ],
+              "router-id": "1.1.1.1"
+            },
+            {
+              "id": 200,
+              "network": [
+                {
+                  "ip": "192.168.20.0",
+                  "wildcard": "0.0.0.255",
+                  "area": 1
+                }
+              ],
+              "router-id": "2.2.2.2"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

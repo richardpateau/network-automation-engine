@@ -1,0 +1,30 @@
+GigabitEthernet0/1 is up, line protocol is up
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+GigabitEthernet0/2 is up, line protocol is up
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+GigabitEthernet0/3 is up, line protocol is up
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+GigabitEthernet1/0 is up, line protocol is up
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+GigabitEthernet1/1 is up, line protocol is up
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+GigabitEthernet1/2 is down, line protocol is down
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+GigabitEthernet1/3 is down, line protocol is down
+  Encapsulation ARPA
+  Sending CDP packets every 180 seconds
+  Holdtime is 180 seconds
+
+

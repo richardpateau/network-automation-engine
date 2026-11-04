@@ -1,0 +1,36 @@
+============================================================
+NETWORK COMPLIANCE REPORT
+============================================================
+
+Report Time: 2026-11-04T12:53:49.013304
+Devices Audited: 1
+
+SUMMARY
+----------------
+Compliant: 0
+Non-Compliant: 0
+Failed: 0
+
+DEVICE DETAILS
+----------------
+
+Device: CORE-1
+Status: FAILED_VALIDATION
+Issues:
+ - VLAN 10 not found on device.
+ - VLAN 20 not found on device.
+ - VLAN 30 not found on device.
+ - VLAN 40 not found on device.
+ - VLAN 50 not found on device.
+ - VLAN 60 not found on device.
+ - VLAN 70 not found on device.
+ - VLAN 999 not found on device.
+Actions Taken:
+ - VLAN configured successfully | VLAN: 10 | Name: USERS
+ - VLAN configured successfully | VLAN: 20 | Name: VOICE
+ - VLAN configured successfully | VLAN: 30 | Name: SERVERS
+ - VLAN configured successfully | VLAN: 40 | Name: GUEST
+ - VLAN configured successfully | VLAN: 50 | Name: MANAGEMENT
+ - VLAN configured successfully | VLAN: 60 | Name: PRINTERS_IOT
+ - VLAN configured successfully | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE
+ - VLAN configured successfully | VLAN: 999 | Name: NATIVE_UNUSED

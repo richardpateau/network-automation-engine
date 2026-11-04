@@ -1,0 +1,39 @@
+{
+  "native_netconf": {
+  "ntp": {
+         "authenticate": {
+             "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ntp"
+         },
+         "authentication-key": {
+             "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ntp",
+             "number": "1",
+             "md5-cfg": "13261E010803557878",
+             "md5": "13261E010803557878",
+             "encryption-type": "7"
+         },
+         "server": {
+             "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ntp",
+             "server-list": [
+                 {
+                     "ip-address": "192.168.100.10",
+                     "key": "1"
+                 },
+                 {
+                     "ip-address": "192.168.100.11",
+                     "key": "1"
+                 }
+             ]
+         },
+         "trusted-key": {
+             "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ntp",
+             "number": "1"
+         }
+     },
+     "diagnostic": {
+         "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-diagnostics",
+         "bootup": {
+             "level": "minimal"
+           }
+       }
+   }
+}

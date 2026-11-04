@@ -1,0 +1,154 @@
+{
+  "native_netconf": {
+    "ip": {
+      "dhcp": {
+        "excluded-address": {
+          "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-dhcp",
+          "low-high-address-list": [
+            {
+              "low-address": "192.168.10.1",
+              "high-address": "192.168.10.20"
+            },
+            {
+              "low-address": "192.168.20.1",
+              "high-address": "192.168.20.10"
+            }
+          ]
+        },
+        "pool": [
+          {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-dhcp",
+            "id": "USERS",
+            "lease": {
+              "lease-value": {
+                "days": "7",
+                "hours": "12",
+                "minutes": "30"
+              }
+            },
+            "default-router": {
+              "default-router-list": "192.168.10.1"
+            },
+            "dns-server": {
+              "dns-server-list": [
+                "4.4.4.4",
+                "8.8.8.8"
+              ]
+            },
+            "domain-name": "company.local",
+            "network": {
+              "primary-network": {
+                "number": "192.168.10.0",
+                "mask": "255.255.255.0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "interface": {
+      "GigabitEthernet": [
+        {
+          "name": "1",
+          "ip": {
+            "nat": {
+              "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-nat",
+              "outside": null
+            }
+          },
+          "logging": {
+            "event": {
+              "link-status": null
+            }
+          },
+          "mop": {
+            "enabled": "false",
+            "sysid": "false"
+          },
+          "negotiation": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
+            "auto": "true"
+          },
+          "service-policy": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-policy",
+            "output": "WAN-QOS"
+          }
+        },
+        {
+          "name": "1.50",
+          "encapsulation": {
+            "dot1Q": {
+              "vlan-id": "10"
+            }
+          },
+          "standby": {
+            "version": "2",
+            "standby-list": {
+              "group-number": "10",
+              "ip": {
+                "address": "192.168.10.1"
+              },
+              "preempt": null,
+              "priority": "110"
+            }
+          }
+        },
+        {
+          "name": "1.98",
+          "encapsulation": {
+            "dot1Q": {
+              "vlan-id": "98",
+              "native": null
+            }
+          },
+          "ip": {
+            "address": {
+              "primary": {
+                "address": "192.168.255.20",
+                "mask": "255.255.255.0"
+              }
+            }
+          }
+        },
+        {
+          "name": "2",
+          "ip": {
+            "address": {
+              "primary": {
+                "address": "192.168.30.1",
+                "mask": "255.255.255.0"
+              }
+            },
+            "helper-address": [
+              {
+                "address": "10.10.10.5"
+              },
+              {
+                "address": "10.10.10.6"
+              }
+            ],
+            "nat": {
+              "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-nat",
+              "outside": null
+            }
+          },
+          "logging": {
+            "event": {
+              "link-status": null
+            }
+          },
+          "mop": {
+            "enabled": "false",
+            "sysid": "false"
+          },
+          "negotiation": {
+            "@xmlns": "http://cisco.com/ns/yang/Cisco-IOS-XE-ethernet",
+            "auto": "true"
+          }
+        }
+      ]
+    }
+  }
+}
+
+

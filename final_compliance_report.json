@@ -1,0 +1,79 @@
+{
+    "run_metadata": {
+        "timestamp": "2026-10-28T15:07:31.394396",
+        "total_devices": 1,
+        "successful_runs": 1
+    },
+    "devices": [
+        {
+            "device_name": "CORE-1",
+            "device_ip": "10.10.10.10",
+            "hostname": null,
+            "status": "NON-COMPLIANT",
+            "actions_taken": [],
+            "events": [],
+            "checks_passed": 0,
+            "checks_failed": 0,
+            "checks": {
+                "vlans": null,
+                "access_ports": null,
+                "trunk_ports": null,
+                "interfaces": null,
+                "roas": null,
+                "ospf": null,
+                "ntp": null,
+                "qos": null,
+                "stp": null,
+                "hsrp": null,
+                "nat": null,
+                "dhcp": null,
+                "snmp": null,
+                "syslog": null,
+                "port_security": null,
+                "dhcp_snooping": null,
+                "dai": null,
+                "cdp": null,
+                "etherchannel": null,
+                "static_routes": null
+            },
+            "initial_issues": [],
+            "critical_issues": [
+                "vlans pipeline failure",
+                "interfaces pipeline failure",
+                "etherchannel pipeline failure",
+                "stp pipeline failure",
+                "roas pipeline failure",
+                "hsrp pipeline failure",
+                "ospf pipeline failure",
+                "nat pipeline failure",
+                "dhcp_snooping pipeline failure",
+                "dai pipeline failure",
+                "port_security pipeline failure",
+                "dhcp pipeline failure",
+                "ntp pipeline failure",
+                "snmp pipeline failure",
+                "syslog pipeline failure",
+                "cdp pipeline failure"
+            ],
+            "warnings": [],
+            "Remediation": {
+                "attempted": false,
+                "successful": false,
+                "changes": []
+            },
+            "connection": {
+                "transport": null,
+                "method": null
+            },
+            "start_time": "2026-10-28T15:07:29.256997+00:00",
+            "end_time": "2026-10-28T15:07:31.393485+00:00",
+            "duration_seconds": 2.136488,
+            "errors": []
+        }
+    ],
+    "summary": {
+        "compliant": 0,
+        "non_compliant": 1,
+        "failed": 0
+    }
+}
