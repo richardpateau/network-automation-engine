@@ -358,7 +358,7 @@ Pass? True | Failure Details: []
 2026-11-04 06:37:50,693 - INFO - Final Compliance Report Saved Successfully
 2026-11-04 06:37:50,694 - INFO - ----- AUTOMATION COMPLETE -----
 ```
-![VLAN Name Drift - Terminal Output](screenshots/check-vlan-terminal-output-fail-name-drift.png)
+![Python](screenshots/vlan-check-name-change-terminal-output.png)
 
 #### Scenario C: Fully Compliant Baseline
 
