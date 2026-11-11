@@ -435,7 +435,7 @@ vlan 10
 
 The `configure_vlan()` handler coordinates dynamic template rendering, safe execution controls, and structured telemetry emission:
 
-![VLAN Configuration Function](screenshots/configure-vlan-code-breakdown.png)
+![VLAN Configuration Function](screenshots/configure-vlan-code-breakdown-visio.png)
 
 ```python
 # src/remediation/switching/vlan.py
@@ -558,7 +558,7 @@ Every automation event publishes a normalized JSON payload to Splunk with consis
 
 When the compliance checker identifies a VLAN name mismatch, it emits a **WARNING**-level event with full drift details:
 
-![Splunk Drift Detection](screenshots/splunk-vlan-drift-warning.png)
+![Splunk Drift Detection](screenshots/splunk-vlan-configuration-non-compliant.png)
 
 ```json
 {
@@ -600,7 +600,7 @@ index=network_automation event_type=compliance_vlan cisco_msgname=WARNING
 
 After remediation commands are applied via Netmiko, an **INFO**-level confirmation event is emitted:
 
-![Splunk Config Success](screenshots/splunk-vlan-config-success.png)
+![Splunk Config Success](screenshots/splunk-vlan-configured-successfully.png)
 
 ```json
 {
@@ -637,7 +637,7 @@ index=network_automation event_type=vlan_config status=SUCCESS
 
 After re-polling the device and confirming the configuration matches NetBox, a **post-validation success** event is published:
 
-![Splunk Post-Validation Success](screenshots/splunk-post-validation-success.png)
+![Splunk Post-Validation Success](screenshots/splunk-vlan-post-validation-success.png)
 
 ```json
 {
@@ -677,7 +677,7 @@ index=network_automation message=vlan_post_validation_success
 
 When the compliance checker finds no drift, the engine bypasses remediation and logs an informational skip event:
 
-![Splunk Already Compliant](screenshots/splunk-already-compliant.png)
+![Splunk Already Compliant](screenshots/splunk-vlan-configuration-already-compliant.png)
 
 ```json
 {
@@ -743,11 +743,11 @@ tests/
 
 ### Test Execution Proof
 
-#### Unit Tests: VLAN State Builder (test_build_vlans.py)
+#### Unit Tests: VLAN State Builder (`test_build_vlans.py`)
 
 Validates the `build_vlan()` function across edge cases, malformed input, and valid Genie parser output:
 
-![Pytest Build VLAN Tests](screenshots/pytest-build-vlans.png)
+![Pytest Build VLAN Tests](screenshots/test-build-vlan-passed.png)
 
 ```bash
 $ python -m pytest "tests/unit/collectors/cli/test_build_vlans.py" -v
@@ -772,7 +772,7 @@ tests/unit/collectors/cli/test_build_vlans.py::test_build_vlan_invalid_vlan_id P
 
 Validates the compliance decision matrix, including compliant bypass, drift detection, and remediation workflows:
 
-![Pytest Compliance VLAN Tests](screenshots/pytest-compliance-vlan.png)
+![Pytest Compliance VLAN Tests](screenshots/test-compliance-vlan-passed.png)
 
 ```bash
 $ python -m pytest "tests/unit/compliance/switching/test_compliance_vlan.py"
@@ -791,9 +791,9 @@ tests/unit/compliance/switching/test_compliance_vlan.py .......       [100%]
 
 ### Test Case Breakdown
 
-#### 1. VLAN Builder Tests (test_build_vlans.py)
+#### 1. VLAN Builder Tests (`test_build_vlans.py`)
 
-![Test Build VLANs Code](screenshots/test-build-vlans-code.png)
+![Test Build VLANs Code](screenshots/unit-test-build-vlan.png)
 
 ```python
 # tests/unit/collectors/cli/test_build_vlans.py
@@ -847,9 +847,9 @@ def test_build_vlan_invalid_vlan_id():
 
 ---
 
-#### 2. Compliance Engine Tests (test_compliance_vlan.py)
+#### 2. Compliance Engine Tests (`test_compliance_vlan.py`)
 
-![Test Compliance VLAN Code](screenshots/test-compliance-vlan-code.png)
+![Test Compliance VLAN Code](screenshots/unit-test-compliance-vlan.png)
 
 ```python
 # tests/unit/compliance/switching/test_compliance_vlan.py
