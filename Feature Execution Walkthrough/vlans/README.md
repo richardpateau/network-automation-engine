@@ -89,7 +89,6 @@ for vlan in vlan_by_id.values():
 ```
 
 > **Design Principle:** If a VLAN is missing from the switch, or if an engineer manually configures a name such as `vlan 10 name network` on the CLI, the engine detects this as configuration drift against the NetBox state.
-```
 
 ![Python](screenshots/vlans-python-inventory-config-print-vlan.png)
 
