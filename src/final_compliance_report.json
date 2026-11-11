@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-04T12:53:49.013304",
+        "timestamp": "2026-11-11T10:32:21.384568",
         "total_devices": 1,
         "successful_runs": 1
     },
@@ -9,16 +9,16 @@
             "device_name": "CORE-1",
             "device_ip": "10.10.10.10",
             "hostname": null,
-            "status": "FAILED_VALIDATION",
+            "status": "COMPLIANT",
             "actions_taken": [
-                "VLAN configured successfully | VLAN: 10 | Name: USERS",
-                "VLAN configured successfully | VLAN: 20 | Name: VOICE",
-                "VLAN configured successfully | VLAN: 30 | Name: SERVERS",
-                "VLAN configured successfully | VLAN: 40 | Name: GUEST",
-                "VLAN configured successfully | VLAN: 50 | Name: MANAGEMENT",
-                "VLAN configured successfully | VLAN: 60 | Name: PRINTERS_IOT",
-                "VLAN configured successfully | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
-                "VLAN configured successfully | VLAN: 999 | Name: NATIVE_UNUSED"
+                "VLAN Already Compliant | VLAN: 10 | Name: USERS",
+                "VLAN Already Compliant | VLAN: 20 | Name: VOICE",
+                "VLAN Already Compliant | VLAN: 30 | Name: SERVERS",
+                "VLAN Already Compliant | VLAN: 40 | Name: GUEST",
+                "VLAN Already Compliant | VLAN: 50 | Name: MANAGEMENT",
+                "VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT",
+                "VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
+                "VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED"
             ],
             "events": [],
             "checks_passed": 0,
@@ -45,26 +45,8 @@
                 "etherchannel": null,
                 "static_routes": null
             },
-            "initial_issues": [
-                "VLAN 10 not found on device.",
-                "VLAN 20 not found on device.",
-                "VLAN 30 not found on device.",
-                "VLAN 40 not found on device.",
-                "VLAN 50 not found on device.",
-                "VLAN 60 not found on device.",
-                "VLAN 70 not found on device.",
-                "VLAN 999 not found on device."
-            ],
-            "critical_issues": [
-                "VLAN 10 not found on device.",
-                "VLAN 20 not found on device.",
-                "VLAN 30 not found on device.",
-                "VLAN 40 not found on device.",
-                "VLAN 50 not found on device.",
-                "VLAN 60 not found on device.",
-                "VLAN 70 not found on device.",
-                "VLAN 999 not found on device."
-            ],
+            "initial_issues": [],
+            "critical_issues": [],
             "warnings": [],
             "Remediation": {
                 "attempted": false,
@@ -75,14 +57,14 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-04T12:53:21.301440+00:00",
-            "end_time": "2026-11-04T12:53:49.011803+00:00",
-            "duration_seconds": 27.710363,
+            "start_time": "2026-11-11T10:32:06.726895+00:00",
+            "end_time": "2026-11-11T10:32:21.383922+00:00",
+            "duration_seconds": 14.657027,
             "errors": []
         }
     ],
     "summary": {
-        "compliant": 0,
+        "compliant": 1,
         "non_compliant": 0,
         "failed": 0
     }

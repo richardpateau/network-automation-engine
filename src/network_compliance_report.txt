@@ -2,12 +2,12 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-04T12:53:49.013304
+Report Time: 2026-11-11T10:32:21.384568
 Devices Audited: 1
 
 SUMMARY
 ----------------
-Compliant: 0
+Compliant: 1
 Non-Compliant: 0
 Failed: 0
 
@@ -15,22 +15,13 @@ DEVICE DETAILS
 ----------------
 
 Device: CORE-1
-Status: FAILED_VALIDATION
-Issues:
- - VLAN 10 not found on device.
- - VLAN 20 not found on device.
- - VLAN 30 not found on device.
- - VLAN 40 not found on device.
- - VLAN 50 not found on device.
- - VLAN 60 not found on device.
- - VLAN 70 not found on device.
- - VLAN 999 not found on device.
+Status: COMPLIANT
 Actions Taken:
- - VLAN configured successfully | VLAN: 10 | Name: USERS
- - VLAN configured successfully | VLAN: 20 | Name: VOICE
- - VLAN configured successfully | VLAN: 30 | Name: SERVERS
- - VLAN configured successfully | VLAN: 40 | Name: GUEST
- - VLAN configured successfully | VLAN: 50 | Name: MANAGEMENT
- - VLAN configured successfully | VLAN: 60 | Name: PRINTERS_IOT
- - VLAN configured successfully | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE
- - VLAN configured successfully | VLAN: 999 | Name: NATIVE_UNUSED
+ - VLAN Already Compliant | VLAN: 10 | Name: USERS
+ - VLAN Already Compliant | VLAN: 20 | Name: VOICE
+ - VLAN Already Compliant | VLAN: 30 | Name: SERVERS
+ - VLAN Already Compliant | VLAN: 40 | Name: GUEST
+ - VLAN Already Compliant | VLAN: 50 | Name: MANAGEMENT
+ - VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT
+ - VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE
+ - VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED

@@ -11,7 +11,6 @@ def configure_vlan(conn, vlan_data, log, device_ip, transport):
 		commands = template.render(
 				vlans=[vlan_data]
 			).splitlines()
-
 		if DRY_RUN:
 			return {
 				"status": OperationalStatus.DRY_RUN.value,
