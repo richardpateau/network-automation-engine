@@ -435,7 +435,7 @@ vlan 10
 
 The `configure_vlan()` handler coordinates dynamic template rendering, safe execution controls, and structured telemetry emission:
 
-![VLAN Configuration Function](screenshots/configure-vlan-code-breakdown-visio.png)
+![VLAN Configuration Function](screenshots/configure-vlan-code-breakdown.png)
 
 ```python
 # src/remediation/switching/vlan.py
