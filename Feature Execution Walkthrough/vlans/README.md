@@ -30,6 +30,7 @@ The accompanying video demonstrates the VLAN automation workflow, including comp
 
 **Please enlarge for clearer video**
 
+https://github.com/user-attachments/assets/e339e447-1594-4b08-9452-ab780db77380
 
 ## Intended State: NetBox Source of Truth (SoT)
 
