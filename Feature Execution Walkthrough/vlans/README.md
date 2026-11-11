@@ -225,8 +225,9 @@ The compliance engine (`src/compliance/switching/vlan/compliance.py`) orchestrat
 
 The compliance loop processes each intended VLAN through a deterministic lifecycle:
 
-![VLAN Compliance Logic - Part 1](screenshots/vlan-compliance-code-part1.png)
-![VLAN Compliance Logic - Part 2](screenshots/vlan-compliance-code-part2.png)
+![Python](screenshots/compliance-vlan-breakdown-1.png)
+
+![Python](screenshots/compliance-vlan-breakdown-2.png)
 
 ```python
 # src/compliance/switching/vlan/compliance.py (Core Logic)
