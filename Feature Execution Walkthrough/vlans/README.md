@@ -204,9 +204,8 @@ Once processed by `build_vlan()`, the switch's live operational state is formatt
 
 > ** Why Normalization Matters:**  
 > By decoupling raw Genie output from downstream business logic, the compliance checker (`check_vlan()`) only interacts with a clean dictionary. This keeps the check logic testable with standard unit mocks and resilient against future CLI syntax or parser schema updates.
-```
 
-## 4. VLAN Compliance Checking
+## VLAN Compliance Checking
 
 The compliance checker compares the intended VLAN configuration against the collected device state.
 
