@@ -631,6 +631,8 @@ interface ethernet0/0
 
 The `configure_access()` function renders the Jinja2 template, evaluates the dry‑run safety gate, applies the configuration set over Netmiko, and logs structured audit telemetry:
 
+![Remediation Access Code](screenshots/configure-access.png)
+
 ```python
 # src/remediation/switching/access.py
 
@@ -697,9 +699,6 @@ def configure_access(conn, access_data, log):
             "summary": f"Failed to configure interface {access_interface}: {str(e)}"
         }
 ```
-
-![Remediation Access Code](screenshots/configure-access.png)
-
 ---
 
 ## 5. Dry‑Run Safety Evaluation
@@ -932,7 +931,8 @@ This suite validates that `build_access()` correctly normalizes Genie switchport
 6. **`test_build_access_no_dict`**: Tests unexpected dictionary structures (missing `"switchports"` key), confirming safe fallback to `{}`.
 
 #### Terminal Execution:
-![Builder Unit Tests Passed](screenshots/test-build-access-terminal.png)
+
+![Builder Unit Tests Passed](screenshots/unit-test-test-build-access-passed.png)
 
 ```bash
 $ PYTHONPATH=. pytest tests/unit/collectors/cli/test_build_access.py -v
@@ -1012,7 +1012,8 @@ def test_compliance_access_post_validation_successful(
 ```
 
 #### Terminal Execution:
-![Compliance Unit Tests Passed](screenshots/test-compliance-access-terminal.png)
+
+![Compliance Unit Tests Passed](screenshots/unit-test-compliance-access-successful.png)
 
 ```bash
 $ PYTHONPATH=. pytest tests/unit/compliance/switching/test_compliance_access.py -v
