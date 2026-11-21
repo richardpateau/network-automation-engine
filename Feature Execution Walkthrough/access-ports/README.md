@@ -66,7 +66,7 @@ The switchport baseline for `ACCESS-SW-1` declares 8 physical access interfaces 
 | :--- | :---: | :--- | :---: | :---: | :--- | :--- |
 | **Ethernet0/0** | `Access` | `USERS` | **10** | `True` | 100BASE-FX | Configured via Netmiko |
 | **Ethernet0/1** | `Access` | `default` | **1** | `True` | 100BASE-TX | Configured via Netmiko |
-| **Ethernet0/2** | `Access` | `VOICE` | **20** | `False` | 100BASE-TX | — |
+| **Ethernet0/2** | `Access` | `VOICE` | **20** | `True` | 100BASE-TX | — |
 | **Ethernet0/3** | `Access` | `SERVERS` | **30** | `True` | 100BASE-FX | Configured via Netmiko |
 | **Ethernet1/0** | `Access` | `GUEST` | **40** | `True` | 100BASE-TX | Configured via Netmiko |
 | **Ethernet1/1** | `Access` | `MANAGEMENT` | **50** | `True` | 100BASE-TX | Configured via Netmiko |
