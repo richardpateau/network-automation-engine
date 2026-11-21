@@ -6,7 +6,7 @@ def check_access(expected_access, actual_config):
 	actual = actual_config.get(exp_interface)
 	if not actual:
 		failures.append(
-				f"Missing Access Port | Expected Interface: {exp_interface} | "
+				f"Missing Access Port or Wrong Mode (Trunk)| Expected Interface: {exp_interface} | "
 				f"Expected VLAN: {exp_vlan}"
 			)
 		return False, failures

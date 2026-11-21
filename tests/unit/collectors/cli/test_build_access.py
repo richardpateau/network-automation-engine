@@ -1,8 +1,8 @@
 from src.collectors.cli.builders import build_access
 
-def test_build_access_valid_path(access_trunk_genie_ouput):
+def test_build_access_valid_path(access_trunk_genie_output):
 
-	result = build_access(access_genie_output)
+	result = build_access(access_trunk_genie_output)
 
 	assert "gigabitethernet0/0" in result 
 	assert result["gigabitethernet0/0"]["access_vlan"] == "98"
@@ -44,19 +44,19 @@ def test_build_access_mixed():
 	assert "gigabitethernet0/3" not in result
 
 def test_build_access_no_vlan(): 
-	data = data = {
+	data = {
+		"switchports":{
 			"gigabitethernet0/3": {
 			        "operational_mode": "trunk",
 			 	
     		},
 		    "gigabitethernet1/0": {
 		      "operational_mode": "static access",
-		       
-		     
-				}
+		       }
 			}
+		}
 	result = build_access(data)
-	assert result["gigabitethernet1/0"]["access_vlan"] = ""
+	assert result["gigabitethernet1/0"]["access_vlan"] == ""
 
 def test_build_access_empty():
 

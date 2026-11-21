@@ -1,16 +1,17 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-11T10:32:21.384568",
-        "total_devices": 1,
-        "successful_runs": 1
+        "timestamp": "2026-11-18T14:04:53.202256",
+        "total_devices": 2,
+        "successful_runs": 2
     },
     "devices": [
         {
             "device_name": "CORE-1",
             "device_ip": "10.10.10.10",
             "hostname": null,
-            "status": "COMPLIANT",
+            "status": "FAILED_VALIDATION",
             "actions_taken": [
+                "VLAN configured successfully | VLAN: 1 | Name: 1",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
                 "VLAN Already Compliant | VLAN: 20 | Name: VOICE",
                 "VLAN Already Compliant | VLAN: 30 | Name: SERVERS",
@@ -18,7 +19,15 @@
                 "VLAN Already Compliant | VLAN: 50 | Name: MANAGEMENT",
                 "VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT",
                 "VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
-                "VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED"
+                "VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED",
+                "VLAN Configuration Post Validation Successful | VLAN: 10 | Name: USERS",
+                "VLAN Configuration Post Validation Successful | VLAN: 20 | Name: VOICE",
+                "VLAN Configuration Post Validation Successful | VLAN: 30 | Name: SERVERS",
+                "VLAN Configuration Post Validation Successful | VLAN: 40 | Name: GUEST",
+                "VLAN Configuration Post Validation Successful | VLAN: 50 | Name: MANAGEMENT",
+                "VLAN Configuration Post Validation Successful | VLAN: 60 | Name: PRINTERS_IOT",
+                "VLAN Configuration Post Validation Successful | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
+                "VLAN Configuration Post Validation Successful | VLAN: 999 | Name: NATIVE_UNUSED"
             ],
             "events": [],
             "checks_passed": 0,
@@ -45,8 +54,12 @@
                 "etherchannel": null,
                 "static_routes": null
             },
-            "initial_issues": [],
-            "critical_issues": [],
+            "initial_issues": [
+                "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default"
+            ],
+            "critical_issues": [
+                "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default"
+            ],
             "warnings": [],
             "Remediation": {
                 "attempted": false,
@@ -57,14 +70,105 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-11T10:32:06.726895+00:00",
-            "end_time": "2026-11-11T10:32:21.383922+00:00",
-            "duration_seconds": 14.657027,
+            "start_time": "2026-11-18T14:04:35.288129+00:00",
+            "end_time": "2026-11-18T14:04:52.484763+00:00",
+            "duration_seconds": 17.196634,
+            "errors": []
+        },
+        {
+            "device_name": "ACCESS-SW-1",
+            "device_ip": "10.10.10.20",
+            "hostname": null,
+            "status": "FAILED_VALIDATION",
+            "actions_taken": [
+                "VLAN configured successfully | VLAN: 1 | Name: 1",
+                "VLAN Already Compliant | VLAN: 10 | Name: USERS",
+                "VLAN Already Compliant | VLAN: 20 | Name: VOICE",
+                "VLAN Already Compliant | VLAN: 30 | Name: SERVERS",
+                "VLAN Already Compliant | VLAN: 40 | Name: GUEST",
+                "VLAN Already Compliant | VLAN: 50 | Name: MANAGEMENT",
+                "VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT",
+                "VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
+                "VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED",
+                "VLAN Configuration Post Validation Successful | VLAN: 10 | Name: USERS",
+                "VLAN Configuration Post Validation Successful | VLAN: 20 | Name: VOICE",
+                "VLAN Configuration Post Validation Successful | VLAN: 30 | Name: SERVERS",
+                "VLAN Configuration Post Validation Successful | VLAN: 40 | Name: GUEST",
+                "VLAN Configuration Post Validation Successful | VLAN: 50 | Name: MANAGEMENT",
+                "VLAN Configuration Post Validation Successful | VLAN: 60 | Name: PRINTERS_IOT",
+                "VLAN Configuration Post Validation Successful | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
+                "VLAN Configuration Post Validation Successful | VLAN: 999 | Name: NATIVE_UNUSED",
+                "Interface Configuration Already Compliant | Interface: Ethernet0/0 | Description: Configured via Netmiko | Should Be Up: True",
+                "Interface Configuration Already Compliant | Interface: Ethernet0/1 | Description: Configured via Netmiko | Should Be Up: True",
+                "Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10",
+                "Access Interface Already Compliant | Interface: Ethernet0/1 | VLAN: 1",
+                "Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20",
+                "Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30",
+                "Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40",
+                "Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50",
+                "Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60",
+                "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70"
+            ],
+            "events": [],
+            "checks_passed": 0,
+            "checks_failed": 0,
+            "checks": {
+                "vlans": null,
+                "access_ports": null,
+                "trunk_ports": null,
+                "interfaces": null,
+                "roas": null,
+                "ospf": null,
+                "ntp": null,
+                "qos": null,
+                "stp": null,
+                "hsrp": null,
+                "nat": null,
+                "dhcp": null,
+                "snmp": null,
+                "syslog": null,
+                "port_security": null,
+                "dhcp_snooping": null,
+                "dai": null,
+                "cdp": null,
+                "etherchannel": null,
+                "static_routes": null
+            },
+            "initial_issues": [
+                "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default",
+                "Mismatched Interface State | Interface: ethernet0/2 | Expected Should Be Up/Up: None | Actual Should be Up/Up: True",
+                "(STP) Missing Interface | Interface: Ethernet0/0",
+                "(STP) Missing Interface | Interface: Ethernet0/1",
+                "(STP) Missing Interface | Interface: Ethernet0/2",
+                "(STP) Missing Interface | Interface: Ethernet0/3",
+                "(STP) Missing Interface | Interface: Ethernet1/0",
+                "(STP) Missing Interface | Interface: Ethernet1/1",
+                "(STP) Missing Interface | Interface: Ethernet1/2",
+                "(STP) Missing Interface | Interface: Ethernet1/3"
+            ],
+            "critical_issues": [
+                "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default",
+                "interfaces pipeline failure",
+                "stp_interfaces pipeline failure"
+            ],
+            "warnings": [],
+            "Remediation": {
+                "attempted": false,
+                "successful": false,
+                "changes": []
+            },
+            "connection": {
+                "transport": null,
+                "method": null
+            },
+            "start_time": "2026-11-18T14:04:35.287525+00:00",
+            "end_time": "2026-11-18T14:04:53.201316+00:00",
+            "duration_seconds": 17.913791,
             "errors": []
         }
     ],
     "summary": {
-        "compliant": 1,
+        "compliant": 0,
         "non_compliant": 0,
         "failed": 0
     }

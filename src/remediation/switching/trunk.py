@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_trunk(conn, trunk_data, log): 
+def configure_trunk(conn, trunk_data, log, device_ip, transport):
 	trunk_interface = trunk_data.get("trunk_interface", "")
 	allowed_vlans = trunk_data.get("allowed_vlans", "")
 
@@ -27,10 +27,10 @@ def configure_trunk(conn, trunk_data, log):
 		log.info(
             "trunk_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "trunk_automation",
                 "event_type": "trunk_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "trunk_interface": trunk_interface,
                 "allowed_vlans": allowed_vlans,
@@ -52,10 +52,10 @@ def configure_trunk(conn, trunk_data, log):
 		log.info(
             "trunk_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "trunk_automation",
                 "event_type": "trunk_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "trunk_interface": trunk_interface,
                 "allowed_vlans": allowed_vlans,

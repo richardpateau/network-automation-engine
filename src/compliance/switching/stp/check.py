@@ -41,20 +41,30 @@ def check_stp_global(expected_stp, actual_config):
     return len(failures) == 0, failures
 
 
-def check_stp_interfaces(expected_int, actual_config):
+def check_stp_interfaces(expected_interfaces, actual_config):
     failures = []
-    exp_int = expected_int.get("interfaces", "")
-    exp_stp = expected_int.get("stp", {})
-    actual = actual_config.get(exp_int)
-    if not actual:
-        failures.append(f"(STP) Missing Interface | Interface: {exp_int}")
-        return False, failures
-    for mode, exp_values in exp_stp.items():
-        act_values = actual.get(mode, False)
 
-        if exp_values != act_values:
+    for interface in expected_interfaces:
+        exp_int = interface.get("interface", "")
+        exp_stp = interface.get("stp", {})
+
+        actual = actual_config.get(exp_int)
+
+        if not actual:
             failures.append(
-                f"(STP) Mismatched STP Mode | Interface: {exp_int} | "
-                f"Feature: {mode} | Expected: {exp_values} | Actual: {act_values}"
+                f"(STP) Missing Interface | Interface: {exp_int}"
             )
+            continue
+
+        for mode, exp_value in exp_stp.items():
+            act_value = actual.get(mode, False)
+
+            if exp_value != act_value:
+                failures.append(
+                    f"(STP) Mismatched STP Mode | Interface: {exp_int} | "
+                    f"Feature: {mode} | Expected: {exp_value} | "
+                    f"Actual: {act_value}"
+                )
+
     return len(failures) == 0, failures
+

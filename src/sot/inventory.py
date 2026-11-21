@@ -4,6 +4,7 @@ from src.utils.helpers import normalize_to_list
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -102,7 +103,7 @@ def get_netbox():
             "etherchannel": {"enabled": False, "groups": {}},
             "static_routes": [],
         }
-        is_switch = device_name.role.slug == "switch"
+        is_switch = device_name.role.slug in ["access_switch", "core_switch"]
         is_router = device_name.role.slug == "router"
         ospf_process = {}
         context = device_name.config_context or {}
@@ -163,8 +164,6 @@ def get_netbox():
                         },
                     }
                 )
-               
-
             if is_switch:
                 if (
                     device_interface.mode

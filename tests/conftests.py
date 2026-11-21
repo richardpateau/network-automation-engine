@@ -13,7 +13,7 @@ def vlan_genie_output():
 
 @pytest.fixture
 def access_trunk_genie_output():
-    fixture_path = Path(__file__).parent / "fixtures" / "cli" / "trunk_access.json"
+    fixture_path = Path(__file__).parent / "fixtures" / "cli" / "access_trunk.json"
     with open(fixture_path) as f:
         return json.load(f)
 
@@ -21,7 +21,7 @@ def access_trunk_genie_output():
 @pytest.fixture
 def interface_genie_output():
     fixture_path = (
-        Path(___file__).parent / "fixtures" / "cli" / "interface_genie_output.json"
+        Path(__file__).parent / "fixtures" / "cli" / "interface_genie_output.json"
     )
     with open(fixture_path) as f:
         return json.load(f)

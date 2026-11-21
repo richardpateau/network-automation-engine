@@ -35,19 +35,22 @@ def exp_access():
 @pytest.fixture
 def mock_context(exp_access): 
     return {"access_ports": exp_access}
+@pytest.fixture
+def mock_transport():
+    return "NETMIKO"
 
 @patch("src.compliance.switching.access.compliance.build_access")
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_already_compliant(
         mock_check_access, mock_build_access, mock_sesh, mock_context, mock_device_result, 
-        mock_log
+        mock_log, mock_transport
     ): 
     
     mock_build_access.return_value = {}
     mock_check_access.return_value = (True, [])
 
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
     
     mock_log.warning.assert_not_called()
@@ -60,18 +63,18 @@ def test_compliance_access_already_compliant(
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_non_compliant_config_successful(
         mock_check_access, mock_build_access, mock_configure_access, mock_sesh, mock_context, 
-        mock_device_result, mock_log
+        mock_device_result, mock_log, mock_transport
     ): 
     
     mock_build_access.return_value = {}
-    mock_check_access.return_value = (False, ["Mismatched Access Port VLAN"])
+    mock_check_access.side_effect = [(False, ["Mismatched Access Port VLAN"]), (True,[])]
     mock_configure_access.return_value = {
         "status": OperationalStatus.SUCCESS.value, 
         "summary": "Access Port Successfully Configured"
     }
     
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -84,7 +87,7 @@ def test_compliance_access_non_compliant_config_successful(
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_non_compliant_config_failed(
         mock_check_access, mock_build_access, mock_configure_access, mock_sesh, mock_context, 
-        mock_device_result, mock_log
+        mock_device_result, mock_log, mock_transport
     ): 
     
     mock_build_access.return_value = {}
@@ -95,7 +98,7 @@ def test_compliance_access_non_compliant_config_failed(
     }
     
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -110,7 +113,7 @@ def test_compliance_access_non_compliant_config_failed(
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_dry_run(
         mock_check_access, mock_build_access, mock_configure_access, mock_sesh, mock_context, 
-        mock_device_result, mock_log
+        mock_device_result, mock_log, mock_transport
     ): 
     
     mock_build_access.return_value = {}
@@ -118,7 +121,7 @@ def test_compliance_access_dry_run(
     mock_configure_access.return_value = {}
     
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -132,7 +135,7 @@ def test_compliance_access_dry_run(
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_post_validation_successful(
         mock_check_access, mock_build_access, mock_configure_access, mock_collect_device_state,
-        mock_sesh, mock_context, mock_device_result, mock_log
+        mock_sesh, mock_context, mock_device_result, mock_transport, mock_log
     ): 
     
     mock_build_access.return_value = {}
@@ -146,7 +149,7 @@ def test_compliance_access_post_validation_successful(
     mock_collect_device_state.return_value = {}    
     
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -162,26 +165,26 @@ def test_compliance_access_post_validation_successful(
 @patch("src.compliance.switching.access.compliance.check_access")
 def test_compliance_access_post_validation_failed(
         mock_check_access, mock_build_access, mock_configure_access, mock_collect_device_state,
-        mock_sesh, mock_context, mock_device_result, mock_log
+        mock_sesh, mock_context, mock_device_result, mock_log, mock_transport
     ): 
     
     mock_build_access.return_value = {}
-    mock_check_access.return_value = [(False, ["Mismatched Access Port VLAN"]),
+    mock_check_access.side_effect = [(False, ["Mismatched Access Port VLAN"]),
                                      (False, ["Mismatched Access Port VLAN"])
                                      ] 
-    mock_configure_access.side_effect = {
+    mock_configure_access.return_value = {
         "status": OperationalStatus.SUCCESS.value, 
         "summary": "Access Port Successfully Configured"
     }
     mock_collect_device_state.return_value = {}    
     
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
-    mock_log.warning.assert_called_once()
     mock_log.info.assert_not_called()
     mock_log.error.assert_called_once()
+    mock_log.warning.assert_called_once()
     mock_collect_device_state.assert_called_once()
     assert any("Mismatched Access Port VLAN" in r for r in result["initial_issues"])
     assert any("Access Port Successfully Configured" in r for r in result["actions_taken"])
@@ -189,11 +192,11 @@ def test_compliance_access_post_validation_failed(
     assert result["status"] == OperationalStatus.FAILED_VALIDATION.value 
 
 def test_compliance_access_empty(
-        mock_sesh, mock_device_result, mock_log
+        mock_sesh, mock_device_result, mock_log, mock_transport
     ):  
     
     result = compliance_access(
-            mock_sesh, mock_sesh.device_ip, {"access_ports": {}}, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, {"access_ports": {}}, {}, mock_device_result, mock_log, mock_transport
         )
     assert result["initial_issues"] == []
     assert result["actions_taken"] == []

@@ -1,6 +1,6 @@
 from src.core.enums import StepStatus, OperationalStatus
 from src.collectors.cli.collector import collect_device_state
-from src.remediation.switching.stp import configure_stp_global, configure_stp_interfaces
+from src.remediation.switching.stp import configure_stp_global
 from src.compliance.switching.stp.check import check_stp_global, check_stp_interfaces
 from src.collectors.cli.builders import build_stp_global, build_stp_interfaces
 from src.remediation.switching.stp import configure_stp_interfaces
@@ -79,7 +79,7 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
                     )
 
     if stp_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_stp = build_stp_global(new_state)
 
         ok, failures = check_stp_global(exp_stp, new_stp)
@@ -125,16 +125,25 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
 
 
 def compliance_stp_interfaces(
-    sesh, device_ip, context, device_state, device_result, log
+    sesh, device_ip, context, device_state, device_result, log, transport
 ):
-    exp_stp_int = context.get("interfaces", {}).get("stp", {})
+    exp_stp_int = [
+        {
+            "interface": interface["interface"],
+            "stp": interface["stp"],
+        }
+        for interface in context.get("interfaces", [])
+        if interface.get("stp")
+    ]
     act_stp_int = build_stp_interfaces(device_state)
     stp_int_updated = False
-    portfast = exp_stp_int.get("portfast", False)
-    bpdu_guard = exp_stp_int.get("bpdu_guard", False)
-    root_guard = exp_stp_int.get("root_guard", False)
-    loop_guard = exp_stp_int.get("loop_guard", False)
-    bpdu_filter = exp_stp_int.get("bpdu_filter", False)
+
+    portfast = [i["stp"].get("portfast", False) for i in exp_stp_int]
+    bpdu_guard = [i["stp"].get("bpdu_guard", False) for i in exp_stp_int]
+    root_guard = [i["stp"].get("root_guard", False) for i in exp_stp_int]
+    loop_guard = [i["stp"].get("loop_guard", False) for i in exp_stp_int]
+    bpdu_filter = [i["stp"].get("bpdu_filter", False) for i in exp_stp_int]
+
 
     if exp_stp_int:
         ok, failures = check_stp_interfaces(exp_stp_int, act_stp_int)
@@ -205,7 +214,7 @@ def compliance_stp_interfaces(
                     )
 
     if stp_int_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_stp = build_stp_interfaces(new_state)
 
         ok, failures = check_stp_interfaces(exp_stp_int, new_stp)

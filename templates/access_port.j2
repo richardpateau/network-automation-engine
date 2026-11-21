@@ -1,0 +1,6 @@
+{% for a in access_data %}
+default interface {{ a.access_interface }}
+interface {{ a.access_interface }}
+ switchport mode access
+ switchport access vlan {{ a.access_vlan }}
+{% endfor %}

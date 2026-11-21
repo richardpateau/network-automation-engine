@@ -2,15 +2,13 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_access(conn, access_data, log): 
+def configure_access(conn, access_data, log, device_ip, transport):
 	access_interface = access_data.get("access_interface", "")
 	access_vlan = access_data.get("access_vlan", "")
-
-	try: 
+	try:
 		template = template_env.get_template("access_port.j2")
 		commands = template.render(
-				access_interface=access_interface,
-				access_vlan=access_vlan
+				access_data=[access_data]
 			).splitlines()
 		if DRY_RUN: 
 			return {
@@ -25,10 +23,10 @@ def configure_access(conn, access_data, log):
 		log.info(
             "access_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "access_port_automation",
                 "event_type": "access_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "vlan_id": access_vlan,
  				"interface": access_interface,
@@ -48,10 +46,10 @@ def configure_access(conn, access_data, log):
 		log.info(
             "access_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "access_port_automation",
                 "event_type": "access_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "vlan_id": access_vlan,
  				"interface": access_interface,

@@ -840,10 +840,10 @@ def test_build_vlan_invalid_vlan_id():
 ```
 
 **Key Test Coverage:**
-- ✅ **Valid Path:** Normal Genie output parsing
-- ✅ **Empty Input:** Handles `{}` and `None` gracefully
-- ✅ **Missing Attributes:** Defaults to empty string for missing VLAN names
-- ✅ **Invalid Keys:** Filters non-numeric VLAN IDs (Genie metadata)
+- [x] **Valid Path:** Normal Genie output parsing
+- [x] **Empty Input:** Handles `{}` and `None` gracefully
+- [x] **Missing Attributes:** Defaults to empty string for missing VLAN names
+- [x] **Invalid Keys:** Filters non-numeric VLAN IDs (Genie metadata)
 
 ---
 
@@ -1023,4 +1023,3 @@ Following every execution run, the engine exports structured audit artifacts alo
 
 > ** Reliability Through Verification:**  
 > By treating device configurations as ephemeral states that must reconcile against a declarative Source of Truth, this automation workflow eliminates configuration drift at the access and distribution layers. The engine proves that network automation must not stop at *pushing configuration*—it is only complete when the live running state has been **collected, re-parsed, and verified compliant**.
-```

@@ -14,7 +14,6 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
         access_vlan = access_data.get("access_vlan", None)
 
         ok, failures = check_access(access_data, act_access)
-
         log_extra = {
             "device_ip": device_ip,
             "event_type": "interface_compliance",
@@ -61,7 +60,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
                     f"VLAN: {access_vlan}"
                 )
         else: 
-            result = configure_access(sesh, access_data, log)
+            result = configure_access(sesh, access_data, log, device_ip, transport)
             summary = result.get("summary")
             if summary:
                 device_result["actions_taken"].append(summary)
@@ -76,7 +75,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
                     )
 
     if access_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_access = build_access(new_state)
 
         for access_data in exp_access:
