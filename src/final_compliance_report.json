@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-18T14:04:53.202256",
+        "timestamp": "2026-11-21T19:31:44.459729",
         "total_devices": 2,
         "successful_runs": 2
     },
@@ -70,16 +70,16 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-18T14:04:35.288129+00:00",
-            "end_time": "2026-11-18T14:04:52.484763+00:00",
-            "duration_seconds": 17.196634,
+            "start_time": "2026-11-21T19:30:32.397400+00:00",
+            "end_time": "2026-11-21T19:30:49.924341+00:00",
+            "duration_seconds": 17.526941,
             "errors": []
         },
         {
             "device_name": "ACCESS-SW-1",
             "device_ip": "10.10.10.20",
             "hostname": null,
-            "status": "FAILED_VALIDATION",
+            "status": "NON-COMPLIANT",
             "actions_taken": [
                 "VLAN configured successfully | VLAN: 1 | Name: 1",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
@@ -100,14 +100,29 @@
                 "VLAN Configuration Post Validation Successful | VLAN: 999 | Name: NATIVE_UNUSED",
                 "Interface Configuration Already Compliant | Interface: Ethernet0/0 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet0/1 | Description: Configured via Netmiko | Should Be Up: True",
-                "Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10",
-                "Access Interface Already Compliant | Interface: Ethernet0/1 | VLAN: 1",
-                "Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20",
-                "Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30",
-                "Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40",
-                "Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50",
-                "Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60",
-                "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70"
+                "Interface Configuration Already Compliant | Interface: Ethernet0/2 | Description:  | Should Be Up: True",
+                "Interface Configuration Already Compliant | Interface: Ethernet0/3 | Description: Configured via Netmiko | Should Be Up: True",
+                "Interface Configuration Already Compliant | Interface: Ethernet1/0 | Description: Configured via Netmiko | Should Be Up: True",
+                "Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True",
+                "Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True",
+                "Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True",
+                "Access Port configured successfully | Interface: Ethernet0/0 | VLAN: 10",
+                "Try/Exception Error | Access Port Configuration | Interface: Ethernet0/1 | VLAN: 1 | Error: Timed-out reading channel, data not available.]",
+                "Access Port configured successfully | Interface: Ethernet0/2 | VLAN: 20",
+                "Access Port configured successfully | Interface: Ethernet0/3 | VLAN: 30",
+                "Access Port configured successfully | Interface: Ethernet1/0 | VLAN: 40",
+                "Access Port configured successfully | Interface: Ethernet1/1 | VLAN: 50",
+                "Access Port configured successfully | Interface: Ethernet1/2 | VLAN: 60",
+                "Access Port configured successfully | Interface: Ethernet1/3 | VLAN: 70",
+                "Access Interface Post Validation Successful | Interface: Ethernet0/0 | VLAN: 10",
+                "Access Interface Post Validation Successful | Interface: Ethernet0/1 | VLAN: 1",
+                "Access Interface Post Validation Successful | Interface: Ethernet0/2 | VLAN: 20",
+                "Access Interface Post Validation Successful | Interface: Ethernet0/3 | VLAN: 30",
+                "Access Interface Post Validation Successful | Interface: Ethernet1/0 | VLAN: 40",
+                "Access Interface Post Validation Successful | Interface: Ethernet1/1 | VLAN: 50",
+                "Access Interface Post Validation Successful | Interface: Ethernet1/2 | VLAN: 60",
+                "Access Interface Post Validation Successful | Interface: Ethernet1/3 | VLAN: 70",
+                "Try/Exception Error | STP Interface Configuration | Interface: Ethernet0/0 | Feature: Portfast: False | Loop Guard: False | BPDU Guard: False | BPDU Filter: False | Root Guard: False | Error: 'STP_INTERFACES.j2' not found in search path: '/home/rich/Documents/network-automation-engine-main/templates'"
             ],
             "events": [],
             "checks_passed": 0,
@@ -136,7 +151,14 @@
             },
             "initial_issues": [
                 "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default",
-                "Mismatched Interface State | Interface: ethernet0/2 | Expected Should Be Up/Up: None | Actual Should be Up/Up: True",
+                "Mismatched Access Port VLAN | Interface: ethernet0/0 | VLAN: Expected VLAN: 10 | Actual VLAN: 1",
+                "Missing Access Port or Wrong Mode (Trunk)| Expected Interface: ethernet0/1 | Expected VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet0/2 | VLAN: Expected VLAN: 20 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet0/3 | VLAN: Expected VLAN: 30 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/0 | VLAN: Expected VLAN: 40 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/1 | VLAN: Expected VLAN: 50 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/2 | VLAN: Expected VLAN: 60 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/3 | VLAN: Expected VLAN: 70 | Actual VLAN: 1",
                 "(STP) Missing Interface | Interface: Ethernet0/0",
                 "(STP) Missing Interface | Interface: Ethernet0/1",
                 "(STP) Missing Interface | Interface: Ethernet0/2",
@@ -148,8 +170,8 @@
             ],
             "critical_issues": [
                 "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default",
-                "interfaces pipeline failure",
-                "stp_interfaces pipeline failure"
+                "Failed To Remediate Access Port | Interface: Ethernet0/1 | VLAN: 1",
+                "STP Interface Remediation Failed | BPDU Guard: [False, False, False, False, False, False, False, False] | Portfast: [False, False, False, False, False, False, False, False] | Root Guard: [False, False, False, False, False, False, False, False] | Loop Guard: [False, False, False, False, False, False, False, False] | BPDU Filter: [False, False, False, False, False, False, False, False]"
             ],
             "warnings": [],
             "Remediation": {
@@ -161,15 +183,15 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-18T14:04:35.287525+00:00",
-            "end_time": "2026-11-18T14:04:53.201316+00:00",
-            "duration_seconds": 17.913791,
+            "start_time": "2026-11-21T19:30:32.396527+00:00",
+            "end_time": "2026-11-21T19:31:44.458794+00:00",
+            "duration_seconds": 72.062267,
             "errors": []
         }
     ],
     "summary": {
         "compliant": 0,
-        "non_compliant": 0,
+        "non_compliant": 1,
         "failed": 0
     }
 }

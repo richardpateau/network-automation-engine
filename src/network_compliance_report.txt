@@ -2,13 +2,13 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-18T14:04:53.202256
+Report Time: 2026-11-21T19:31:44.459729
 Devices Audited: 2
 
 SUMMARY
 ----------------
 Compliant: 0
-Non-Compliant: 0
+Non-Compliant: 1
 Failed: 0
 
 DEVICE DETAILS
@@ -38,11 +38,11 @@ Actions Taken:
  - VLAN Configuration Post Validation Successful | VLAN: 999 | Name: NATIVE_UNUSED
 
 Device: ACCESS-SW-1
-Status: FAILED_VALIDATION
+Status: NON-COMPLIANT
 Issues:
  - VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default
- - interfaces pipeline failure
- - stp_interfaces pipeline failure
+ - Failed To Remediate Access Port | Interface: Ethernet0/1 | VLAN: 1
+ - STP Interface Remediation Failed | BPDU Guard: [False, False, False, False, False, False, False, False] | Portfast: [False, False, False, False, False, False, False, False] | Root Guard: [False, False, False, False, False, False, False, False] | Loop Guard: [False, False, False, False, False, False, False, False] | BPDU Filter: [False, False, False, False, False, False, False, False]
 Actions Taken:
  - VLAN configured successfully | VLAN: 1 | Name: 1
  - VLAN Already Compliant | VLAN: 10 | Name: USERS
@@ -63,11 +63,26 @@ Actions Taken:
  - VLAN Configuration Post Validation Successful | VLAN: 999 | Name: NATIVE_UNUSED
  - Interface Configuration Already Compliant | Interface: Ethernet0/0 | Description: Configured via Netmiko | Should Be Up: True
  - Interface Configuration Already Compliant | Interface: Ethernet0/1 | Description: Configured via Netmiko | Should Be Up: True
- - Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10
- - Access Interface Already Compliant | Interface: Ethernet0/1 | VLAN: 1
- - Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20
- - Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30
- - Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40
- - Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50
- - Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60
- - Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70
+ - Interface Configuration Already Compliant | Interface: Ethernet0/2 | Description:  | Should Be Up: True
+ - Interface Configuration Already Compliant | Interface: Ethernet0/3 | Description: Configured via Netmiko | Should Be Up: True
+ - Interface Configuration Already Compliant | Interface: Ethernet1/0 | Description: Configured via Netmiko | Should Be Up: True
+ - Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True
+ - Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True
+ - Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True
+ - Access Port configured successfully | Interface: Ethernet0/0 | VLAN: 10
+ - Try/Exception Error | Access Port Configuration | Interface: Ethernet0/1 | VLAN: 1 | Error: Timed-out reading channel, data not available.]
+ - Access Port configured successfully | Interface: Ethernet0/2 | VLAN: 20
+ - Access Port configured successfully | Interface: Ethernet0/3 | VLAN: 30
+ - Access Port configured successfully | Interface: Ethernet1/0 | VLAN: 40
+ - Access Port configured successfully | Interface: Ethernet1/1 | VLAN: 50
+ - Access Port configured successfully | Interface: Ethernet1/2 | VLAN: 60
+ - Access Port configured successfully | Interface: Ethernet1/3 | VLAN: 70
+ - Access Interface Post Validation Successful | Interface: Ethernet0/0 | VLAN: 10
+ - Access Interface Post Validation Successful | Interface: Ethernet0/1 | VLAN: 1
+ - Access Interface Post Validation Successful | Interface: Ethernet0/2 | VLAN: 20
+ - Access Interface Post Validation Successful | Interface: Ethernet0/3 | VLAN: 30
+ - Access Interface Post Validation Successful | Interface: Ethernet1/0 | VLAN: 40
+ - Access Interface Post Validation Successful | Interface: Ethernet1/1 | VLAN: 50
+ - Access Interface Post Validation Successful | Interface: Ethernet1/2 | VLAN: 60
+ - Access Interface Post Validation Successful | Interface: Ethernet1/3 | VLAN: 70
+ - Try/Exception Error | STP Interface Configuration | Interface: Ethernet0/0 | Feature: Portfast: False | Loop Guard: False | BPDU Guard: False | BPDU Filter: False | Root Guard: False | Error: 'STP_INTERFACES.j2' not found in search path: '/home/rich/Documents/network-automation-engine-main/templates'

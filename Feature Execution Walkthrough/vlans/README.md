@@ -301,7 +301,7 @@ if vlan_updated and not DRY_RUN:
 
 The engine dynamically categorizes and resolves three distinct operational states:
 
-#### Scenario A: Non-Compliant — Missing VLANs
+#### Scenario A: Non-Compliant - Missing VLANs
 
 When newly provisioned NetBox VLANs are entirely absent from the switch database, the engine flags missing identifiers and queues them for automated provisioning:
 
@@ -322,7 +322,7 @@ Pass? False | Failure Details: ['VLAN 30 not found on device.']
 ```
 ![VLAN Missing - Terminal Output](screenshots/check-vlan-terminal-output-fail-no-vlan.png)
 
-#### Scenario B: Non-Compliant — Configuration Drift (Name Mismatches)
+#### Scenario B: Non-Compliant - Configuration Drift (Name Mismatches)
 
 When VLAN IDs exist on the switch but manual out-of-band edits altered their names, the engine isolates the attribute mismatch, generates the correction, and verifies remediation:
 

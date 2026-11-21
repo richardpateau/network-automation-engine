@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_access(conn, access_data, log, device_ip, transport):
+def configure_access(conn, access_data, device_ip, transport, log):
 	access_interface = access_data.get("access_interface", "")
 	access_vlan = access_data.get("access_vlan", "")
 	try:

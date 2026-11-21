@@ -64,7 +64,7 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
                     f"Mode: {mode} | VLAN Priorities: {priorities_log}"
                 )
             else:
-                result = configure_stp_global(sesh, exp_stp, log)
+                result = configure_stp_global(sesh, exp_stp,device_ip, transport, log)
                 summary = result.get("summary")
 
                 if summary:
@@ -197,7 +197,7 @@ def compliance_stp_interfaces(
                         f"BPDU Filter: {bpdu_filter}"
                     )
             else: 
-                result = configure_stp_interfaces(sesh, exp_stp_int, log)
+                result = configure_stp_interfaces(sesh, exp_stp_int, device_ip, transport, log)
                 summary = result.get("summary")
 
                 if summary:

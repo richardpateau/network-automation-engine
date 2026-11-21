@@ -60,7 +60,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
                     f"VLAN: {access_vlan}"
                 )
         else: 
-            result = configure_access(sesh, access_data, log, device_ip, transport)
+            result = configure_access(sesh, access_data, device_ip, transport, log)
             summary = result.get("summary")
             if summary:
                 device_result["actions_taken"].append(summary)
