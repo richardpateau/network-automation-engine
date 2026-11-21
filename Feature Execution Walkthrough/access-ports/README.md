@@ -21,6 +21,8 @@ The design deliberately decouples *collection* from *normalization* from *decisi
 
 **Live Execution of Access Port Automation**
 
+https://github.com/user-attachments/assets/49e47e3e-362e-43eb-848a-38dd8756ad83
+
 ## Architecture
 
 The access-port compliance workflow consists of five main components:
