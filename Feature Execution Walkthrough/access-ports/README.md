@@ -224,7 +224,7 @@ Once `collect_device_state()` returns the composite dictionary, domain-specific 
 
 The `build_access()` builder pulls `device_state["switchports"]`, verifies the operational mode, and transforms vendor-specific metadata into a lean lookup dictionary optimized for diff evaluation:
 
-![Access Port Builder Implementation](screenshots/python-code-build.png)
+![Access Port Builder Implementation](screenshots/python-code-build-access.png)
 
 ```python
 # src/collectors/cli/builders.py
