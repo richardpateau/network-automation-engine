@@ -913,11 +913,11 @@ def test_compliance_vlan_non_compliant_config_successful(
 ```
 
 **Key Test Coverage:**
-- ✅ **Already Compliant:** Bypasses remediation, logs INFO
-- ✅ **Drift Detected:** Logs WARNING, triggers remediation
-- ✅ **Remediation Success:** Records actions taken, returns SUCCESS
-- ✅ **Remediation Failed:** Records critical issues, returns FAILED_CONFIG
-- ✅ **Post-Validation:** Re-checks state after configuration push
+- **Already Compliant:** Bypasses remediation, logs INFO
+- **Drift Detected:** Logs WARNING, triggers remediation
+- **Remediation Success:** Records actions taken, returns SUCCESS
+- **Remediation Failed:** Records critical issues, returns FAILED_CONFIG
+- **Post-Validation:** Re-checks state after configuration push
 
 ---
 
