@@ -19,6 +19,8 @@ The design deliberately decouples *collection* from *normalization* from *decisi
 
 **Document sections:** §1 NetBox SoT · §2 Live State Collection · §3 Drift Detection · §4 Remediation & Dry-Run · §5 Dry-Run Safety · §6 Post-Validation · §7 Splunk Telemetry · §8 Unit Testing.
 
+**Live Execution of Access Port Automation**
+
 ## Architecture
 
 The access-port compliance workflow consists of five main components:
