@@ -514,7 +514,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
 The engine was tested against two real‑world failure modes on `ACCESS-SW-1`.
 
 #### Scenario A — Access VLAN Assignment Drift
-Interfaces were left in access mode but pinned to default `VLAN 1` instead of their NetBox broadcast domains (`10`, `30`, `40`, `50`, `60`, `70`):
+Interfaces were left in access mode but pinned to default `VLAN 1` instead of their NetBox broadcast domains (`10`, `20`, `30`, `40`, `50`, `60`, `70`):
 
 ![Access Port VLAN Drift Terminal Output](screenshots/print-check-vlan-wrong-access-vlan.png)
 
