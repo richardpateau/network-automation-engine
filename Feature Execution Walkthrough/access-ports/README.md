@@ -272,8 +272,6 @@ def build_access(device_state: dict) -> dict:
 
 Following execution against `ACCESS-SW-1`, the aggregate device state is refined into a clean, normalized operational dictionary ready for the compliance engine:
 
-![Build Access Runtime Output](screenshots/print-build-access-interface-terminal-output.png)
-
 ```json
 {
   "ethernet0/0": {
@@ -318,6 +316,7 @@ Following execution against `ACCESS-SW-1`, the aggregate device state is refined
   }
 }
 ```
+![Build Access Runtime Output](screenshots/print-build-access-interface-terminal-output.png)
 
 > **Design Principle:**  
 > By decoupling raw CLI collection (`collector.py`) from state normalization (`builders.py`), the downstream compliance engine only receives a predictable, standardized data contract. This architecture makes testing mockable, keeps checks vendor-neutral, and prevents CLI syntax differences from breaking audit logic.
