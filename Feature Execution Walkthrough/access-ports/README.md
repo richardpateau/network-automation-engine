@@ -17,7 +17,7 @@ The design deliberately decouples *collection* from *normalization* from *decisi
 
 > **Why this matters:** screen-scraping a switch and eyeballing the output doesn't scale and can't be tested. This module turns access-port hygiene into a declarative, observable, and reversible pipeline — the same pattern a production NetDevOps team runs.
 
-**Document sections:** §1 NetBox SoT · §2 Live State Collection · §3 Drift Detection · §4 Remediation & Dry-Run · §5 Dry-Run Safety · §6 Post-Validation · §7 Splunk Telemetry · §8 Unit Testing.
+**Document sections:** [§1 NetBox SoT](#1-intended-state-netbox-source-of-truth-access-ports) · [§2 Live State Collection](#2-live-device-state-collection--parsing-engine) · [§3 Drift Detection](#3-access-port-compliance-resolution--drift-detection) · [§4 Remediation & Dry-Run](#4-automated-access-port-remediation--safe-execution) · [§5 Dry-Run Safety](#5-dry-run-safety-evaluation) · [§6 Post-Validation](#6-closed-loop-post-remediation-validation) · [§7 Splunk Telemetry](#7-audit-logging--splunk-telemetry-pipeline) · [§8 Unit Testing](#8-automated-unit-testing--cicd-validation)
 
 **Live Execution of Access Port Automation**
 
