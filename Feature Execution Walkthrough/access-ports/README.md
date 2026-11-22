@@ -449,7 +449,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
         )
 
         # 4. Dispatch remediation
-        result = configure_access(sesh, access_data, log, device_ip, transport)
+        result = configure_access(sesh, access_data, device_ip, transport, log)
         summary = result.get("summary")
         if summary:
             device_result["actions_taken"].append(summary)
@@ -636,7 +636,7 @@ The `configure_access()` function renders the Jinja2 template, evaluates the dry
 ```python
 # src/remediation/switching/access.py
 
-def configure_access(conn, access_data, log):
+def configure_access(conn, access_data, device_ip, transport, log):
     access_interface = access_data.get("access_interface", "")
     access_vlan = access_data.get("access_vlan", "")
 
@@ -665,10 +665,10 @@ def configure_access(conn, access_data, log):
         log.info(
             "access_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "access_port_automation",
                 "event_type": "access_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "vlan_id": access_vlan,
                 "interface": access_interface,
@@ -688,7 +688,7 @@ def configure_access(conn, access_data, log):
         log.info(
             "access_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "access port automation",
                 "interface": access_interface,
                 "error": str(e)
