@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_vlan(device_ip, vlan_data, log): 
+def configure_vlan(device_ip, vlan_data, device_ip, transport, log): 
 	vlan_id = vlan_data.get("vlan_id", "")
 	name = vlan_data.get("name", "")
 
@@ -26,10 +26,10 @@ def configure_vlan(device_ip, vlan_data, log):
 		log.info(
             "vlan_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "vlan_automation",
                 "event_type": "vlan_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "vlan_id": vlan_id,
                 "name": name,
@@ -52,7 +52,7 @@ def configure_vlan(device_ip, vlan_data, log):
                 "device_ip": conn.device_ip,
                 "component": "vlan_automation",
                 "event_type": "vlan_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "vlan_id": vlan_id,
                 "name": name,

@@ -56,7 +56,7 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log,
                     f"[DRY_RUN] Would Configure VLANs | VLAN: {vlan_id} | Name: {vlan_name}"
                 )
             continue
-        result = configure_vlan(sesh, vlan_data, log, device_ip, transport)
+        result = configure_vlan(sesh, vlan_data, device_ip, transport, log)
         summary = result.get("summary")
         if summary:
             device_result["actions_taken"].append(summary)
