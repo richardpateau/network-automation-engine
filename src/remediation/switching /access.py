@@ -21,6 +21,7 @@ def configure_access(conn, access_data, device_ip, transport, log):
                 	)
 			}
 		conn.send_config_set(commands)
+		conn.save_config()
 
 		log.info(
             "access_config",
