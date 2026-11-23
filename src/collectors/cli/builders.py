@@ -63,7 +63,7 @@ def build_trunk(device_state):
             continue
         allowed_vlans = trunk_values.get("trunk_vlans", "")
 
-        actual_trunk[trunk_int] = {
+        actual_trunk[trunk_int.lower()] = {
             "trunk_interface": trunk_int,
             "allowed_vlans": allowed_vlans,
             "operational_mode": operational_mode,

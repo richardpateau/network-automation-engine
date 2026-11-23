@@ -14,7 +14,6 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
         access_vlan = access_data.get("access_vlan", None)
 
         ok, failures = check_access(access_data, act_access)
-        print(failures)
         log_extra = {
             "device_ip": device_ip,
             "event_type": "interface_compliance",

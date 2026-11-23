@@ -2,7 +2,7 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-22T12:34:26.949317
+Report Time: 2026-11-22T14:49:40.981644
 Devices Audited: 2
 
 SUMMARY
@@ -14,7 +14,7 @@ Failed: 0
 DEVICE DETAILS
 ----------------
 
-Device: CORE-1
+Device: CORE-SW-1
 Status: COMPLIANT
 Actions Taken:
  - [DRY_RUN] Would Configure VLANs | VLAN: 1 | Name: 1
@@ -26,6 +26,8 @@ Actions Taken:
  - VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT
  - VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE
  - VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED
+ - Trunk Interface Already Compliant | Interface: Ethernet0/0 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
+ - Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
 
 Device: ACCESS-SW-1
 Status: COMPLIANT
@@ -47,12 +49,12 @@ Actions Taken:
  - Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True
  - Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True
  - Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True
- - Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10
- - Access Interface Already Compliant | Interface: Ethernet0/1 | VLAN: 1
- - Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20
- - Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30
- - Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40
- - Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50
- - Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60
- - Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet0/0 | VLAN: 10
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet0/2 | VLAN: 20
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet0/3 | VLAN: 30
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/0 | VLAN: 40
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/1 | VLAN: 50
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/2 | VLAN: 60
+ - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/3 | VLAN: 70
+ - [DRY_RUN] Would Configure_Trunk Port | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - [DRY_RUN] Would Configure STP Interfaces | BPDU Guard: [False, False, False, False, False, False, False, False] | Portfast: [False, False, False, False, False, False, False, False] | Root Guard: [False, False, False, False, False, False, False, False] | Loop Guard: [False, False, False, False, False, False, False, False] | BPDU Filter: [False, False, False, False, False, False, False, False]

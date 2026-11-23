@@ -2,15 +2,14 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_trunk(conn, trunk_data, log, device_ip, transport):
+def configure_trunk(conn, trunk_data, device_ip, transport, log):
 	trunk_interface = trunk_data.get("trunk_interface", "")
 	allowed_vlans = trunk_data.get("allowed_vlans", "")
 
 	try: 
 		template = template_env.get_template("trunk_ports.j2")
 		commands = template.render(
-				trunk_interface=trunk_interface,
-				allowed_vlans=allowed_vlans
+				trunk_data=[trunk_data]
 			).splitlines()
 
 		if DRY_RUN:
@@ -23,6 +22,7 @@ def configure_trunk(conn, trunk_data, log, device_ip, transport):
 			}
 
 		conn.send_config_set(commands)
+		conn.save_config()
 
 		log.info(
             "trunk_config",

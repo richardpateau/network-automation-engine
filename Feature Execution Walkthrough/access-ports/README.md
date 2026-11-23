@@ -277,42 +277,37 @@ Following execution against `ACCESS-SW-1`, the aggregate device state is refined
   "ethernet0/0": {
     "access_interface": "ethernet0/0",
     "operational_mode": "static access",
-    "access_vlan": "10"
-  },
-  "ethernet0/1": {
-    "access_interface": "ethernet0/1",
-    "operational_mode": "static access",
     "access_vlan": "1"
   },
   "ethernet0/2": {
     "access_interface": "ethernet0/2",
     "operational_mode": "static access",
-    "access_vlan": "20"
+    "access_vlan": "1"
   },
   "ethernet0/3": {
     "access_interface": "ethernet0/3",
     "operational_mode": "static access",
-    "access_vlan": "30"
+    "access_vlan": "1"
   },
   "ethernet1/0": {
     "access_interface": "ethernet1/0",
     "operational_mode": "static access",
-    "access_vlan": "40"
+    "access_vlan": "1"
   },
   "ethernet1/1": {
     "access_interface": "ethernet1/1",
     "operational_mode": "static access",
-    "access_vlan": "50"
+    "access_vlan": "1"
   },
   "ethernet1/2": {
     "access_interface": "ethernet1/2",
     "operational_mode": "static access",
-    "access_vlan": "60"
+    "access_vlan": "1"
   },
   "ethernet1/3": {
     "access_interface": "ethernet1/3",
     "operational_mode": "static access",
-    "access_vlan": "70"
+    "access_vlan": "1"
   }
 }
 ```
@@ -1081,6 +1076,7 @@ tests/unit/compliance/switching/test_compliance_access.py::test_compliance_acces
 ```
 
 ---
+
 ### Continuous Integration Ready
 
 The test framework is designed for CI/CD pipeline integration:

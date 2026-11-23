@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_vlan(conn, vlan_data, log, device_ip, transport):
+def configure_vlan(conn, vlan_data, device_ip, transport, log):
 	vlan_id = vlan_data.get("vlan_id", "")
 	vlan_name = vlan_data.get("name", "")
 

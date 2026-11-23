@@ -14,9 +14,9 @@ def compliance_trunk(sesh, device_ip, context, device_state, device_result, log,
         allowed_vlans = trunk_data.get("allowed_vlans", "")
 
         ok, failures = check_trunk(trunk_data, act_trunk)
-
         log_extra = {
             "device_ip": device_ip,
+            "event_type": "trunk_compliance",
             "component": "main_process",
             "protocol": "trunk",
             "transport": transport,
@@ -61,7 +61,7 @@ def compliance_trunk(sesh, device_ip, context, device_state, device_result, log,
                     f"Allowed VLAN(s): {allowed_vlans}"
                 )
         else: 
-            result = configure_trunk(sesh, trunk_data, log)
+            result = configure_trunk(sesh, trunk_data, device_ip, transport, log)
             summary = result.get("summary")
             if summary:
                 device_result["actions_taken"].append(summary)
@@ -76,7 +76,7 @@ def compliance_trunk(sesh, device_ip, context, device_state, device_result, log,
                     )
 
     if trunk_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_trunk = build_trunk(new_state)
 
         for trunk_data in exp_trunk:
@@ -88,6 +88,7 @@ def compliance_trunk(sesh, device_ip, context, device_state, device_result, log,
             log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "trunk_compliance",
             "protocol": "trunk",
             "transport": transport,
             "trunk_interface": trunk_interface,
