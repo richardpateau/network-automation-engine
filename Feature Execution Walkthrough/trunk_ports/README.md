@@ -789,7 +789,7 @@ interface Vlan1
   duplex auto
 ```
 
-> **Takeaway:** The engine doesn't just check for trunk status—it audits and enforces the specific VLANs allowed across the trunk, correcting both incomplete configurations and missing trunks without manual operator intervention.
+> **Takeaway:** The engine doesn't just check for trunk status it audits and enforces the specific VLANs allowed across the trunk, correcting both incomplete configurations and missing trunks without manual operator intervention.
 ## 7. Logging and Reporting
 
 The compliance engine records structured events for trunk-port validation and remediation.
@@ -984,7 +984,7 @@ Following remediation, the engine re-queried `CORE-SW-1` via Genie. The post-aud
 ---
 
 #### 5. Exception & Fault Observability (`status: ERROR`)
-The remediation engine encapsulates command execution inside a comprehensive `try...except` boundary. If an operational failure occurs—such as a Jinja2 template rendering syntax error or an SSH channel timeout over Netmiko—the engine catches the error, streams an `ERROR` event to Splunk with full details, and continues auditing remaining interfaces.
+The remediation engine encapsulates command execution inside a comprehensive `try...except` boundary. If an operational failure occurs, such as a Jinja2 template rendering syntax error or an SSH channel timeout over Netmiko, the engine catches the error, streams an `ERROR` event to Splunk with full details, and continues auditing remaining interfaces.
 
 ```spl
 index="network_automation" | spath component | search component="trunk_automation" "Exception"
@@ -1041,7 +1041,7 @@ To ensure deterministic reliability and prevent regression bugs, the trunk compl
 
 The test suite requires **zero live hardware connections**. Using pre-captured Cisco pyATS/Genie fixtures (`access_trunk_genie_output`) and mock isolation, all **13 test cases execute in 1.36 seconds** (0.58s builder + 0.78s compliance), making them ideal for high-speed CI/CD gates.
 
-![Splunk Trunk Exceptions Logged](screenshots/pytest-draw-io.png)
+![Splunk Trunk Exceptions Logged](screenshots/pytests-draw-io.png)
 ---
 
 ### Layer 1: Trunk State Builder Tests (`test_build_trunk.py`)
