@@ -30,9 +30,6 @@ Rather than relying on brittle screen-scraping or manual audits, this pipeline p
 
 ### Table of Contents
 
-- [Overview](#overview)
-- [Objectives](#objectives)
-- [Architecture](#architecture)
 - [1. Intended State: NetBox Source of Truth (802.1Q Trunk Ports)](#1-intended-state-netbox-source-of-truth-8021q-trunk-ports)
 - [2. Live Device State Collection & Trunk Parsing](#2-live-device-state-collection--trunk-parsing)
 - [3. Trunk Compliance Diff Engine & Drift Detection](#3-trunk-compliance-diff-engine--drift-detection)
