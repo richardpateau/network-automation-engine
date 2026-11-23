@@ -519,6 +519,8 @@ interface Ethernet0/0
 
 The `configure_trunk()` routine renders the template, verifies whether dry-run mode is enabled, applies the command set over Netmiko, and logs the execution event:
 
+![Remediation Trunk Code](screenshots/code-configure-trunk.png)
+
 ```python
 # src/remediation/switching/trunk.py
 
@@ -591,8 +593,6 @@ def configure_trunk(conn, trunk_data, device_ip, transport, log):
         }
 ```
 
-![Remediation Trunk Code](screenshots/code-configure-trunk.png)
-
 ---
 
 ## 5. Safe Change Management: Dry-Run Mode
@@ -664,7 +664,6 @@ At the conclusion of an audit run, the engine compiles the complete assessment i
 | :--- | :--- | :--- |
 | **Trunk Remediation Preview** | `[DRY_RUN] Would Configure_Trunk Port` | Identifies the exact trunk interface and the full comma-separated allowed VLAN whitelist that would be pushed. |
 | **Access Port Preview** | `[DRY_RUN] Would Configure Access Port` | Specifies the interface and target access VLAN ID to be applied. |
-| **VLAN Database Preview** | `[DRY_RUN] Would Configure VLANs` | Identifies missing or drifted global VLANs scheduled for creation. |
 | **Compliant Verification** | `* Already Compliant` | Confirms operational parity with NetBox; no configuration will be generated or pushed. |
 
 ---
@@ -700,6 +699,8 @@ To verify that the remediation commands took effect on physical hardware, runnin
 
 #### 1. Running Configuration: BEFORE Remediation (Injected Drift)
 
+![Cisco Switch Console VTY Syslog](screenshots/show-run-before.png)
+
 ```cisco
 interface Ethernet0/0
  switchport trunk encapsulation dot1q
@@ -719,8 +720,6 @@ interface Ethernet0/3
 interface Vlan1
  ip address 10.10.10.10 255.255.255.0
 ```
-![Before Remediation Running Config](screenshots/show-run-after-config.png)
-
 > **Observed drift:** `Ethernet0/0` is restricted to `1,10,20` (missing `30,40,50,60,70,999`), and `Ethernet0/3` is completely unconfigured — no trunk encapsulation, no mode, no allowed list.
 
 ---
@@ -729,7 +728,7 @@ interface Vlan1
 
 When the automation engine connected to `CORE-SW-1` over Netmiko, the switch console generated `%SYS-5-CONFIG_I` syslog messages confirming that configuration changes were pushed over `vty0` by the automation service account:
 
-![Cisco Switch Console VTY Syslog](screenshots/show-run-before.png)
+![Cisco Switch Console VTY Syslog](screenshots/show-run-during-configured-by-vty.png)
 
 ```cisco
 *Nov 22 13:48:06.519: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
@@ -746,6 +745,8 @@ The switch console records the remote configuration push executed by the engine'
 Following automated execution and closed-loop post-validation:
 * `Ethernet0/0` has been updated with the complete 9-VLAN whitelist (`1,10,20,30,40,50,60,70,999`).
 * `Ethernet0/3` was cleanly defaulted, configured with `dot1q` encapsulation, locked into `mode trunk`, and assigned the full authorized VLAN scope.
+
+![After Remediation Running Config](screenshots/show-run-after-config.png)
 
 ```cisco
 interface Ethernet0/0
@@ -769,8 +770,6 @@ interface Ethernet0/3
 interface Vlan1
  ip address 10.10.10.10 255.255.255.0
 ```
-![After Remediation Running Config](screenshots/show-run-after-config.png)
-
 ---
 
 #### 4. Unified Configuration Diff
