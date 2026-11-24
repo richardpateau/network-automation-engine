@@ -164,6 +164,7 @@ def get_netbox():
                         },
                     }
                 )
+
             if is_switch:
                 if (
                     device_interface.mode
@@ -191,6 +192,9 @@ def get_netbox():
                             ),
                         }
                     )
+        if is_switch:
+            i = config_data[host_ip]["interfaces"]
+            print(json.dumps(i, indent=4))
             if is_router:
                 interface_ips = interface_ip.get(device_interface.id, [])
                 for interface_ip in interface_ips:

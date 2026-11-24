@@ -1,6 +1,6 @@
 # Trunk Port Compliance & Remediation
 
-## Executive Overview
+## Overview
 
 In enterprise network architectures, unrestricted 802.1Q trunk configurations (e.g., `switchport trunk allowed vlan all`) represent a critical security and stability risk. They unnecessarily expand broadcast domains, enable VLAN hopping attacks, and violate strict network segmentation baselines. Managing these allowed-VLAN whitelists manually via CLI does not scale and inevitably leads to configuration drift.
 
@@ -27,6 +27,10 @@ Rather than relying on brittle screen-scraping or manual audits, this pipeline p
 | Compliance Checker | Compares expected and actual trunk configurations. |
 | Remediation Engine | Applies trunk configuration changes. |
 | Post-Validation | Verifies that remediation achieved the expected configuration. |
+
+## Topology 
+
+![NetBox Trunk Interfaces CORE-SW-1](screenshots/pnet-lab-topology.png)
 
 ### Table of Contents
 
@@ -159,7 +163,7 @@ To audit 802.1Q trunks without relying on brittle regular expressions, the engin
 1. **Collector (`src/collectors/cli/collector.py`):** Queries `show interfaces switchport` over Netmiko using Cisco pyATS/Genie to produce structured operational dictionaries.
 2. **Builder (`src/collectors/cli/builders.py`):** Ingests the raw switchport data, ignores access ports, and normalizes operational trunks and their allowed VLAN lists into an evaluation-ready dictionary.
 
-![Collector CLI Switchports](screenshots/build-vlan-draw-io.png)
+![Collector CLI Switchports](screenshots/build-trunk-draw-io.png)
 
 ---
 
@@ -1240,4 +1244,4 @@ This module is part of a broader Network Automation Engine portfolio.
 - [Access Port Compliance & Remediation](../access-ports/)
 - [F5 BIG-IP LTM Cloud Load Balancing](../f5-big-ip-ltm-lab/)
 
-⬅️ **[Return to Main Repository README](../README.md)**
+**[Return to Main Repository README](../README.md)**

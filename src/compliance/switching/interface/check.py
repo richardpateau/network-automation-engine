@@ -6,13 +6,13 @@ def check_interface(expected_int, actual_config):
 	actual = actual_config.get(exp_interface)
 	if not actual: 
 		failures.append(
-				f"Missing Interface On Device | Interface: {exp_interface}"
+				f"[Interface] Device does not support this interface | Interface: {exp_interface}"
 			)
 		return False, failures
 	actual_is_up = actual.get("is_up", False )
 	if exp_is_up != actual_is_up:
 		failures.append(
-			 f"Mismatched Interface State | Interface: {exp_interface} | "
+			 f"Mismatched Interface Operational Status / Protocol State | Interface: {exp_interface} | "
 			 f"Expected Should Be Up/Up: {exp_is_up} | "
 			 f"Actual Should be Up/Up: {actual_is_up}"
 			)

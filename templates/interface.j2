@@ -1,0 +1,10 @@
+{% for i in interface_data %}
+interface {{ i.interface }}
+{% if i.should_be_up %}
+no shutdown 
+description {{ i.description }}
+{% else %}
+shutdown
+description {{ i.description }}
+{% endif %}
+{% endfor %}

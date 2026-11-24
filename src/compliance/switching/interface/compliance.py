@@ -20,6 +20,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "interface_compliance",
             "protocol": "interface",
             "transport": transport,
             "interface": interface,
@@ -66,7 +67,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
                     f"Should Be Up: {should_be_up}"
                 )
         else: 
-            result = configure_interface(sesh, int_data, log)
+            result = configure_interface(sesh, int_data, device_ip, transport, log)
             summary = result.get("summary")
             if summary:
                 device_result["actions_taken"].append(summary)
@@ -81,7 +82,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
                     )
 
     if interfaces_updated and not DRY_RUN:
-        new_state = collect_device_state(sesh, log)
+        new_state = collect_device_state(sesh)
         new_interface = build_interface(new_state)
 
         for int_data in exp_interfaces:
@@ -94,6 +95,7 @@ def compliance_interface(sesh, device_ip, context, device_state, device_result, 
             log_extra = {
                 "device_ip": device_ip,
                 "component": "main_process",
+                "event_type": "interface_compliance",
                 "protocol": "interface",
                 "transport": transport,
                 "interface": interface,

@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_interface(conn, interface_data, log): 
+def configure_interface(conn, interface_data, device_ip, transport, log): 
 	interface = interface_data.get("interface", "")
 	description = interface_data.get("description", "")
 	should_be_up = interface_data.get("should_be_up", False)
@@ -13,9 +13,7 @@ def configure_interface(conn, interface_data, log):
 	try: 
 		template = template_env.get_template("interface.j2")
 		commands = template.render(
-				interface=interface,
-				description=description,
-				state=state
+				interface_data=[interface_data]
 			).splitlines()
 		if DRY_RUN:
 			return {
@@ -26,18 +24,19 @@ def configure_interface(conn, interface_data, log):
 			}
 
 		conn.send_config_set(commands)
+		conn.save_config()
 
 		log.info(
             "interface_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "interface_automation",
                 "event_type": "interface_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "interface": interface,
                 "should_be_up": should_be_up,
-                "detail": (f"Interface Status Successfully changed | Interface: {interface} "
+                "detail": (f"Interface Operational State (Status/Protocol) Successfully changed | Interface: {interface} "
 						    f"| Should Be Up/Up: {should_be_up}" 
                 	)
             }
@@ -53,10 +52,10 @@ def configure_interface(conn, interface_data, log):
 		log.info(
             "interface_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "interface_automation",
                 "event_type": "interface_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "interface": interface,
                 "should_be_up": should_be_up,

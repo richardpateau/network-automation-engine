@@ -32,6 +32,9 @@ def exp_interface():
         "should_be_up": True, 
         "description": "link to WAN ROUTER"
     }]
+@pytest.fixture
+def mock_transport():
+    return "NETMIKO"
 
 @pytest.fixture
 def mock_context(exp_interface): 
@@ -41,14 +44,14 @@ def mock_context(exp_interface):
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_already_compliant(
         mock_check_interface, mock_build_interface, mock_sesh, mock_context, 
-        mock_device_result, mock_log
+        mock_device_result, mock_log, mock_transport
     ):
     
     mock_build_interface.return_value = {}
     mock_check_interface.return_value = (True, [])
 
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.info.assert_called_once()
@@ -61,17 +64,17 @@ def test_compliance_interface_already_compliant(
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_non_compliant_config_successful(
         mock_check_interface, mock_build_interface, mock_configure_interface,
-        mock_sesh, mock_context, mock_device_result, mock_log
+        mock_sesh, mock_context, mock_device_result, mock_log, mock_transport
     ):
     
     mock_build_interface.return_value = {}
-    mock_check_interface.return_value = (False, ["Mismatched Interface State"])
+    mock_check_interface.side_effect = [(False, ["Mismatched Interface State"]), (True, [])]
     mock_configure_interface.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "Interface Configuration Successful"
     }
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -84,7 +87,7 @@ def test_compliance_interface_non_compliant_config_successful(
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_non_compliant_config_failed(
         mock_check_interface, mock_build_interface, mock_configure_interface,
-        mock_sesh, mock_context, mock_device_result, mock_log
+        mock_sesh, mock_context, mock_device_result, mock_log, mock_transport
     ):
     
     mock_build_interface.return_value = {}
@@ -95,7 +98,7 @@ def test_compliance_interface_non_compliant_config_failed(
     }
     
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -110,14 +113,14 @@ def test_compliance_interface_non_compliant_config_failed(
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_dry_run(
         mock_check_interface, mock_build_interface, mock_configure_interface,
-        mock_sesh, mock_context, mock_device_result, mock_log
+        mock_sesh, mock_context, mock_device_result, mock_log, mock_transport
     ):
     
     mock_build_interface.return_value = {}
     mock_check_interface.return_value = (False, ["Mismatched Interface State"])
     mock_configure_interface.return_value = {}
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -131,7 +134,7 @@ def test_compliance_interface_dry_run(
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_post_validation_successful(
         mock_check_interface, mock_build_interface, mock_configure_interface,
-        mock_collect_device_state, mock_sesh, mock_context, mock_device_result, mock_log
+        mock_collect_device_state, mock_sesh, mock_context, mock_device_result, mock_log, mock_transport
     ):
     
     mock_build_interface.return_value = {}
@@ -145,7 +148,7 @@ def test_compliance_interface_post_validation_successful(
     mock_collect_device_state.return_value = {}
 
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -162,7 +165,7 @@ def test_compliance_interface_post_validation_successful(
 @patch("src.compliance.switching.interface.compliance.check_interface")
 def test_compliance_interface_post_validation_failed(
         mock_check_interface, mock_build_interface, mock_configure_interface,
-        mock_collect_device_state, mock_sesh, mock_context, mock_device_result, mock_log
+        mock_collect_device_state, mock_sesh, mock_context, mock_device_result, mock_log, mock_transport
     ):
     
     mock_build_interface.return_value = {}
@@ -176,7 +179,7 @@ def test_compliance_interface_post_validation_failed(
     mock_collect_device_state.return_value = {}
 
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
         )
 
     mock_log.warning.assert_called_once()
@@ -189,11 +192,11 @@ def test_compliance_interface_post_validation_failed(
     assert result["status"] == OperationalStatus.FAILED_VALIDATION.value
 
 def test_compliance_interface_empty(
-        mock_sesh, mock_device_result, mock_log
+        mock_sesh, mock_device_result, mock_log, mock_transport
     ):
     
     result = compliance_interface(
-            mock_sesh, mock_sesh.device_ip, {"interfaces": []}, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, {"interfaces": []}, {}, mock_device_result, mock_log, mock_transport
         )
 
     assert result["initial_issues"] == []

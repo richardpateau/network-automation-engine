@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-22T14:49:40.981644",
+        "timestamp": "2026-11-23T14:03:40.902194",
         "total_devices": 2,
         "successful_runs": 2
     },
@@ -11,7 +11,7 @@
             "hostname": null,
             "status": "COMPLIANT",
             "actions_taken": [
-                "[DRY_RUN] Would Configure VLANs | VLAN: 1 | Name: 1",
+                "VLAN Already Compliant | VLAN: 1 | Name: default",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
                 "VLAN Already Compliant | VLAN: 20 | Name: VOICE",
                 "VLAN Already Compliant | VLAN: 30 | Name: SERVERS",
@@ -20,8 +20,17 @@
                 "VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT",
                 "VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
                 "VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED",
+                "Interface Configuration Already Compliant | Interface: Ethernet0/0 | Description: Configured via Netmiko | Should Be Up: True",
+                "[DRY_RUN] Would Configure Interface | Interface: Ethernet0/1 | Description: Configured via Netmiko | Should Be Up: False",
+                "[DRY_RUN] Would Configure Interface | Interface: Ethernet0/2 | Description: Configured via Netmiko | Should Be Up: False",
+                "Interface Configuration Already Compliant | Interface: Ethernet0/3 | Description: Configured via Netmiko | Should Be Up: True",
+                "[DRY_RUN] Would Configure Interface | Interface: Ethernet1/0 | Description: Configured via Netmiko | Should Be Up: False",
+                "[DRY_RUN] Would Configure Interface | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: False",
+                "[DRY_RUN] Would Configure Interface | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: False",
+                "[DRY_RUN] Would Configure Interface | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: False",
+                "[DRY_RUN] Would Configure Interface | Interface: GigabitEthernet1/0 | Description:  | Should Be Up: True",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/0 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
-                "Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999"
+                "Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
             ],
             "events": [],
             "checks_passed": 0,
@@ -49,7 +58,22 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default"
+                "Mismatched Interface Operational Status / Protocol State | Interface: ethernet0/1 | Expected Should Be Up/Up: False | Actual Should be Up/Up: True",
+                "Mismatched Interface Operational Status / Protocol State | Interface: ethernet0/2 | Expected Should Be Up/Up: False | Actual Should be Up/Up: True",
+                "Mismatched Interface Operational Status / Protocol State | Interface: ethernet1/0 | Expected Should Be Up/Up: False | Actual Should be Up/Up: True",
+                "Mismatched Interface Operational Status / Protocol State | Interface: ethernet1/1 | Expected Should Be Up/Up: False | Actual Should be Up/Up: True",
+                "Mismatched Interface Operational Status / Protocol State | Interface: ethernet1/2 | Expected Should Be Up/Up: False | Actual Should be Up/Up: True",
+                "Mismatched Interface Operational Status / Protocol State | Interface: ethernet1/3 | Expected Should Be Up/Up: False | Actual Should be Up/Up: True",
+                "[Interface] Device does not support this interface | Interface: gigabitethernet1/0",
+                "(STP) Missing Interface | Interface: Ethernet0/0",
+                "(STP) Missing Interface | Interface: Ethernet0/1",
+                "(STP) Missing Interface | Interface: Ethernet0/2",
+                "(STP) Missing Interface | Interface: Ethernet0/3",
+                "(STP) Missing Interface | Interface: Ethernet1/0",
+                "(STP) Missing Interface | Interface: Ethernet1/1",
+                "(STP) Missing Interface | Interface: Ethernet1/2",
+                "(STP) Missing Interface | Interface: Ethernet1/3",
+                "(STP) Missing Interface | Interface: GigabitEthernet1/0"
             ],
             "critical_issues": [],
             "warnings": [],
@@ -62,9 +86,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-22T14:49:24.596624+00:00",
-            "end_time": "2026-11-22T14:49:40.819031+00:00",
-            "duration_seconds": 16.222407,
+            "start_time": "2026-11-23T14:03:24.470395+00:00",
+            "end_time": "2026-11-23T14:03:40.696476+00:00",
+            "duration_seconds": 16.226081,
             "errors": []
         },
         {
@@ -73,7 +97,7 @@
             "hostname": null,
             "status": "COMPLIANT",
             "actions_taken": [
-                "[DRY_RUN] Would Configure VLANs | VLAN: 1 | Name: 1",
+                "VLAN Already Compliant | VLAN: 1 | Name: default",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
                 "VLAN Already Compliant | VLAN: 20 | Name: VOICE",
                 "VLAN Already Compliant | VLAN: 30 | Name: SERVERS",
@@ -90,14 +114,15 @@
                 "Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/0 | VLAN: 10",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/2 | VLAN: 20",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/3 | VLAN: 30",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/0 | VLAN: 40",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/1 | VLAN: 50",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/2 | VLAN: 60",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/3 | VLAN: 70",
-                "[DRY_RUN] Would Configure_Trunk Port | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999"
+                "Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10",
+                "Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20",
+                "Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30",
+                "Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40",
+                "Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50",
+                "Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60",
+                "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70",
+                "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
+                "[DRY_RUN] Would Configure STP Interfaces | BPDU Guard: [False, False, False, False, False, False, False, False] | Portfast: [False, False, False, False, False, False, False, False] | Root Guard: [False, False, False, False, False, False, False, False] | Loop Guard: [False, False, False, False, False, False, False, False] | BPDU Filter: [False, False, False, False, False, False, False, False]"
             ],
             "events": [],
             "checks_passed": 0,
@@ -125,15 +150,6 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "VLAN Name Mismatch | VLAN: 1 | Expected: 1 | Actual: default",
-                "Mismatched Access Port VLAN | Interface: ethernet0/0 | VLAN: Expected VLAN: 10 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet0/2 | VLAN: Expected VLAN: 20 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet0/3 | VLAN: Expected VLAN: 30 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/0 | VLAN: Expected VLAN: 40 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/1 | VLAN: Expected VLAN: 50 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/2 | VLAN: Expected VLAN: 60 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/3 | VLAN: Expected VLAN: 70 | Actual VLAN: 1",
-                "(Trunk) Mismatch Found - Allowed VLANs | Interface: ethernet0/1 | Expected: 1,10,20,30,40,50,60,70,999 | Actual: all",
                 "(STP) Missing Interface | Interface: Ethernet0/0",
                 "(STP) Missing Interface | Interface: Ethernet0/1",
                 "(STP) Missing Interface | Interface: Ethernet0/2",
@@ -154,9 +170,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-22T14:49:24.596056+00:00",
-            "end_time": "2026-11-22T14:49:40.981042+00:00",
-            "duration_seconds": 16.384986,
+            "start_time": "2026-11-23T14:03:24.469613+00:00",
+            "end_time": "2026-11-23T14:03:40.901490+00:00",
+            "duration_seconds": 16.431877,
             "errors": []
         }
     ],
