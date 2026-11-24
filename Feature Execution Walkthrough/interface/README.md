@@ -919,7 +919,7 @@ The engine records five discrete operational transitions across managed interfac
 
 When an interface's live L1/L2 state and description already match NetBox intent on the initial scan, the engine logs an informational pass with zero failures and bypasses remediation entirely. Here the distribution uplink `Ethernet0/3` (`10.10.10.10`) was verified compliant against `should_be_up: True`:
 
-![Splunk Interface Already Compliant](screenshots/splunk-interface-already-compliant.png)
+![Splunk Interface Already Compliant](screenshots/splunk-already-compliant.png)
 
 ```json
 {
