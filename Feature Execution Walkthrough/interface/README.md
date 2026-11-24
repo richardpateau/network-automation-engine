@@ -720,7 +720,7 @@ Issuing a `shutdown` or `no shutdown` command over SSH does not prove that an in
 2. It re‑normalizes interface data through `build_interface(new_state)`.
 3. It re‑runs `check_interface()` to assert that the operational state now matches NetBox intent.
 
-![Final Compliance Report Dry Run Interfaces](screenshots/dry-run-final-report-json.png)
+![Final Compliance Report Dry Run Interfaces](screenshots/closed-loop-diagram-draw-io.png)
 
 After live remediation commands are pushed, the engine re‑polls the switch's operational state via Genie (`show ip interface brief`) to verify that all target interfaces transitioned to the intended state on physical hardware.
 
@@ -730,7 +730,7 @@ After live remediation commands are pushed, the engine re‑polls the switch's o
 
 Before running remediation, all physical interfaces were operating in an unmanaged active state (`is_up: true`), despite NetBox policy declaring that unassigned ports (`Ethernet0/1`, `Ethernet0/2`, `Ethernet1/0`–`1/3`) should be down:
 
-![Show IP Interface Brief Before Remediation](screenshots/closed-loop-diagram-draw-io.png)
+![Show IP Interface Brief Before Remediation](screenshots/show-ip-int-brief-before.png)
 
 ```text
 CORE-SW-1#sh ip int brief
