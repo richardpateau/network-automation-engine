@@ -89,7 +89,7 @@ On distribution switch `CORE-SW-1`, only authorized distribution downlinks are e
 | **Ethernet1/3** | `—` | `True` | **`False` (Shutdown)** | 1000BASE-T | Spare / Unallocated |
 | *Vlan1* | *—* | `True` | *—* | *Virtual* | *(Filtered out: SVI)* |
 
-![NetBox Core Switch Interface Baseline](screenshots/netbox-should-be-up-config.png)
+![NetBox Core Switch Interface Baseline](screenshots/netbox-interface-overview.png)
 
 ---
 
