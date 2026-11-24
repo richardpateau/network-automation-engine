@@ -1146,7 +1146,7 @@ This suite verifies that `build_interface()` accurately normalizes Genie operati
 5. **`test_build_interface_non_dictionary`**: Validates that non‑dictionary interface values in the Genie output are safely ignored.
 6. **`test_build_interface_missing_fields`**: Confirms that interfaces missing explicit `status` or `protocol` attributes default safely to empty strings.
 
-#### Representative Compound Health Test Pattern:
+#### Excerpt:
 
 ![Interface Builder Unit Tests Passed](screenshots/unit-test-code-build-interface.png)
 
@@ -1218,7 +1218,7 @@ Using `@patch` and `MagicMock`, this suite isolates `compliance_interface()` fro
 6. **`test_compliance_interface_post_validation_failed`**: Simulates persistent drift where configuration was sent, but the re‑queried switch state still fails the operational check. Asserts status is set to `OperationalStatus.FAILED_VALIDATION` and a critical error is logged.
 7. **`test_compliance_interface_empty`**: Evaluates behavior when no interfaces are declared in NetBox context (`{"interfaces": []}`). Asserts the module completes with zero issues and zero actions taken.
 
-#### Representative Mock Pattern:
+#### Excerpt:
 
 ![Interface Compliance Unit Tests Passed](screenshots/unit-test-code-compliance-interface.png)
 
