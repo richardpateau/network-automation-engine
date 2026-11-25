@@ -70,7 +70,7 @@ Global spanning‑tree parameters are defined in NetBox as structured JSON under
 #### A. Distribution Root Bridge Baseline: `CORE-SW-1` (`10.10.10.10`)
 To implement deterministic root placement and Layer 2 traffic load‑balancing across VLANs, `CORE-SW-1` is engineered with alternating bridge priorities (`24576` for odd/data VLANs, `28672` for voice/management VLANs):
 
-
+![NetBox Config Context ACCESS-SW-1](screenshots/netbox-config-context-core-sw-1.png)
 
 ```json
 {
