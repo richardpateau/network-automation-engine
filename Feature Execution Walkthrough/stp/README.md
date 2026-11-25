@@ -789,13 +789,7 @@ def compliance_stp_interfaces(
                     "detail": "STP Interface Configuration Already Compliant",
                 },
             )
-```
-
-```python
-# src/compliance/switching/stp/compliance.py   [lines 175–199]
-#   NOTE: the text dump references `stp_expected`, a variable NOT defined in the
-#   screenshot version (lines 128–174). Against the screenshot file this raises
-#   NameError. Re-capture 175–199 to confirm which version is live.
+            
 
             device_result["actions_taken"].append(
                 "STP Interface Configuration Already Compliant | "
@@ -816,10 +810,6 @@ def compliance_stp_interfaces(
                     f"[DRY_RUN] Would Configure STP Features Interfaces | "
                     f"Expected Configuration: {stp_expected}"
                 )
-```
-
-```python
-# src/compliance/switching/stp/compliance.py   [lines 200–246]
 
             else:
                 result = configure_stp_interfaces(sesh, exp_stp_int, device_ip, transport, log)
@@ -869,10 +859,6 @@ def compliance_stp_interfaces(
                     "detail": "STP Interfaces Post Validation Failed",
                 },
             )
-```
-
-```python
-# src/compliance/switching/stp/compliance.py   [lines 247+ — text-fill, re-capture to verify]
 
             device_result["critical_issues"].extend(failures)
             device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
