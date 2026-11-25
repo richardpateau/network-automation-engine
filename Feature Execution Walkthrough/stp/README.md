@@ -959,9 +959,6 @@ CORE-SW-1(config)# no spanning-tree vlan 1,10,20,30,40,50,60,70
 ['(STP) Mismatched VLANs | Expected: 10,20,30,40,50,60,70 | Actual: 999']
 2026-11-25 05:52:37,123 - INFO - stp_interfaces_compliant
 ```
-
-> **Gate‑order proof:** the single string (not a priority diff) confirms `check_stp_global()` short‑circuits on the VLAN‑set gate before per‑VLAN priority comparison — a missing instance is reported as topology drift, not as 7 separate priority mismatches.
-
 ---
 
 #### Scenario D — Interface Edge‑Guard Drift (Unauthorized Root Guard & Missing Protections)
@@ -1065,32 +1062,6 @@ When `ACCESS-SW-1` was initialized with default, unconfigured switchports (no `p
 | VLAN absent from live `show spanning-tree` | VLAN declared in NetBox | **FAIL (Missing VLAN Topology)** | Log `stp_non_compliant`; enable STP on the missing VLAN. |
 | `portfast: False` on access port | `portfast: True` | **FAIL (Guard Mismatch)** | Log `stp_interfaces_non_compliant`; push `spanning-tree portfast`. |
 | `root_guard: False` on trunk | `root_guard: True` | **FAIL (Guard Mismatch)** | Log `stp_interfaces_non_compliant`; push `spanning-tree guard root`. |
-
-## 4. Interface STP Compliance
-
-Interface STP compliance validates spanning-tree protection settings on individual interfaces.
-
-The checker:
-
-```python
-check_stp_interfaces(expected_interfaces, actual_interfaces)
-```
-
-compares expected interface configuration against the actual collected device state.
-
-The interface compliance process validates the STP protection attributes defined in NetBox.
-
-These include:
-
-| Feature | Purpose |
-|---|---|
-| PortFast | Allows eligible edge ports to transition rapidly to forwarding |
-| BPDU Guard | Protects edge ports by disabling them when BPDUs are received |
-| Root Guard | Prevents a downstream device from becoming the STP root |
-| Loop Guard | Helps prevent loops caused by unexpected BPDU loss |
-| BPDU Filter | Controls BPDU transmission and reception |
-
-The checker identifies configuration drift and returns the detected failures for remediation.
 
 ## 5. Configuration Remediation
 
@@ -1541,54 +1512,86 @@ When access switchports (such as `Ethernet0/0` on `ACCESS-SW-1`) already match t
 ---
 
 #### 2. Interface Guard Drift Alert (`stp_interfaces_non_compliant`)
-When physical interfaces deviate from NetBox custom fields (e.g., unhardened access ports missing PortFast/BPDU Guard), a `WARNING` (severity 4) alert is indexed with the complete failure diff:
+When physical interfaces deviate from NetBox custom fields (e.g., unhardened access ports missing PortFast/BPDU Guard, or rogue `root_guard` on workstation ports), a `WARNING` (severity 4) alert is indexed with the complete failure diff **and** the NetBox‑intended guard baseline for each port:
 
 ![Splunk STP Interface Drift](screenshots/splunk-non-compliant.png)
 
 ```json
 {
-  "asctime": "2026-11-24 06:54:21,290",
+  "asctime": "2026-11-25 05:48:35,548",
   "cisco_appname": "SRC",
   "cisco_msgname": "WARNING",
   "cisco_sev": 4,
   "compliant": false,
   "component": "main_process",
   "detail": "STP Interface Configuration Non-Compliant",
-  "dev": "10.10.10.10",
-  "device_ip": "10.10.10.10",
+  "dev": "10.10.10.20",
+  "device_ip": "10.10.10.20",
   "event_type": "compliance_stp_interface",
-  "failures": [
-    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: portfast | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: bpdu_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: root_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: loop_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: bpdu_filter | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: portfast | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: bpdu_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: root_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: loop_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: bpdu_filter | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: portfast | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: bpdu_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: root_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: loop_guard | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: bpdu_filter | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: portfast | Expected: None | Actual: False",
-    "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: bpdu_guard | Expected: None | Actual: False"
+  "expected_interfaces": [
+    {
+      "bpdu_filter": false,
+      "bpdu_guard": true,
+      "interface": "Ethernet0/0",
+      "loop_guard": false,
+      "portfast": true,
+      "root_guard": false
+    },
+    {
+      "bpdu_filter": false,
+      "bpdu_guard": false,
+      "interface": "Ethernet0/1",
+      "loop_guard": true,
+      "portfast": false,
+      "root_guard": false
+    },
+    {
+      "bpdu_filter": false,
+      "bpdu_guard": true,
+      "interface": "Ethernet0/2",
+      "loop_guard": false,
+      "portfast": true,
+      "root_guard": false
+    },
+    {
+      "bpdu_filter": false,
+      "bpdu_guard": true,
+      "interface": "Ethernet0/3",
+      "loop_guard": false,
+      "portfast": true,
+      "root_guard": false
+    }
   ],
-  "failures_count": 1,
+  "failures": [
+    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: portfast   | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: bpdu_guard | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: portfast   | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: bpdu_guard | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: portfast   | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: bpdu_guard | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: portfast   | Expected: True  | Actual: False",
+    "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: root_guard | Expected: False | Actual: True"
+  ],
+  "failures_count": 9,
   "hostname": "mx",
   "level": "WARNING",
   "message": "stp_interfaces_non_compliant",
   "protocol": "stp_interfaces",
-  "seqnum": 55,
+  "seqnum": 57,
   "status": "FAILED",
-  "tags": {},
+  "tags": {
+    "pid": 641021,
+    "pname": "MainProcess",
+    "tid": 139636932335296,
+    "tname": "ThreadPoolExecutor-0_1"
+  },
   "taskName": null,
   "transport": "NETMIKO"
 }
 ```
+
+> **Why `expected_interfaces` matters:** this field is the `stp_expected` list built by `compliance_stp_interfaces()`  it captures the exact NetBox‑declared guard baseline per port at the moment of evaluation. When paired with the `failures` array, a SecOps analyst can see both *what was intended* and *what actually drifted* in a single Splunk event, without having to re‑query NetBox.
 
 ---
 
@@ -1703,19 +1706,6 @@ Throughout execution, the engine updates the device result context used to gener
 
 ---
 
-## 9. Execution Results
-
-The module updates the device execution result throughout the compliance workflow.
-
-| Result Field | Purpose |
-|---|---|
-| `actions_taken` | Records compliant configurations, planned remediation, and validation results |
-| `initial_issues` | Records configuration drift detected before remediation |
-| `critical_issues` | Records remediation and post-validation failures |
-| `status` | Tracks the overall execution outcome |
-
-The updated device result is returned to the main automation pipeline.
-
 ## 10. Automated Unit Testing & CI/CD Validation (STP)
 
 To ensure high‑availability Layer 2 stability without risking physical forwarding loops on live hardware, the Spanning Tree module includes a comprehensive **100% offline unit‑testing suite** powered by **Pytest** and **unittest.mock**.
@@ -1738,8 +1728,6 @@ Validates that `build_stp_global()` correctly extracts operational STP modes (`p
 5. **`test_build_stp_global_invalid_vlan`**: Confirms non‑integer VLAN identifiers are safely skipped.
 
 #### Code Excerpt (`test_build_stp_global.py`):
-
-**Excerpt**
 
 ![Splunk STP Exception Log](screenshots/unit-test-code-build-global.png)
 
@@ -1844,8 +1832,6 @@ Validates that `build_stp_interfaces()` uses `CiscoConfParse` to inspect running
 4. **`test_build_stp_interfaces_invalid_interface`**: Injects a malformed interface block missing a port identifier; asserts the builder skips it and returns `{}`.
 
 #### Code Excerpt (`test_build_stp_interface.py`):
-
-**Excerpt**
 
 ![Global STP Builder Tests Terminal](screenshots/unit-test-build-code-interfaces.png)
 
@@ -2042,7 +2028,6 @@ Key architectural wins validated in this project include:
 ### Next Steps & Future Enhancements
 To further evolve this automation engine, the following enhancements are planned:
 - **Multi-Vendor Abstraction:** Leverage Genie's vendor-agnostic parsing to extend this exact same compliance logic to Arista (EOS) and Juniper (Junos) platforms without rewriting the core diff engine.
-- **Advanced L2 Policy Validation:** Expand the compliance checks to validate Link Aggregation (LACP/EtherChannel) member states, UniDirectional Link Detection (UDLD), and dynamic MAC address learning limits.
 - **CI/CD Pipeline Integration:** Embed the existing 23-case Pytest suite into GitHub Actions to automatically block Pull Requests that introduce regressions to the compliance logic or Jinja2 templates.
 
 ---
