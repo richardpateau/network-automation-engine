@@ -518,7 +518,7 @@ The global engine validates operating mode and bridge‑priority parity. If a sw
 ![Global STP Diff Engine](screenshots/code-check-stp-global.png)
 
 ```python
-# src/compliance/switching/stp/check.py   [lines 1–37 — screenshot-verified]
+# src/compliance/switching/stp/check.py   
 
 def check_stp_global(expected_stp, actual_config):
     failures = []
@@ -563,7 +563,7 @@ def check_stp_global(expected_stp, actual_config):
 ![Global STP Orchestrator Part 1](screenshots/code-compliance-2.png)
 
 ```python
-# src/compliance/switching/stp/compliance.py   [lines 9–56 — screenshot-verified]
+# src/compliance/switching/stp/compliance.py 
 
 def compliance_stp_global(sesh, device_ip, context, device_state, device_result, log, transport):
     exp_stp = context.get("stp", {})
@@ -616,7 +616,7 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
 ```
 
 ```python
-# src/compliance/switching/stp/compliance.py   [lines 57–67 — text-fill, re-capture to verify]
+# src/compliance/switching/stp/compliance.py 
 
                     ),
                 },
@@ -705,7 +705,7 @@ The interface engine walks every NetBox‑declared physical port, looks it up in
 ![Interface Guard Diff Engine](screenshots/code-check-stp-interfaces.png)
 
 ```python
-# src/compliance/switching/stp/check.py   [lines 39–69 — screenshot head + text-fill]
+# src/compliance/switching/stp/check.py   
 
 def check_stp_interfaces(expected_interfaces, actual_config):
     failures = []
@@ -740,7 +740,7 @@ def check_stp_interfaces(expected_interfaces, actual_config):
 ![Interface Compliance Orchestrator Part 1](screenshots/code-compliance-interface-2.png)
 
 ```python
-# src/compliance/switching/stp/compliance.py   [lines 128–174]
+# src/compliance/switching/stp/compliance.py  
 
 def compliance_stp_interfaces(
     sesh, device_ip, context, device_state, device_result, log, transport
