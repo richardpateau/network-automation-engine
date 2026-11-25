@@ -20,7 +20,7 @@ def check_stp_global(expected_stp, actual_config):
 
     if exp_vlans.keys() != act_vlans.keys():
         failures.append(
-            f"(STP) Mismatched VLANs | Expected: {exp_vlans.keys()} | Actual: {act_vlans.keys()}"
+            f"(STP) Mismatched VLANs | Expected: {','.join(exp_vlans.keys())} | Actual: {','.join(act_vlans.keys())}"
         )
         return False, failures
     for vlan in exp_vlans.keys():

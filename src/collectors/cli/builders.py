@@ -106,7 +106,7 @@ def build_stp_global(device_state):
         "vlan_priorities": {},
     }
     if "rapid_pvst" in stp:
-        mode = "rapidpvst"
+        mode = "rapid-pvst"
         vlans = stp.get("rapid_pvst", {}).get("vlans", {})
     elif "pvst" in stp:
         mode = "pvst"

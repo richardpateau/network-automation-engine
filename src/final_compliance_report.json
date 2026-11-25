@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-24T13:27:25.945659",
+        "timestamp": "2026-11-25T10:59:44.306885",
         "total_devices": 2,
         "successful_runs": 2
     },
@@ -9,7 +9,7 @@
             "device_name": "CORE-SW-1",
             "device_ip": "10.10.10.10",
             "hostname": null,
-            "status": "NON-COMPLIANT",
+            "status": "COMPLIANT",
             "actions_taken": [
                 "VLAN Already Compliant | VLAN: 1 | Name: default",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
@@ -30,7 +30,8 @@
                 "Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: False",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/0 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
-                "[DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 24576 | VLAN: 20 Priority: 28672 | VLAN: 30 Priority: 24576 | VLAN: 40 Priority: 28672 | VLAN: 50 Priority: 24576 | VLAN: 60 Priority: 28672 | VLAN: 70 Priority: 24576"
+                "[DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 24576 | VLAN: 20 Priority: 28672 | VLAN: 30 Priority: 24576 | VLAN: 40 Priority: 28672 | VLAN: 50 Priority: 24576 | VLAN: 60 Priority: 28672 | VLAN: 70 Priority: 24576",
+                "STP Interface Configuration Already Compliant | Configuration: [{'interface': 'Ethernet0/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]"
             ],
             "events": [],
             "checks_passed": 0,
@@ -58,11 +59,9 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "Mismatched STP Mode | Expected: rapid-pvst | Actual: unknown"
+                "(STP) Mismatched VLANs | Expected: 10,20,30,40,50,60,70 | Actual: 999"
             ],
-            "critical_issues": [
-                "stp_interfaces pipeline failure"
-            ],
+            "critical_issues": [],
             "warnings": [],
             "Remediation": {
                 "attempted": false,
@@ -73,9 +72,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-24T13:27:19.044533+00:00",
-            "end_time": "2026-11-24T13:27:25.629255+00:00",
-            "duration_seconds": 6.584722,
+            "start_time": "2026-11-25T10:59:37.532854+00:00",
+            "end_time": "2026-11-25T10:59:43.972188+00:00",
+            "duration_seconds": 6.439334,
             "errors": []
         },
         {
@@ -104,11 +103,11 @@
                 "Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10",
                 "Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20",
                 "Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/0 | VLAN: 40",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/1 | VLAN: 50",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/2 | VLAN: 60",
-                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/3 | VLAN: 70",
-                "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
+                "Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40",
+                "Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50",
+                "Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60",
+                "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70",
+                "[DRY_RUN] Would Configure_Trunk Port | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
                 "[DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
                 "[DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]"
             ],
@@ -138,20 +137,27 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "Mismatched Access Port VLAN | Interface: ethernet1/0 | VLAN: Expected VLAN: 40 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/1 | VLAN: Expected VLAN: 50 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/2 | VLAN: Expected VLAN: 60 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/3 | VLAN: Expected VLAN: 70 | Actual VLAN: 1",
-                "Mismatched STP Mode | Expected: rapid-pvst | Actual: rapidpvst",
+                "(Trunk) Mismatch Found - Allowed VLANs | Interface: ethernet0/1 | Expected: 1,10,20,30,40,50,60,70,999 | Actual: all",
+                "(STP) Mismatched VLANs | Expected: 10,20,30,40,50,60,70 | Actual: 1,10,20,30,40,50,60,70,999",
+                "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: portfast | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: bpdu_guard | Expected: True | Actual: False",
                 "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: portfast | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: bpdu_guard | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: portfast | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: bpdu_guard | Expected: True | Actual: False",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: portfast | Expected: True | Actual: False",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: bpdu_guard | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: root_guard | Expected: False | Actual: True",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: portfast | Expected: True | Actual: False",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: bpdu_guard | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: root_guard | Expected: False | Actual: True",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: portfast | Expected: True | Actual: False",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: bpdu_guard | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: root_guard | Expected: False | Actual: True",
                 "(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: portfast | Expected: True | Actual: False",
-                "(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: bpdu_guard | Expected: True | Actual: False"
+                "(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: bpdu_guard | Expected: True | Actual: False",
+                "(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: root_guard | Expected: False | Actual: True"
             ],
             "critical_issues": [],
             "warnings": [],
@@ -164,15 +170,15 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-24T13:27:19.043973+00:00",
-            "end_time": "2026-11-24T13:27:25.944602+00:00",
-            "duration_seconds": 6.900629,
+            "start_time": "2026-11-25T10:59:37.532217+00:00",
+            "end_time": "2026-11-25T10:59:44.306077+00:00",
+            "duration_seconds": 6.77386,
             "errors": []
         }
     ],
     "summary": {
-        "compliant": 1,
-        "non_compliant": 1,
+        "compliant": 2,
+        "non_compliant": 0,
         "failed": 0
     }
 }

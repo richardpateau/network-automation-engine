@@ -542,7 +542,7 @@ def check_stp_global(expected_stp, actual_config):
 
     if exp_vlans.keys() != act_vlans.keys():
         failures.append(
-            f"(STP) Mismatched VLANs | Expected: {exp_vlans.keys()} | Actual: {act_vlans.keys()}"
+            f"(STP) Mismatched VLANs | Expected: {','.join(exp_vlans.keys())} | Actual: {','.join(act_vlans.keys())}"
         )
         return False, failures
     for vlan in exp_vlans.keys():
@@ -888,28 +888,33 @@ The dual STP engine was validated across both switches against five distinct ope
 
 ---
 
-#### Scenario A - Global Operating‑Mode Drift (PVST+ Fallback)
-When `CORE-SW-1` was reverted from `rapid-pvst` to legacy `pvst`, the global engine raised `stp_non_compliant` with the exact mode diff:
+#### Scenario C — VLAN Set Parity Drift (Mismatched VLAN Topology)
+On `CORE-SW-1`, per‑VLAN spanning‑tree instances were disabled across VLANs `1, 10–70` while the global mode was held at `rapid-pvst`, leaving only the native VLAN `999` in the live STP instance table. Because the operating **mode** still matched NetBox intent, `check_stp_global()` passed the mode gate and halted at the **VLAN‑set parity** gate, emitting a single set‑difference failure:
 
-![Cisco Console STP Mode Manipulation](screenshots/check-stp-global-intentional-config-missing-vlans.png)
+![Cisco Console STP VLAN Disable](screenshots/check-stp-global-intentional-config-missing-vlans.png)
 
 ```cisco
-CORE-SW-1(config)# spanning-tree mode pvst
+CORE-SW-1(config)# spanning-tree mode rap
+CORE-SW-1(config)# spanning-tree mode rapid-pvst
+CORE-SW-1(config)# sp
+CORE-SW-1(config)# spanning-tree no vlan ?
+% Unrecognized command
+CORE-SW-1(config)# no spa
 CORE-SW-1(config)# no spanning-tree vlan 1,10,20,30,40,50,60,70
 ```
 
-![Cisco Console STP Mode Manipulation](screenshots/check-mismatched-stp-mode.png)
+**Compliance Engine Output (Run @ 05:52):**
+`check_stp_global()` compared the NetBox `vlan_priorities` key set against the live STP instance set. The mode matched, so the run surfaced the topology divergence as one `Mismatched VLANs` string — expected `10–70`, actual only `999` — and the interface‑guard pipeline passed (`stp_interfaces_compliant`) because the prior remediation had already hardened the ports:
+
+![Terminal Mismatched VLANs Diff](screenshots/check-print-missing-vlans.png)
 
 ```text
-2026-11-24 03:40:15,583 - WARNING - stp_non_compliant
-['Mismatched STP Mode | Expected: rapid-pvst | Actual: pvst']
-2026-11-24 03:40:15,603 - WARNING - stp_interfaces_non_compliant
-2026-11-24 03:40:17,808 - INFO - Final Compliance Report Saved Successfully
-2026-11-24 03:40:17,808 - INFO - ----- AUTOMATION COMPLETE -----
-
-Process finished with exit code 0
+2026-11-25 05:52:37,095 - WARNING - stp_non_compliant
+['(STP) Mismatched VLANs | Expected: 10,20,30,40,50,60,70 | Actual: 999']
+2026-11-25 05:52:37,123 - INFO - stp_interfaces_compliant
 ```
 
+> **Gate‑order proof:** the single string (not a priority diff) confirms `check_stp_global()` short‑circuits on the VLAN‑set gate before per‑VLAN priority comparison — a missing instance is reported as topology drift, not as 7 separate priority mismatches.
 ---
 
 #### Scenario B - Per‑VLAN Bridge‑Priority Drift (Root Bridge Hijack)
@@ -960,7 +965,7 @@ CORE-SW-1(config)# no spanning-tree vlan 1,10,20,30,40,50,60,70
 
 ---
 
-#### Scenario D - Interface Edge‑Guard Drift (Unauthorized Root Guard & Missing Protections)
+#### Scenario D — Interface Edge‑Guard Drift (Unauthorized Root Guard & Missing Protections)
 To validate the interface‑guard diff engine, `spanning-tree guard root` was manually injected across the access workstation range `Ethernet1/0–1/3` on `ACCESS-SW-1`, while the required `portfast` and `bpduguard` commands were omitted, and uplink `Ethernet0/1` lacked `loop_guard`:
 
 ![Cisco Console STP Root Guard](screenshots/check-intentional-root-guard-config.png)
@@ -974,29 +979,44 @@ ACCESS-SW-1(config-if-range)# spanning-tree guard root
 *Nov 24 09:34:59.601: %SPANTREE-2-ROOTGUARD_CONFIG_CHANGE: Root guard enabled on port Ethernet1/3.
 ```
 
-**Diff Engine Detection:**
-`check_stp_interfaces()` parsed the live running configuration and printed the exact failure array, isolating the missing `loop_guard` on uplink `Ethernet0/1`, the missing `portfast` on edge ports, and the unauthorized `root_guard` on `Ethernet1/0–1/3`:
+**Diff Engine Detection (Run @ 05:59):**
+`check_stp_interfaces()` parsed the live running configuration and emitted the exact per‑feature failure array. The diff correctly isolates three distinct violation classes in a single pass:
+
+1. **Missing edge protections** on host ports (`ethernet0/0`, `ethernet0/2`, `ethernet0/3`, `ethernet1/0–1/3`) — `portfast: True` and `bpdu_guard: True` expected, `False` observed.
+2. **Missing loop guard** on the distribution uplink (`ethernet0/1`) — `loop_guard: True` expected, `False` observed.
+3. **Unauthorized root guard** on the workstation range (`ethernet1/0–1/3`) — `root_guard: False` expected, `True` observed (rogue injection).
 
 ![Terminal Interface STP Failures Output](screenshots/check-print-mismatched-feature-mode.png)
 
 ```text
-(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: portfast   | Expected: None | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: bpdu_guard | Expected: None | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: root_guard | Expected: None | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: bpdu_filter | Expected: None | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: portfast   | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: portfast   | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: portfast   | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: root_guard | Expected: None | Actual: True
-(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: portfast   | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: root_guard | Expected: None | Actual: True
-(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: portfast   | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: root_guard | Expected: None | Actual: True
-(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: portfast   | Expected: True | Actual: False
-(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: root_guard | Expected: None | Actual: True
-2026-11-24 04:53:28,630 - WARNING - stp_interfaces_non_compliant
+2026-11-25 05:59:42,085 - WARNING - stp_non_compliant
+2026-11-25 05:59:42,102 - WARNING - stp_interfaces_non_compliant
+(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet0/0 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet0/2 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet0/3 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/0 | Feature: root_guard | Expected: False | Actual: True
+(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/1 | Feature: root_guard | Expected: False | Actual: True
+(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/2 | Feature: root_guard | Expected: False | Actual: True
+(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: portfast   | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: bpdu_guard | Expected: True  | Actual: False
+(STP) Mismatched STP Mode | Interface: ethernet1/3 | Feature: root_guard | Expected: False | Actual: True
+2026-11-25 05:59:44,309 - INFO - Final Compliance Report Saved Successfully
+2026-11-25 05:59:44,309 - INFO - ----- AUTOMATION COMPLETE -----
+
+Process finished with exit code 0
 ```
+
+> **Gate‑order proof:** the diff compares every NetBox‑declared guard against the live state independently. A single port can produce multiple failure lines (e.g., `ethernet1/0` emits three missing portfast, missing bpduguard, *and* rogue root‑guard) proving the engine audits the full five‑feature matrix per interface rather than short‑circuiting on the first mismatch.
 
 ---
 

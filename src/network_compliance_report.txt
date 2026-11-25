@@ -2,22 +2,20 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-24T13:27:25.945659
+Report Time: 2026-11-25T10:59:44.306885
 Devices Audited: 2
 
 SUMMARY
 ----------------
-Compliant: 1
-Non-Compliant: 1
+Compliant: 2
+Non-Compliant: 0
 Failed: 0
 
 DEVICE DETAILS
 ----------------
 
 Device: CORE-SW-1
-Status: NON-COMPLIANT
-Issues:
- - stp_interfaces pipeline failure
+Status: COMPLIANT
 Actions Taken:
  - VLAN Already Compliant | VLAN: 1 | Name: default
  - VLAN Already Compliant | VLAN: 10 | Name: USERS
@@ -39,6 +37,7 @@ Actions Taken:
  - Trunk Interface Already Compliant | Interface: Ethernet0/0 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - [DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 24576 | VLAN: 20 Priority: 28672 | VLAN: 30 Priority: 24576 | VLAN: 40 Priority: 28672 | VLAN: 50 Priority: 24576 | VLAN: 60 Priority: 28672 | VLAN: 70 Priority: 24576
+ - STP Interface Configuration Already Compliant | Configuration: [{'interface': 'Ethernet0/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]
 
 Device: ACCESS-SW-1
 Status: COMPLIANT
@@ -63,10 +62,10 @@ Actions Taken:
  - Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10
  - Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20
  - Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30
- - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/0 | VLAN: 40
- - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/1 | VLAN: 50
- - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/2 | VLAN: 60
- - [DRY_RUN] Would Configure Access Port | Interface: Ethernet1/3 | VLAN: 70
- - Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
+ - Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40
+ - Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50
+ - Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60
+ - Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70
+ - [DRY_RUN] Would Configure_Trunk Port | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - [DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768
  - [DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]

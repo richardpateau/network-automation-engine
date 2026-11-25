@@ -17,6 +17,7 @@ def compliance_stp_global(sesh, device_ip, context, device_state, device_result,
     )
     if exp_stp:
         ok, failures = check_stp_global(exp_stp, act_stp)
+        print(failures)
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
@@ -150,6 +151,8 @@ def compliance_stp_interfaces(
 
     if exp_stp_int:
         ok, failures = check_stp_interfaces(exp_stp_int, act_stp_int)
+        print("\n".join(failures))
+
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
