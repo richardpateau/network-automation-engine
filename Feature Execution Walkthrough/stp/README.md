@@ -35,6 +35,19 @@ The STP Compliance module follows the project's Source of Truth-driven architect
 | **Remediation Engine** | Applies targeted `spanning-tree` configuration changes via Jinja2 templates. |
 | **Post-Validation** | Re-queries and re-evaluates the device to verify that remediation achieved the expected configuration. |
 
+### Table of Contents
+
+- [1. Intended State: NetBox Source of Truth (Global STP & Interface Edge Security)](#1-intended-state-netbox-source-of-truth-global-stp--interface-edge-security)
+- [2. Live Device State Collection & STP Parsing](#2-live-device-state-collection--stp-parsing)
+- [3. Spanning Tree Compliance Diff Engine & Drift Detection](#3-spanning-tree-compliance-diff-engine--drift-detection)
+- [4. Interface STP Compliance](#4-interface-stp-compliance)
+- [5. Configuration Remediation](#5-configuration-remediation)
+- [6. Safe Change Management: Dry-Run Mode](#6-safe-change-management-dry-run-mode)
+- [7. Post-Remediation Validation & Physical Device Proof](#7-post-remediation-validation--physical-device-proof)
+- [8. Audit Logging & Splunk Telemetry Pipeline (STP)](#8-audit-logging--splunk-telemetry-pipeline-stp)
+- [9. Execution Results & Internal State Collections](#9-execution-results--internal-state-collections)
+- [10. Automated Unit Testing & CI/CD Validation (STP)](#10-automated-unit-testing--cicd-validation-stp)
+
 ## Topology 
 
 ![NetBox Config Context CORE-SW-1](screenshots/pnet-lab-topology.png)
@@ -2037,4 +2050,4 @@ This module is part of a broader Network Automation Engine portfolio.
 - [Access Port Compliance & Remediation](../access-ports/)
 - [F5 BIG-IP LTM Cloud Load Balancing](../f5-big-ip-ltm-lab/)
 
-⬅️ **[Return to Main Repository README](../README.md)**
+**[Return to Main Repository README](../README.md)**
