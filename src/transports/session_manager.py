@@ -19,17 +19,26 @@ def get_session(device):
 @contextmanager
 def create_ssh_session(device):
     connection = {
-        "device_type": "cisco_xe",
+        "device_type": "cisco_ios",
         "ip": device["ip"],
         "username": device["username"],
         "password": device["password"],
         "secret": device.get("secret"),
+        "global_delay_factor": 2,
+        "banner_timeout": 30,
+        "auth_timeout": 30,
+        "conn_timeout": 30,
+        "session_log": "netmiko_debug.log"
     }
 
     session = ConnectHandler(**connection)
 
-    if device.get("secret"):
-        session.enable()
+    try:
+        if device.get("secret"):
+            session.enable()
+        yield session
+    finally:
+        session.disconnect()
 
     return session
 @contextmanager

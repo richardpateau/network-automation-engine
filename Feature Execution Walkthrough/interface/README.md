@@ -687,9 +687,13 @@ def configure_interface(conn, interface_data, device_ip, transport, log):
 
 ### 3. Dry‑Run Audit Reporting (`final_compliance_report.json`)
 
+![Final Compliance Report Dry Run Interfaces](screenshots/dry-run-draw-io.png)
+
 When running in dry‑run mode (`DRY_RUN = True`), all proposed remediations are cataloged in `final_compliance_report.json` without modifying hardware. The report documents verified compliant uplinks alongside planned shutdown actions for spare ports:
 
 ![Final Compliance Report Dry Run Interfaces](screenshots/dry-run-final-report-json.png)
+
+
 
 ```json
 {
@@ -1271,7 +1275,32 @@ tests/unit/compliance/switching/test_compliance_interface.py::test_compliance_in
 
 ============================== 7 passed in 0.85s ===============================
 ```
+### Continuous Integration Ready
 
+The test framework is designed for CI/CD pipeline integration:
+
+```yaml
+# .github/workflows/test.yml (GitHub Actions Example)
+name: Run Unit Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests with coverage                            <--------- Pytests 
+        run: pytest tests/unit/ --cov=src --cov-report=xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+```
 ---
 
 ### Test Suite Execution Summary

@@ -40,7 +40,7 @@ def stp_global_genie_output():
 def stp_interface_output():
     fixture_path = Path(__file__).parent / "fixtures" / "cli" / "running_config_stp.txt"
     with open(fixture_path) as f:
-        return {"running_config": f.read}
+        return {"running_config": f.read()}
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def snmp_running_config():
         Path(__file__).parent / "fixtures" / "cli" / "running_config_snmp.txt"
     )
     with open(fixture_path) as f:
-        return {"running_config": f.read}
+        return {"running_config": f.read()}
 
 
 @pytest.fixture

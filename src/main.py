@@ -28,6 +28,7 @@ def main():
         logger,
         {"dev": "MAIN"}
     )
+
     if os.getenv("SPLUNK_ENABLED", "false").lower() == "true":
         from src.utils.splunk_handler import SplunkHECHandler
 

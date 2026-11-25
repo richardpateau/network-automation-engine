@@ -99,12 +99,14 @@ def build_stp_global(device_state):
     if not device_state:
         return {}
     stp = device_state.get("stp") or {}
+    if not stp: 
+        return {}
     actual_stp = {
         "mode": "",
         "vlan_priorities": {},
     }
     if "rapid_pvst" in stp:
-        mode = "rapid_pvst"
+        mode = "rapidpvst"
         vlans = stp.get("rapid_pvst", {}).get("vlans", {})
     elif "pvst" in stp:
         mode = "pvst"
@@ -118,11 +120,12 @@ def build_stp_global(device_state):
         if vlan is None:
             continue
 
-        priority = safe_int(
-            data.get("bridge", {}).get("configured_bridge_priority", 32768)
-        )
-
-        actual_stp["vlan_priorities"][vlan] = priority
+        bridge = data.get("bridge") or {}
+        raw_priority = bridge.get("configured_bridge_priority")
+        if raw_priority is None:
+            raw_priority = "32768"
+        actual_stp["vlan_priorities"][vlan] = str(raw_priority)
+    
     return actual_stp
 
 
@@ -148,7 +151,6 @@ def build_stp_interfaces(device_state):
         }
         for config in interface.children:
             text = config.text.strip()
-
             if "portfast" in text:
                 act_stp_int[name]["portfast"] = True
             if "bpduguard" in text:

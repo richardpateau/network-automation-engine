@@ -1,0 +1,17 @@
+{% if act_stp %}
+no spanning-tree mode {{ act_stp.get("mode") }}
+{% endif %}
+
+{% for k in act_stp.get("vlan_priorities").keys() %}
+no spanning-tree vlan {{ k }}
+no spanning-tree vlan 1
+{% endfor %}
+
+{% if stp_data.get("mode") %}
+spanning-tree mode {{ stp_data.get("mode") }}
+{% endif %}
+
+{% for k,v in stp_data.get("vlan_priorities").items() %}
+spanning-tree vlan {{ k }}
+spanning-tree vlan {{ k }} priority {{ v }}
+{% endfor %}

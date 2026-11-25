@@ -3,18 +3,17 @@ from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
 
-def configure_stp_global(conn, stp_data, device_ip, transport, log):
+def configure_stp_global(conn, stp_data, device_ip, transport, act_stp, log):
     mode = stp_data.get("mode", "")
     vlan_priorities = stp_data.get("vlan_priorities", {})
     vlan_log = " | ".join(
         f"VLAN: {v} Priority: {p}" for v, p in vlan_priorities.items()
     )
     try:
-        template = template_env.get_template("STP_GLOBAL.j2")
+        template = template_env.get_template("stp_global.j2")
         commands = (
-            template.render(mode=mode, vlan_priorities=vlan_priorities)
+            template.render(stp_data=stp_data, act_stp=act_stp)
             .splitlines()
-            .strip()
         )
         if DRY_RUN:
             return {
@@ -80,8 +79,8 @@ def configure_stp_global(conn, stp_data, device_ip, transport, log):
             "error": str(e),
         }
 
-def configure_stp_interfaces(conn, stp_data, device_ip, transport, log):
-    for s in stp_data:
+def configure_stp_interfaces(conn, stp_int_data, device_ip, transport, log):
+    for s in stp_int_data:
         interface = s.get("interface", "")
         stp = s.get("stp", {})
 
@@ -96,8 +95,8 @@ def configure_stp_interfaces(conn, stp_data, device_ip, transport, log):
             f"BPDU Filter: {bpdu_filter} | Root Guard: {root_guard}"
         )
         try:
-            template = template_env.get_template("STP_INTERFACES.j2")
-            commands = template.render(interface=interface, stp_int=stp_int).splitlines()
+            template = template_env.get_template("stp_interfaces.j2")
+            commands = template.render(stp_int_data=stp_int_data).splitlines()
             if DRY_RUN:
                 return {
                     "status": OperationalStatus.DRY_RUN.value,

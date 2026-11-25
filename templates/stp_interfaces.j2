@@ -1,0 +1,34 @@
+{% for i in stp_int_data %}
+interface {{ i.interface }}
+{% if i.stp.portfast == True %}
+spanning-tree portfast 
+{% endif %}
+{% if i.stp.root_guard == True %}
+spanning-tree guard root
+{% endif %}
+{% if i.stp.loop_guard == True %}
+spanning-tree guard loop
+{% endif %}
+{% if i.stp.bpdu_guard == True %}
+spanning-tree bpduguard enable
+{% endif %}
+{% if i.stp.bpdu_filter == True %}
+spanning-tree bpdufilter enable 
+{% endif %}
+
+{% if i.stp.portfast == False %}
+no spanning-tree portfast 
+{% endif %}
+{% if i.stp.root_guard == False %}
+no spanning-tree guard root
+{% endif %}
+{% if i.stp.loop_guard == False %}
+no spanning-tree guard loop
+{% endif %}
+{% if i.stp.bpdu_guard == False %}
+no spanning-tree bpduguard enable
+{% endif %}
+{% if i.stp.bpdu_filter == False %}
+no spanning-tree bpdufilter enable 
+{% endif %}
+{% endfor %}

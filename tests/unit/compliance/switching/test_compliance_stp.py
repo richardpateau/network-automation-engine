@@ -39,25 +39,26 @@ def exp_stp_global():
 def mock_context(exp_stp_global):
     return {"stp": exp_stp_global}
 
+@pytest.fixture
+def mock_transport():
+    return "NETMIKO"
 
 @pytest.fixture
-def exp_stp_interfaces():
-    return {  
-          "interface": "gigabitethernet1",
-          "stp": {
-            "portfast": True,
-            "bpduguard": True,
-            "loop_guard": False,
-            "root_guard": False,
-            "bpdufilter": False,
+def mock_context_2():
+    return {
+    "interfaces": [
+        {
+            "interface": "gigabitethernet1",
+            "stp": {
+                "portfast": True,
+                "bpdu_guard": True,
+                "loop_guard": False,
+                "root_guard": False,
+                "bpdu_filter": False,
+            }
         }
-      }
-
-
-@pytest.fixture
-def mock_context_2(exp_stp_interfaces):
-    return {"interfaces": exp_stp_interfaces}
-
+    ]
+}
 
 @patch("src.compliance.switching.stp.compliance.build_stp_global")
 @patch("src.compliance.switching.stp.compliance.check_stp_global")
@@ -68,12 +69,13 @@ def test_compliance_stp_global_already_compliant(
     mock_context,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_global.return_value = {}
     mock_check_stp_global.return_value = (True, [])
 
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.info.assert_called_once()
@@ -96,16 +98,17 @@ def test_compliance_stp_global_non_compliant_config_successful(
     mock_context,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_global.return_value = {}
-    mock_check_stp_global.return_value = (False, ["(STP) Mismatched Bridge Priority"])
+    mock_check_stp_global.side_effect = [(False, ["(STP) Mismatched Bridge Priority"]), (True, [])]
     mock_configure_stp_global.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "STP Global Configuration Successful",
     }
 
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -129,6 +132,7 @@ def test_compliance_stp_global_non_compliant_config_failed(
     mock_context,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_global.return_value = {}
     mock_check_stp_global.return_value = (False, ["(STP) Mismatched Bridge Priority"])
@@ -138,7 +142,7 @@ def test_compliance_stp_global_non_compliant_config_failed(
     }
 
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -162,6 +166,7 @@ def test_compliance_stp_global_dry_run(
     mock_context,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_global.return_value = {}
     mock_check_stp_global.return_value = (False, ["(STP) Mismatched Bridge Priority"])
@@ -171,7 +176,7 @@ def test_compliance_stp_global_dry_run(
     }
 
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -197,6 +202,7 @@ def test_compliance_stp_global_post_validation_successful(
     mock_context,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_global.return_value = {}
     mock_check_stp_global.side_effect = [
@@ -210,7 +216,7 @@ def test_compliance_stp_global_post_validation_successful(
     mock_collect_device_state.return_value = {}
 
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -242,6 +248,7 @@ def test_compliance_stp_global_post_validation_failed(
     mock_context,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_global.return_value = {}
     mock_check_stp_global.side_effect = [
@@ -255,7 +262,7 @@ def test_compliance_stp_global_post_validation_failed(
     mock_collect_device_state.return_value = {}
 
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -274,9 +281,9 @@ def test_compliance_stp_global_post_validation_failed(
     assert result["status"] == OperationalStatus.FAILED_VALIDATION.value
 
 
-def test_compliance_stp_global_empty(mock_sesh, mock_device_result, mock_log):
+def test_compliance_stp_global_empty(mock_sesh, mock_device_result, mock_log, mock_transport):
     result = compliance_stp_global(
-        mock_sesh, mock_sesh.device_ip, {"stp": {}}, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, {"stp": {}}, {}, mock_device_result, mock_log, mock_transport
     )
 
     assert result["initial_issues"] == []
@@ -293,12 +300,13 @@ def test_compliance_stp_interfaces_already_compliant(
     mock_context_2,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_interfaces.return_value = {}
     mock_check_stp_interfaces.return_value = (True, [])
 
     result = compliance_stp_interfaces(
-        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.info.assert_called_once()
@@ -321,15 +329,16 @@ def test_compliance_stp_interfaces_non_compliant_config_successful(
     mock_context_2,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_interfaces.return_value = {}
-    mock_check_stp_interfaces.return_value = (False, ["(STP) Mismatched STP Mode"])
+    mock_check_stp_interfaces.side_effect = [(False, ["(STP) Mismatched STP Mode"]), (True, [])]
     mock_configure_stp_interfaces.return_value = {
         "status": OperationalStatus.SUCCESS.value,
         "summary": "STP Interfaces Configuration Successful",
     }
     result = compliance_stp_interfaces(
-        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -351,6 +360,7 @@ def test_compliance_stp_interfaces_non_compliant_config_failed(
     mock_context_2,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_interfaces.return_value = {}
     mock_check_stp_interfaces.return_value = (False, ["(STP) Mismatched STP Mode"])
@@ -359,7 +369,7 @@ def test_compliance_stp_interfaces_non_compliant_config_failed(
         "summary": "Failed To Configure STP Interfaces",
     }
     result = compliance_stp_interfaces(
-        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -380,6 +390,7 @@ def test_compliance_stp_interfaces_dry_run(
     mock_context_2,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_interfaces.return_value = {}
     mock_check_stp_interfaces.return_value = (False, ["(STP) Mismatched STP Mode"])
@@ -388,7 +399,7 @@ def test_compliance_stp_interfaces_dry_run(
         "summary": "STP Interfaces Configuration Successful",
     }
     result = compliance_stp_interfaces(
-        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log, mock_transport
     )
 
     mock_log.warning.assert_called_once()
@@ -409,6 +420,7 @@ def test_compliance_stp_interfaces_post_validation_successful(
     mock_context_2,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_interfaces.return_value = {}
     mock_check_stp_interfaces.side_effect = [(False, ["(STP) Mismatched STP Mode"]), 
@@ -421,7 +433,7 @@ def test_compliance_stp_interfaces_post_validation_successful(
     mock_collect_device_state.return_value = {}
     
     result = compliance_stp_interfaces(
-        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log, mock_transport
       )
 
     mock_log.warning.assert_called_once()
@@ -445,6 +457,7 @@ def test_compliance_stp_interfaces_post_validation_failed(
     mock_context_2,
     mock_device_result,
     mock_log,
+    mock_transport
 ):
     mock_build_stp_interfaces.return_value = {}
     mock_check_stp_interfaces.side_effect = [(False, ["(STP) Mismatched STP Mode"]), 
@@ -457,7 +470,7 @@ def test_compliance_stp_interfaces_post_validation_failed(
     mock_collect_device_state.return_value = {}
     
     result = compliance_stp_interfaces(
-        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, mock_context_2, {}, mock_device_result, mock_log, mock_transport
       )
 
     mock_log.warning.assert_called_once()
@@ -469,11 +482,11 @@ def test_compliance_stp_interfaces_post_validation_failed(
     assert result["status"] == OperationalStatus.FAILED_VALIDATION.value 
 
 def test_compliance_stp_interfaces_empty(
-        mock_sesh, mock_device_result, mock_log
+        mock_sesh, mock_device_result, mock_log, mock_transport
     ): 
     
     result = compliance_stp_interfaces(
-            mock_sesh, mock_sesh.device_ip, {"interfaces": {}}, {}, mock_device_result, mock_log
+            mock_sesh, mock_sesh.device_ip, {"interfaces": {}}, {}, mock_device_result, mock_log, mock_transport
         )
 
     assert result["initial_issues"] == []

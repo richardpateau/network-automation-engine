@@ -9,32 +9,27 @@ def check_stp_global(expected_stp, actual_config):
             f"Mismatched STP Mode | Expected: {exp_mode} | Actual: {act_mode}"
         )
         return False, failures
-    exp_vlans = expected_stp.get("vlan_priorities", {})
-    act_vlans = actual_config.get("vlan_priorities", {})
+    exp_vlans = {
+        str(vlan): str(prio).strip()
+        for vlan, prio in expected_stp.get("vlan_priorities", {}).items()
+        }
+    act_vlans = {
+        str(vlan): str(prio).strip()
+        for vlan, prio in actual_config.get("vlan_priorities", {}).items()
+        }
 
-    exp_keys = set(exp_vlans.keys())
-    act_keys = set(act_vlans.keys())
-
-    if exp_keys != act_keys:
-        missing = exp_keys - act_keys
-        extra = act_keys - exp_keys
-
-        if missing:
-            failures.append(
-                f"(STP) Missing VLANs | Expected: {exp_keys} | Actual: {act_keys}"
-            )
-        if extra:
-            failures.append(
-                f"(STP) Unexpected VLANs | Expected: {exp_keys} | Actual: {act_keys}"
-            )
+    if exp_vlans.keys() != act_vlans.keys():
+        failures.append(
+            f"(STP) Mismatched VLANs | Expected: {exp_vlans.keys()} | Actual: {act_vlans.keys()}"
+        )
         return False, failures
-    for vlan in exp_keys:
+    for vlan in exp_vlans.keys():
         exp_priority = exp_vlans.get(vlan)
         act_priority = act_vlans.get(vlan)
         if exp_priority != act_priority:
             failures.append(
                 f"(STP) Mismatched Bridge Priority | "
-                f"VLAN: {vlan_id} | "
+                f"VLAN: {vlan} | "
                 f"Expected: {exp_priority} | "
                 f"Actual: {act_priority}"
             )
@@ -43,16 +38,16 @@ def check_stp_global(expected_stp, actual_config):
 
 def check_stp_interfaces(expected_interfaces, actual_config):
     failures = []
-
+    
     for interface in expected_interfaces:
-        exp_int = interface.get("interface", "")
+        exp_int = interface.get("interface", "").lower()
         exp_stp = interface.get("stp", {})
 
         actual = actual_config.get(exp_int)
 
         if not actual:
             failures.append(
-                f"(STP) Missing Interface | Interface: {exp_int}"
+                f"(STP) No Features are configured | Interface: {exp_int}"
             )
             continue
 

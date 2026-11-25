@@ -21,7 +21,7 @@ def configure_trunk(conn, trunk_data, device_ip, transport, log):
                 	)
 			}
 
-		conn.send_config_set(commands)
+		conn.send_config_set(commands, delay_factor=10, max_loops=2000, cmd_verify=False)
 		conn.save_config()
 
 		log.info(
