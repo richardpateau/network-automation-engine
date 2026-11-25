@@ -888,6 +888,52 @@ The dual STP engine was validated across both switches against five distinct ope
 
 ---
 
+#### Scenario A - Global Operating‑Mode Drift (PVST+ Fallback)
+When `CORE-SW-1` was reverted from `rapid-pvst` to legacy `pvst`, the global engine raised `stp_non_compliant` with the exact mode diff:
+
+![Cisco Console STP Mode Manipulation](screenshots/check-intentional-config-pvst.png)
+
+```cisco
+CORE-SW-1(config)# spanning-tree mode pvst
+```
+![Cisco Console STP Mode Manipulation](screenshots/check-mismatched-stp-mode.png)
+
+```text
+2026-11-24 03:40:15,583 - WARNING - stp_non_compliant
+['Mismatched STP Mode | Expected: rapid-pvst | Actual: pvst']
+2026-11-24 03:40:15,603 - WARNING - stp_interfaces_non_compliant
+2026-11-24 03:40:17,808 - INFO - Final Compliance Report Saved Successfully
+2026-11-24 03:40:17,808 - INFO - ----- AUTOMATION COMPLETE -----
+
+Process finished with exit code 0
+```
+
+---
+
+#### Scenario B - Per‑VLAN Bridge‑Priority Drift (Root Bridge Hijack)
+To simulate an unauthorized root‑bridge takeover, `CORE-SW-1` was manually pinned to an aggressive `4096` priority across the data VLANs, violating the NetBox alternating baseline (`24576` odd / `28672` even):
+
+![Cisco Console STP Priority Injection](screenshots/check-intentional-priority-change.png)
+
+```cisco
+CORE-SW-1(config)# spanning-tree vlan 10,20,30,40,50,60,70 priority 4096
+```
+
+![Terminal STP Global Priority Drift](screenshots/check-mismatched-priority.png)
+
+```text
+2026-11-24 04:29:39,602 - WARNING - interface_drift
+2026-11-24 04:29:39,607 - INFO - trunk_interface_compliant
+2026-11-24 04:29:39,611 - INFO - trunk_interface_compliant
+2026-11-24 04:29:39,616 - WARNING - stp_non_compliant
+['(STP) Mismatched Bridge Priority | VLAN: 10 | Expected: 24576 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 20 | Expected: 28672 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 30 | Expected: 24576 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 40 | Expected: 28672 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 50 | Expected: 24576 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 60 | Expected: 28672 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 70 | Expected: 24576 | Actual: 4096']
+2026-11-24 04:29:39,637 - WARNING - stp_interfaces_non_compliant
+```
+
+> **Takeaway:** The `4096`‑on‑every‑VLAN signature proves the engine audits **per‑VLAN priority independently** rather than checking a single global value — exactly the granular control needed to detect a partial root‑bridge hijack.
+
+---
+
 #### Scenario C — VLAN Set Parity Drift (Mismatched VLAN Topology)
 On `CORE-SW-1`, per‑VLAN spanning‑tree instances were disabled across VLANs `1, 10–70` while the global mode was held at `rapid-pvst`, leaving only the native VLAN `999` in the live STP instance table. Because the operating **mode** still matched NetBox intent, `check_stp_global()` passed the mode gate and halted at the **VLAN‑set parity** gate, emitting a single set‑difference failure:
 
@@ -915,53 +961,6 @@ CORE-SW-1(config)# no spanning-tree vlan 1,10,20,30,40,50,60,70
 ```
 
 > **Gate‑order proof:** the single string (not a priority diff) confirms `check_stp_global()` short‑circuits on the VLAN‑set gate before per‑VLAN priority comparison — a missing instance is reported as topology drift, not as 7 separate priority mismatches.
----
-
-#### Scenario B - Per‑VLAN Bridge‑Priority Drift (Root Bridge Hijack)
-To simulate an unauthorized root‑bridge takeover, `CORE-SW-1` was manually pinned to an aggressive `4096` priority across the data VLANs, violating the NetBox alternating baseline (`24576` odd / `28672` even):
-
-![Cisco Console STP Priority Injection](screenshots/check-intentional-priority-change.png)
-
-```cisco
-CORE-SW-1(config)# spanning-tree vlan 10,20,30,40,50,60,70 priority 4096
-```
-
-![Terminal STP Global Priority Drift](screenshots/check-mismatched-priority.png)
-
-```text
-2026-11-24 04:29:39,602 - WARNING - interface_drift
-2026-11-24 04:29:39,607 - INFO - trunk_interface_compliant
-2026-11-24 04:29:39,611 - INFO - trunk_interface_compliant
-2026-11-24 04:29:39,616 - WARNING - stp_non_compliant
-['(STP) Mismatched Bridge Priority | VLAN: 10 | Expected: 24576 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 20 | Expected: 28672 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 30 | Expected: 24576 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 40 | Expected: 28672 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 50 | Expected: 24576 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 60 | Expected: 28672 | Actual: 4096', '(STP) Mismatched Bridge Priority | VLAN: 70 | Expected: 24576 | Actual: 4096']
-2026-11-24 04:29:39,637 - WARNING - stp_interfaces_non_compliant
-```
-
-> **Takeaway:** The `4096`‑on‑every‑VLAN signature proves the engine audits **per‑VLAN priority independently** rather than checking a single global value — exactly the granular control needed to detect a partial root‑bridge hijack.
-
----
-
-#### Scenario C - VLAN Set Parity Drift (Missing vs. Unexpected VLANs)
-On `CORE-SW-1`, custom root bridge priorities were stripped across VLANs `1` and `10–70`, leaving only the default native VLAN `999` active in the STP instance table:
-
-![Cisco Console No Spanning Tree VLANs](screenshots/check-stp-global-intentional-config-missing-vlans.png)
-
-```cisco
-CORE-SW-1(config)# spanning-tree mode rapid-pvst
-CORE-SW-1(config)# no spanning-tree vlan 1,10,20,30,40,50,60,70
-```
-
-**Compliance Engine Output:**
-`check_stp_global()` executed a set‑difference check comparing NetBox VLAN keys against live STP instances, flagging missing VLANs `10–70` and identifying native VLAN `999` as unexpected:
-
-![Terminal Missing VLANs Diff Output](screenshots/check-print-missing-vlans.png)
-
-```text
-2026-11-24 03:54:38,279 - WARNING - stp_non_compliant
-["(STP) Missing VLANs | Expected: {'50', '30', '60', '20', '40', '70', '10'} | Actual: {999}", 
- "(STP) Unexpected VLANs | Expected: {'50', '30', '60', '20', '40', '70', '10'} | Actual: {999}"]
-2026-11-24 03:54:38,296 - WARNING - stp_interfaces_non_compliant
-```
 
 ---
 
