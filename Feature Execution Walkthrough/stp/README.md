@@ -119,6 +119,8 @@ Access switches must never participate in root bridge elections. `ACCESS-SW-1` i
 
 To protect the Layer 2 topology from rogue bridge injection and unidirectional link failures, edge access ports and trunk uplinks enforce role‑based STP safeguards defined in NetBox **Custom Fields** (`DCIM > Interface`):
 
+![NetBox ACCESS-SW-1 Interface Baseline](screenshots/netbox-custom-fields.png)
+
 ![NetBox ACCESS-SW-1 Interface Baseline](screenshots/netbox-configuring-portfast.png)
 
 ![NetBox Interface Custom Fields](screenshots/netbox-stp-interfaces-overview.png)
