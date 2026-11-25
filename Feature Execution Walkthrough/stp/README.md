@@ -891,14 +891,14 @@ The dual STP engine was validated across both switches against five distinct ope
 #### Scenario A - Global Operating‑Mode Drift (PVST+ Fallback)
 When `CORE-SW-1` was reverted from `rapid-pvst` to legacy `pvst`, the global engine raised `stp_non_compliant` with the exact mode diff:
 
-![Cisco Console STP Mode Manipulation](screenshots/check-mismatched-stp-mode.png)
+![Cisco Console STP Mode Manipulation](screenshots/check-stp-global-intentional-config-missing-vlans.png)
 
 ```cisco
 CORE-SW-1(config)# spanning-tree mode pvst
 CORE-SW-1(config)# no spanning-tree vlan 1,10,20,30,40,50,60,70
 ```
 
-**Compliance Engine Output (Run @ 03:40):**
+![Cisco Console STP Mode Manipulation](screenshots/check-mismatched-stp-mode.png)
 
 ```text
 2026-11-24 03:40:15,583 - WARNING - stp_non_compliant
