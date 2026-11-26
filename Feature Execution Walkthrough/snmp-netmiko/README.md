@@ -998,7 +998,7 @@ Prior to remediation, `CORE-SW-1` contained multiple unauthorized SNMP configura
 * Rogue community strings `BUILD-TEST` and `build-test`.
 * Incorrect contact (`build-test@yahoo.com`) and location (`build-test`):
 
-![Cisco Console SNMP Before Remediation](screenshots/cisco-console-core-sw1-snmp-before.png)
+![Cisco Console SNMP Before Remediation](screenshots/live-config-before.png)
 
 ```cisco
 ! --- CORE-SW-1: Running Configuration BEFORE Remediation ---
