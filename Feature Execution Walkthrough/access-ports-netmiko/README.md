@@ -1,6 +1,6 @@
 # Access Port Compliance & Automated Remediation
 
-## Executive Overview
+## Overview
 
 In enterprise campus networks, access-layer switchports are the primary attack surface for Layer 2 security threats. Unmanaged access ports introduce critical risks: unauthorized devices can pivot across VLAN boundaries, rogue trunk configurations can expose all broadcast domains to a single endpoint, and inconsistent VLAN assignments break segmentation policies designed to isolate IoT, voice, and guest traffic.
 
@@ -846,6 +846,189 @@ To ensure configuration integrity, the module runs a **closed‑loop verificatio
 | :--- | :--- | :--- |
 | **Pass** | `OperationalStatus.SUCCESS` | Operational switch state was re‑polled and verified to match NetBox intent. |
 | **Fail** | `OperationalStatus.FAILED_VALIDATION` | The configuration command was sent, but the switch operational state still does not match NetBox. The failure is flagged as a critical issue for investigation. |
+
+### 6.1 Physical Switch Verification: Before vs. After Remediation
+
+To verify that the remediation commands took effect on physical hardware, running configurations were extracted from access switch `ACCESS-SW-1` before and after automated execution.
+
+---
+
+#### 1. Device State: BEFORE Remediation (Configuration Drift)
+
+Prior to running remediation:
+* Physical interfaces (`Ethernet0/0`, `Ethernet0/2`, `Ethernet0/3`, `Ethernet1/0`, `Ethernet1/1`) were locked into `switchport mode access`, but **omitted explicit access VLAN assignments**.
+* As a result, all access switchports defaulted to untagged `VLAN 1`, segregating users from their intended departmental broadcast domains:
+
+![Running Config Before Remediation ACCESS-SW-1](screenshots/live-config-before.png)
+
+```cisco
+! --- ACCESS-SW-1: Running Configuration BEFORE Remediation ---
+interface Ethernet0/0
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet0/1
+ switchport trunk encapsulation dot1q
+ switchport trunk allowed vlan 1,10,20,30,40,50,60,70,999
+ switchport mode trunk
+ duplex auto
+!
+interface Ethernet0/2
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet0/3
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet1/0
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet1/1
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet1/2
+ switchport mode access
+ duplex auto
+```
+
+---
+
+#### 2. Execution Audit: Cisco Console Syslog Logs (`vty0`)
+
+When the remediation engine connected to `ACCESS-SW-1`, the switch console generated sequential `%SYS-5-CONFIG_I` syslog messages confirming that the automation service account (`sysadmin`) pushed configuration across `vty0`. The 17 commits are the **engine-wide** total for this run, decomposing exactly against the §5 dry-run plan: 8 VLAN sessions + 7 access-port sessions + 1 STP-global session + 1 STP-interface session (SNMP and Syslog were already compliant and contributed none):
+
+![Cisco Console Configured by Sysadmin](screenshots/live-config-configuration-vty.png)
+
+```text
+*Nov 26 13:07:22.376: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:22.679: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:22.995: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:23.308: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:23.599: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:23.928: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:24.248: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:24.569: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:26.724: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:27.222: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:27.730: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:28.250: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:28.743: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:29.240: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:29.730: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:33.593: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:41.070: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+```
+
+---
+
+#### 3. Device State: AFTER Automated Remediation (Fully Compliant)
+
+Following automated execution and closed-loop post-validation:
+* Every physical access interface was bound to its explicit NetBox untagged VLAN. The visible panel shows `Ethernet0/0`→`10`, `Ethernet0/2`→`20`, `Ethernet0/3`→`30`, `Ethernet1/0`→`40`, `Ethernet1/1`→`50`; `Ethernet1/2`→`60` and `Ethernet1/3`→`70` were healed identically but are scrolled below the capture's bottom edge.
+* Distribution trunk uplink `Ethernet0/1` and Spanning Tree edge protections (`portfast`, `bpduguard enable`) remained intact:
+
+![Running Config After Remediation ACCESS-SW-1](screenshots/live-config-after.png)
+
+```cisco
+! --- ACCESS-SW-1: Running Configuration AFTER Remediation ---
+interface Ethernet0/0
+ switchport access vlan 10
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet0/1
+ switchport trunk encapsulation dot1q
+ switchport trunk allowed vlan 1,10,20,30,40,50,60,70,999
+ switchport mode trunk
+ duplex auto
+!
+interface Ethernet0/2
+ switchport access vlan 20
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet0/3
+ switchport access vlan 30
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet1/0
+ switchport access vlan 40
+ switchport mode access
+ duplex auto
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+!
+interface Ethernet1/1
+ switchport access vlan 50
+ switchport mode access
+ duplex auto
+```
+
+---
+
+#### 4. Visual Configuration Diff
+
+```diff
+
+ interface Ethernet0/0
++ switchport access vlan 10
+  switchport mode access
+  duplex auto
+  spanning-tree portfast
+  spanning-tree bpduguard enable
+ !
+ interface Ethernet0/2
++ switchport access vlan 20
+  switchport mode access
+  duplex auto
+  spanning-tree portfast
+  spanning-tree bpduguard enable
+ !
+ interface Ethernet0/3
++ switchport access vlan 30
+  switchport mode access
+  duplex auto
+  spanning-tree portfast
+  spanning-tree bpduguard enable
+ !
+ interface Ethernet1/0
++ switchport access vlan 40
+  switchport mode access
+  duplex auto
+  spanning-tree portfast
+  spanning-tree bpduguard enable
+ !
+ interface Ethernet1/1
++ switchport access vlan 50
+  switchport mode access
+  duplex auto
+```
+
+> **Takeaway:**
+> The physical switch verification proves complete reconciliation. Without disrupting existing Spanning Tree protections or adjacent trunk uplinks, the engine mapped each access port directly to its NetBox-defined broadcast domain, resolving the silent default-VLAN drift across the access layer.
+```
+
+---
 
 ## 7. Audit Logging & Splunk Telemetry Pipeline
 

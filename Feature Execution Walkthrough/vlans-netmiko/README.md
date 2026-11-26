@@ -578,10 +578,133 @@ def configure_vlan(conn, vlan_data: dict, log, device_ip: str, transport: str) -
 ### Execution Flow Summary
 
 1. **Template Rendering:** Jinja2 engine merges NetBox SoT data with `vlan.j2` to produce vendor-accurate Cisco IOS commands.
-2. **Safety Gate:** If `DRY_RUN` is enabled, the function returns immediately with a preview summary—zero modifications occur.
+2. **Safety Gate:** If `DRY_RUN` is enabled, the function returns immediately with a preview summary zero modifications occur.
 3. **Atomic Push:** Netmiko's `send_config_set()` transmits the rendered commands over SSH in configuration mode.
 4. **Audit Logging:** A structured `vlan_config` event streams to Splunk with full context (device, VLAN ID, name, status).
 5. **Status Propagation:** Returns a standardized dictionary with `status` and `summary` fields for the compliance engine's post-validation logic.
+
+### Physical Switch Operational Verification: Before vs. After (`show vlan brief`)
+
+To verify that both VLAN database provisioning and access switchport assignments took effect on physical hardware, operational state was inspected directly on `ACCESS-SW-1` using `show vlan brief` before and after automated execution.
+
+---
+
+#### 1. Operational State: BEFORE Remediation (`ACCESS-SW-1`)
+
+Prior to running remediation:
+* Authorized departmental VLANs (`10`, `20`, `30`, `40`, `50`, `60`, `70`, `999`) **did not exist** in the switch VLAN database.
+* All physical access switchports (`Et0/0`, `Et0/2`, `Et0/3`, `Et1/0`, `Et1/1`, `Et1/2`, `Et1/3`) were stranded in unmanaged **default `VLAN 1`**:
+
+![Show VLAN Brief Before Remediation](screenshots/live-config-before.png)
+
+```text
+ACCESS-SW-1#sh vlan brief
+
+VLAN Name                             Status    Ports
+---- -------------------------------- --------- -------------------------------
+1    default                          active    Et0/0, Et0/2, Et0/3, Et1/0
+                                                Et1/1, Et1/2, Et1/3
+12   TEST-VLAN                        active
+1002 fddi-default                     act/unsup
+1003 token-ring-default               act/unsup
+1004 fddinet-default                  act/unsup
+1005 trnet-default                    act/unsup
+```
+
+---
+
+#### 2. Execution Audit: Cisco Console Syslog Logs (`vty0`)
+
+When the engine initiated remediation over Netmiko, `ACCESS-SW-1` generated sequential `%SYS-5-CONFIG_I` syslog messages confirming that the automation service account (`sysadmin`) provisioned the VLANs and rebound each switchport over `vty0`. The `ACCESS-SW-1#` prompts indicate the engine exiting configuration mode between distinct module phases (VLAN creation, then port reassignment):
+
+![Cisco Console Sysadmin VTY Syslog](screenshots/live-config-configured-by-vty.png)
+
+```text
+ACCESS-SW-1#
+*Nov 26 13:07:22.376: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:22.679: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:22.995: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:23.308: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+ACCESS-SW-1#
+*Nov 26 13:07:23.599: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:23.928: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:24.248: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:24.569: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+ACCESS-SW-1#
+*Nov 26 13:07:26.724: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:27.222: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:27.730: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+ACCESS-SW-1#
+*Nov 26 13:07:28.250: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:28.743: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+*Nov 26 13:07:29.240: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+ACCESS-SW-1#
+*Nov 26 13:07:29.730: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+ACCESS-SW-1#
+*Nov 26 13:07:33.593: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+ACCESS-SW-1#
+*Nov 26 13:07:41.070: %SYS-5-CONFIG_I: Configured from console by sysadmin on vty0 (172.16.109.1)
+```
+
+---
+
+#### 3. Operational State: AFTER Automated Remediation (`ACCESS-SW-1`)
+
+Following automated remediation and closed-loop post-validation:
+* All NetBox broadcast domains (`USERS`, `VOICE`, `SERVERS`, `GUEST`, `MANAGEMENT`, `PRINTERS_IOT`, `NETWORK_INFRASTRUCTURE`, `NATIVE_UNUSED`) were created and active.
+* Every access switchport was mapped to its intended VLAN.
+* Default `VLAN 1` was completely cleared of access ports:
+
+![Show VLAN Brief After Remediation](screenshots/live-config-after.png)
+
+```text
+ACCESS-SW-1#sh vlan brief
+
+VLAN Name                             Status    Ports
+---- -------------------------------- --------- -------------------------------
+1    default                          active
+10   USERS                            active    Et0/0
+12   TEST-VLAN                        active
+20   VOICE                            active    Et0/2
+30   SERVERS                          active    Et0/3
+40   GUEST                            active    Et1/0
+50   MANAGEMENT                       active    Et1/1
+60   PRINTERS_IOT                     active    Et1/2
+70   NETWORK_INFRASTRUCTURE           active    Et1/3
+999  NATIVE_UNUSED                    active
+1002 fddi-default                     act/unsup
+1003 token-ring-default               act/unsup
+1004 fddinet-default                  act/unsup
+1005 trnet-default                    act/unsup
+```
+
+---
+
+#### 4. Operational Diff: `show vlan brief`
+
+```diff
+ VLAN Name                             Status    Ports
+ ---- -------------------------------- --------- -------------------------------
+-1    default                          active    Et0/0, Et0/2, Et0/3, Et1/0, Et1/1, Et1/2, Et1/3
++1    default                          active
++10   USERS                            active    Et0/0
+ 12   TEST-VLAN                        active
++20   VOICE                            active    Et0/2
++30   SERVERS                          active    Et0/3
++40   GUEST                            active    Et1/0
++50   MANAGEMENT                       active    Et1/1
++60   PRINTERS_IOT                     active    Et1/2
++70   NETWORK_INFRASTRUCTURE           active    Et1/3
++999  NATIVE_UNUSED                    active
+ 1002 fddi-default                     act/unsup
+ 1003 token-ring-default               act/unsup
+ 1004 fddinet-default                  act/unsup
+ 1005 trnet-default                    act/unsup
+```
+
+> **Takeaway:**
+> The physical output confirms that the automation engine performs full-stack Layer 2 reconciliation. It created all missing broadcast domains in the VLAN database and reassigned each physical port to its NetBox-defined VLAN, isolating user traffic and clearing ports out of default VLAN 1.
+
 
 ## Closed-Loop Post-Validation & Splunk Observability
 
