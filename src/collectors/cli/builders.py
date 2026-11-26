@@ -19,7 +19,6 @@ def build_vlan(device_state):
         actual_vlans[str(vlan_id)] = {
             "name": vlan_values.get("name", ""),
         }
-    print(json.dumps(actual_vlans, indent=4))
     return actual_vlans
 
 
@@ -44,6 +43,8 @@ def build_access(device_state):
             "operational_mode": operational_mode,
             "access_vlan": access_vlan,
         }
+    print(json.dumps(actual_access, indent=4))
+
     return actual_access
 
 

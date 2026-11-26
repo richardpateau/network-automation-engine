@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-26T12:19:06.957756",
+        "timestamp": "2026-11-26T12:47:53.105965",
         "total_devices": 2,
         "successful_runs": 2
     },
@@ -72,9 +72,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-26T12:18:57.099408+00:00",
-            "end_time": "2026-11-26T12:19:04.672745+00:00",
-            "duration_seconds": 7.573337,
+            "start_time": "2026-11-26T12:47:46.009957+00:00",
+            "end_time": "2026-11-26T12:47:52.941558+00:00",
+            "duration_seconds": 6.931601,
             "errors": []
         },
         {
@@ -100,13 +100,13 @@
                 "Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True",
-                "Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10",
-                "Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20",
-                "Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30",
-                "Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40",
-                "Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50",
-                "Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60",
-                "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/0 | VLAN: 10",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/2 | VLAN: 20",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/3 | VLAN: 30",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/0 | VLAN: 40",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/1 | VLAN: 50",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/2 | VLAN: 60",
+                "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/3 | VLAN: 70",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
                 "[DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
                 "[DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]",
@@ -147,6 +147,13 @@
                 "VLAN 60 not found on device.",
                 "VLAN 70 not found on device.",
                 "VLAN 999 not found on device.",
+                "Mismatched Access Port VLAN | Interface: ethernet0/0 | VLAN: Expected VLAN: 10 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet0/2 | VLAN: Expected VLAN: 20 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet0/3 | VLAN: Expected VLAN: 30 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/0 | VLAN: Expected VLAN: 40 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/1 | VLAN: Expected VLAN: 50 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/2 | VLAN: Expected VLAN: 60 | Actual VLAN: 1",
+                "Mismatched Access Port VLAN | Interface: ethernet1/3 | VLAN: Expected VLAN: 70 | Actual VLAN: 1",
                 "Mismatched STP Mode | Expected: rapid-pvst | Actual: unknown",
                 "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False"
             ],
@@ -161,9 +168,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-26T12:18:57.098798+00:00",
-            "end_time": "2026-11-26T12:19:06.956890+00:00",
-            "duration_seconds": 9.858092,
+            "start_time": "2026-11-26T12:47:46.009266+00:00",
+            "end_time": "2026-11-26T12:47:53.105160+00:00",
+            "duration_seconds": 7.095894,
             "errors": []
         }
     ],

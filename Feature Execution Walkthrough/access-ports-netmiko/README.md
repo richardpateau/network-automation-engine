@@ -1,23 +1,38 @@
-# Access Port Compliance & Remediation
+# Access Port Compliance & Automated Remediation
 
-## Overview
+## Executive Overview
 
-The Access Port Compliance module reconciles live Cisco switchport state against the declarative baseline stored in **NetBox**, closing the loop between intended configuration and operational reality. It detects access-port drift — incorrect VLAN assignments, ports silently promoted to 802.1Q trunk mode, or interfaces absent from the expected topology — reports it as structured telemetry, and can automatically heal non-compliant interfaces.
+In enterprise campus networks, access-layer switchports are the primary attack surface for Layer 2 security threats. Unmanaged access ports introduce critical risks: unauthorized devices can pivot across VLAN boundaries, rogue trunk configurations can expose all broadcast domains to a single endpoint, and inconsistent VLAN assignments break segmentation policies designed to isolate IoT, voice, and guest traffic.
 
-The design deliberately decouples *collection* from *normalization* from *decisioning* so the compliance logic stays vendor-neutral and fully testable offline:
+The **Access Port Compliance & Automated Remediation** module is a production-grade, closed-loop automation engine designed to eliminate these risks. It enforces deterministic edge-port standards by reconciling live switchport state against a **NetBox DCIM Source of Truth (SoT)**.
 
-- **Source of Truth:** NetBox DCIM interface schema declares intended port mode and untagged VLAN (`src/sot/inventory.py`).
-- **Resilient Collection:** Netmiko + Cisco pyATS/Genie pull `show interfaces switchport` with per-command fault isolation (`src/collectors/cli/collector.py`).
-- **Normalization:** `build_access()` filters out trunks/dynamic ports and sanitizes keys into a deterministic lookup table (`src/collectors/cli/builders.py`).
-- **Multi-Gate Diff:** `check_access()` evaluates existence/trunk-isolation, VLAN assignment, and operational-mode gates (`src/compliance/switching/access/check.py`).
-- **Safe Remediation:** `configure_access()` renders a Jinja2 `default interface` + access-mode template, gated by a global `DRY_RUN` safety switch (`src/remediation/switching/access.py`).
-- **Closed-Loop Validation:** after a push, device state is re-queried and re-checked so a command that was accepted but not *applied* is caught.
-- **Audit Trail:** every transition streams structured JSON to **Splunk** via HEC with Cisco syslog severity (`cisco_sev`).
-- **Offline CI:** 13 Pytest + `unittest.mock` cases validate the full state machine with zero live sockets.
+Rather than relying on brittle screen-scraping or manual CLI audits, this pipeline provides end-to-end lifecycle management. It extracts structured operational data via Cisco pyATS/Genie, identifies exact VLAN mismatches and unauthorized trunk promotions, safely remediates drift using a `default interface` purge strategy followed by idempotent Jinja2 templates, and verifies the fix before logging the outcome to a centralized SIEM.
 
-> **Why this matters:** screen-scraping a switch and eyeballing the output doesn't scale and can't be tested. This module turns access-port hygiene into a declarative, observable, and reversible pipeline — the same pattern a production NetDevOps team runs.
+### Core Engineering Objectives
+- **Declarative Baseline:** Establish NetBox DCIM as the single source of truth for access port mode, untagged VLAN assignments, and operational intent.
+- **Resilient Data Extraction:** Utilize Cisco pyATS/Genie to parse live switchport state (`show interfaces switchport`) into normalized Python dictionaries, filtering out trunk and dynamic ports.
+- **Multi-Gate Diffing:** Compare live operational state against NetBox intent using three deterministic gates: port existence/trunk isolation, VLAN assignment parity, and operational mode verification.
+- **Safe, Idempotent Remediation:** Apply configuration changes using a `default interface` purge strategy followed by targeted Jinja2 templates, gated by a global `DRY_RUN` safety switch for Change Advisory Board (CAB) review.
+- **Closed-Loop Verification:** Re-poll the device post-remediation to guarantee the physical data plane matches the intended state before marking the task complete.
+- **Enterprise Observability:** Stream structured, severity-coded JSON telemetry to Splunk for real-time NOC/SecOps dashboards and immutable audit trails.
+- **CI/CD Readiness:** Validate the entire state machine with 13 offline Pytest cases, ensuring zero-regression deployments without requiring live hardware.
 
-**Document sections:** [1 NetBox SoT](#1-intended-state-netbox-source-of-truth-access-ports) · [2 Live State Collection](#2-live-device-state-collection--parsing-engine) · [3 Drift Detection](#3-access-port-compliance-resolution--drift-detection) · [4 Remediation](#4-automated-access-port-remediation) · [5 Dry-Run Safety](#5-dryrun-safety-evaluation) · [6 Post-Validation](#6-closedloop-postremediation-validation) · [7 Splunk Telemetry](#7-audit-logging--splunk-telemetry-pipeline) · [8 Unit Testing](#8-automated-unit-testing--cicd-validation)
+---
+
+## Architecture
+
+The Access Port Compliance module follows the project's Source of Truth-driven architecture, decoupling data collection, normalization, decisioning, and remediation:
+
+| Component | Responsibility |
+|---|---|
+| **NetBox Inventory** | Supplies expected access interfaces, untagged VLANs, and operational intent. |
+| **Genie Collector** | Collects and parses actual `show interfaces switchport` operational data over Netmiko SSH. |
+| **Access Builder** | Normalizes collected data, filters out trunk/dynamic ports, and creates a clean lookup dictionary. |
+| **Compliance Checker** | Compares expected NetBox intent against actual live state using three deterministic gates. |
+| **Remediation Engine** | Applies `default interface` purge + targeted `switchport mode access` / `switchport access vlan` changes via Jinja2. |
+| **Post-Validation** | Re-queries and re-evaluates the device to verify that remediation achieved the expected configuration. |
+
+## End-to-End Demonstration
 
 **Live Execution of Access Port Automation**
 
@@ -34,7 +49,21 @@ The access-port compliance workflow consists of five main components:
 | Access Builder | Normalizes collected switchport data. |
 | Compliance Checker | Compares expected and actual interface configurations. |
 | Remediation Engine | Applies configuration changes and supports post-remediation validation. |
+## Topology 
 
+![NetBox Access Ports Source of Truth](screenshots/pnet-lab-topology.png)
+
+### Table of Contents
+
+- [1. Intended State: NetBox Source of Truth (Access Ports)](#1-intended-state-netbox-source-of-truth-access-ports)
+- [2. Live Device State Collection & Parsing Engine](#2-live-device-state-collection--parsing-engine)
+- [3. Access Port Compliance Resolution & Drift Detection](#3-access-port-compliance-resolution--drift-detection)
+- [4. Automated Access Port Remediation](#4-automated-access-port-remediation)
+- [5. Dry-Run Safety Evaluation](#5-dry-run-safety-evaluation)
+- [6. Closed-Loop Post-Remediation Validation](#6-closed-loop-post-remediation-validation)
+- [7. Audit Logging & Splunk Telemetry Pipeline](#7-audit-logging--splunk-telemetry-pipeline)
+- [8. Automated Unit Testing & CI/CD Validation](#8-automated-unit-testing--cicd-validation)
+- [Conclusion & Engineering Takeaways](#conclusion--engineering-takeaways)
 ## Automation Workflow
 
 The VLAN automation process follows these stages:
@@ -1112,3 +1141,41 @@ jobs:
 | **Builder Tests** | `tests/unit/collectors/cli/test_build_access.py` | Operational Genie parsing, trunk filtering, mixed switchport payloads, missing VLANs, boundary guards | **PASSED (6/6)** | 0.58s |
 | **Compliance Tests** | `tests/unit/compliance/switching/test_compliance_access.py` | State-machine reconciliation, bypass logic, remediation push, dry-run safety, closed-loop post-validation | **PASSED (7/7)** | 0.74s |
 | **Total** | | **Comprehensive Offline Verification** | **13 / 13** | **1.32s** |
+
+---
+
+## Conclusion & Engineering Takeaways
+
+This module demonstrates that access-port hygiene is not just about assigning VLANs and typing `switchport mode access`. By decoupling data collection, normalization, decisioning, and remediation, this engine transforms edge-port security from a manual, error-prone chore into a **deterministic, observable, and reversible software pipeline**.
+
+Key architectural wins validated in this project include:
+1. **Trunk Hijack Detection:** The builder explicitly filters out trunk ports, so any interface that drifts from `static access` to `trunk` mode is immediately flagged as a critical security violation, preventing unauthorized exposure of all VLANs to a single endpoint.
+2. **Default Interface Purge Strategy:** Rather than attempting to surgically remove individual trunk commands (which can leave residual `switchport trunk encapsulation dot1q` or native VLAN overrides), the engine issues `default interface <id>` to wipe the port clean before applying the authorized baseline, guaranteeing true idempotency.
+3. **Multi-Gate Diff Engine:** The three-gate validation (existence/trunk isolation → VLAN assignment → operational mode) ensures that every failure mode is caught with a specific, actionable error message no generic "port is wrong" alerts.
+4. **Closed-Loop Verification:** Pushing a config via Netmiko is not proof of compliance. Re-querying the device via Genie and re-running the diff engine guarantees the hardware actually accepted and applied the change, catching silent syntax errors or mode conflicts.
+5. **Resilient Exception Handling:** A broken Jinja2 template or SSH timeout doesn't crash the pipeline. The `try/except` boundary catches the error, streams it to Splunk as an `ERROR` event for immediate triage, and allows the audit of remaining ports to continue uninterrupted.
+
+### Next Steps & Future Enhancements
+To further evolve this automation engine, the following enhancements are planned:
+- **Voice VLAN Validation:** Extend the compliance checks to validate `switchport voice vlan` assignments for IP telephony ports, ensuring QoS and security policies are enforced.
+- **Port Security Integration:** Add support for auditing and remediating `switchport port-security` configurations, including maximum MAC addresses, violation actions, and sticky MAC bindings.
+- **802.1X Authentication:** Validate dot1x port-based authentication settings to ensure only authorized devices can access the network.
+- **Multi-Vendor Abstraction:** Leverage Genie's vendor-agnostic parsing to extend this exact same compliance logic to Arista (EOS) and Juniper (Junos) platforms without rewriting the core diff engine.
+- **CI/CD Pipeline Integration:** Embed the existing 13-case Pytest suite into GitHub Actions to automatically block Pull Requests that introduce regressions to the compliance logic or Jinja2 templates.
+
+---
+
+### Return to Main Repository
+
+This module is part of a broader Network Automation Engine portfolio.
+
+**Explore other modules:**
+- [VLAN Compliance & Remediation](../vlan-compliance/)
+- [SNMP Compliance & Remediation](../snmp-compliance/)
+- [Syslog Compliance & Remediation](../syslog-compliance/)
+- [Spanning Tree Protocol (STP) Compliance](../stp-compliance/)
+- [Interface Compliance & Remediation](../interface-compliance/)
+- [Trunk Port Compliance & Remediation](../trunk-ports/)
+- [F5 BIG-IP LTM Cloud Load Balancing](../f5-big-ip-ltm-lab/)
+
+**[Return to Main Repository README](../README.md)**

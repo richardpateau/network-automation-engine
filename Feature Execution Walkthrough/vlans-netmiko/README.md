@@ -593,6 +593,8 @@ To establish genuine compliance, the engine enforces a **closed-loop verificatio
 3. It re-runs the diff checker against the fresh operational state.
 4. It streams cryptographic/audit telemetry at every state transition to **Splunk via HTTP Event Collector (HEC)**.
 
+![Splunk Drift Detection](screenshots/closed-loop-diagram-draw-io.png)
+
 ---
 
 ### Structured Telemetry Schema
