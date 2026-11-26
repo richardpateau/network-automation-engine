@@ -44,8 +44,8 @@ The Syslog Compliance module follows the project's Source of Truth-driven archit
 - [4. Configuration Remediation](#4-configuration-remediation)
 - [5. Safe Change Management: Dry-Run Mode](#5-safe-change-management-dry-run-mode)
 - [6. Post-Remediation Validation & Physical Device Proof](#6-post-remediation-validation--physical-device-proof)
-- [7. Audit Logging & Splunk Telemetry Pipeline (Syslog Service)](#8-audit-logging--splunk-telemetry-pipeline-syslog-service)
-- [8. Automated Unit Testing & CI/CD Validation (Syslog Service)](#9-automated-unit-testing--cicd-validation-syslog-service)
+- [7. Audit Logging & Splunk Telemetry Pipeline (Syslog Service)](#7-audit-logging--splunk-telemetry-pipeline-syslog-service)
+- [8. Automated Unit Testing & CI/CD Validation (Syslog Service)](#8-automated-unit-testing--cicd-validation-syslog-service)
 
 ## 1. Intended State: NetBox Source of Truth (Centralized Syslog Architecture)
 
