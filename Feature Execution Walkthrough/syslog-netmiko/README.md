@@ -34,7 +34,7 @@ The Syslog Compliance module follows the project's Source of Truth-driven archit
 
 ## Topology
 
-![NetBox Config Context CORE-SW-1 Syslog](screenshots/netbox-config-context.png)
+![NetBox Config Context CORE-SW-1 Syslog](screenshots/topology.png)
 
 ### Table of Contents
 
