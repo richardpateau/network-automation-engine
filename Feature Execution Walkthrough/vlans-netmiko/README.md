@@ -583,6 +583,8 @@ def configure_vlan(conn, vlan_data: dict, log, device_ip: str, transport: str) -
 4. **Audit Logging:** A structured `vlan_config` event streams to Splunk with full context (device, VLAN ID, name, status).
 5. **Status Propagation:** Returns a standardized dictionary with `status` and `summary` fields for the compliance engine's post-validation logic.
 
+--- 
+
 ### Physical Switch Operational Verification: Before vs. After (`show vlan brief`)
 
 To verify that both VLAN database provisioning and access switchport assignments took effect on physical hardware, operational state was inspected directly on `ACCESS-SW-1` using `show vlan brief` before and after automated execution.
