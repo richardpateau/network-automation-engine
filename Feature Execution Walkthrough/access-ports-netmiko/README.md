@@ -63,7 +63,7 @@ The access-port compliance workflow consists of five main components:
 - [6. Closed-Loop Post-Remediation Validation](#6-closed-loop-post-remediation-validation)
 - [7. Audit Logging & Splunk Telemetry Pipeline](#7-audit-logging--splunk-telemetry-pipeline)
 - [8. Automated Unit Testing & CI/CD Validation](#8-automated-unit-testing--cicd-validation)
-- [Conclusion & Engineering Takeaways](#conclusion--engineering-takeaways)
+
 ## Automation Workflow
 
 The VLAN automation process follows these stages:
@@ -194,8 +194,6 @@ The resulting data structure built by `inventory.py` provides the compliance eng
 
 > **Design Principle:**
 > By evaluating `device_interface.mode.value == "access"` and strictly extracting `untagged_vlan.vid`, the compliance checker (`check_access()`) receives an unambiguous list of expected interface-to-VLAN mappings. Any switchport configured in dynamic trunking mode, trunk mode, or mapped to the wrong access VLAN on the physical device will immediately trigger a drift detection event.
-
-Here is the completely cleaned-up, production-grade version. I untangled the duplicated text, removed the AI artifacts ("Thinking Thoughts", "Expand to view model thoughts"), fixed the broken ASCII diagram, and ensured both Python code blocks and the final JSON are syntactically perfect and complete.
 
 ***
 
