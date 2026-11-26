@@ -1,6 +1,6 @@
 # Interface Compliance & Automated Remediation
 
-## Executive Overview
+## Overview
 
 In enterprise network architectures, interface administrative and operational states cannot be left to assumption. Unused switchports left enabled introduce severe Layer 2 security vulnerabilities (e.g., rogue device attachment, spanning-tree loops), while accidentally disabled core uplinks cause immediate, costly network outages. 
 
@@ -41,8 +41,9 @@ Rather than relying on brittle screen-scraping or manual CLI audits, this pipeli
 - [3. Interface Compliance Diff Engine & Drift Detection](#3-interface-compliance-diff-engine--drift-detection)
 - [4. Automated Interface Remediation & Safe Deployment](#4-automated-interface-remediation--safe-deployment)
 - [5. Closed-Loop Post-Remediation Validation & Physical Device Proof](#5-closed-loop-post-remediation-validation--physical-device-proof)
-- [7. Splunk Observability & Structured Audit Trail (Interface Baseline)](#7-splunk-observability--structured-audit-trail-interface-baseline)
-- [8. Automated Unit Testing & CI/CD Validation (Interface Baseline)](#8-automated-unit-testing--cicd-validation-interface-baseline)
+- [6. Splunk Observability & Structured Audit Trail (Interface Baseline)](#6-splunk-observability--structured-audit-trail-interface-baseline)
+- [7. Automated Unit Testing & CI/CD Validation (Interface Baseline)](#7-automated-unit-testing--cicd-validation-interface-baseline)
+- [Conclusion & Engineering Takeaways](#conclusion--engineering-takeaways)
 
 ## 1. Intended State: NetBox Source of Truth (Interface Baseline & Custom Fields)
 
@@ -888,7 +889,7 @@ interface Ethernet1/3
 > **Takeaway:**
 > The engine selectively remediates only the drifted interfaces. It shuts down unmanaged ports to eliminate Layer 2 security attack surfaces while ensuring that production core links remain untouched.
 
-## 7. Splunk Observability & Structured Audit Trail (Interface Baseline)
+## 6. Splunk Observability & Structured Audit Trail (Interface Baseline)
 
 To satisfy enterprise change‑audit requirements, every stage of physical interface lifecycle management baseline auditing, drift detection, remediation dispatch, exception handling, and post‑validation—generates structured JSON events streamed directly to **Splunk via HTTP Event Collector (HEC)** (`index="network_automation"`, `sourcetype="_json"`).
 
@@ -1128,7 +1129,7 @@ Beyond real‑time SIEM streaming, the automation engine maintains state inside 
 * **`device_result["actions_taken"]`**: Records every `shutdown` / `no shutdown` push or `[DRY_RUN]` preview executed during the run.
 * **`device_result["critical_issues"]`**: Populated only if remediation fails over SSH, a template/transport exception is raised, or post‑validation fails after changes were applied.
 
-## 8. Automated Unit Testing & CI/CD Validation (Interface Baseline)
+## 7. Automated Unit Testing & CI/CD Validation (Interface Baseline)
 
 To ensure high‑availability operational assurance without requiring access to physical hardware, the interface baseline module includes a comprehensive **100% offline unit‑testing suite** powered by **Pytest** and **unittest.mock**.
 

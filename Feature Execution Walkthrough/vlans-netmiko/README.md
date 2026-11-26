@@ -1213,8 +1213,6 @@ Following every execution run, the engine exports structured audit artifacts alo
 
 ---
 
----
-
 ## Conclusion & Engineering Takeaways
 
 This module demonstrates that VLAN management is not just about creating IDs and typing names. By decoupling data collection, normalization, decisioning, and remediation, this engine transforms Layer 2 hygiene from a manual, error-prone chore into a **deterministic, observable, and reversible software pipeline**.

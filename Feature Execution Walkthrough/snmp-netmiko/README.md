@@ -1,6 +1,6 @@
 # SNMP Compliance & Remediation
 
-## Executive Overview
+## Overview
 
 In enterprise infrastructure, Simple Network Management Protocol (SNMP) is the backbone of network monitoring, performance polling, and fault alerting. However, leaving SNMP configurations unmanaged introduces critical operational and security risks: unaudited community strings expose running configurations, missing trap receivers blind the Network Management System (NMS) to link failures, and incorrect MIB metadata (`sysContact`, `sysLocation`) hinders incident ownership and site tracking.
 
@@ -45,9 +45,8 @@ The SNMP Compliance module follows the project's Source of Truth-driven architec
 - [4. Configuration Remediation](#4-configuration-remediation)
 - [5. Safe Change Management: Dry-Run Mode](#5-safe-change-management-dry-run-mode)
 - [6. Post-Remediation Validation & Physical Device Proof](#6-post-remediation-validation--physical-device-proof)
-- [8. Audit Logging & Splunk Telemetry Pipeline (SNMP Services)](#8-audit-logging--splunk-telemetry-pipeline-snmp-services)
-- [9. Automated Unit Testing & CI/CD Validation (SNMP Services)](#9-automated-unit-testing--cicd-validation-snmp-services)
-- [Conclusion & Engineering Takeaways](#conclusion--engineering-takeaways)
+- [7. Audit Logging & Splunk Telemetry Pipeline (SNMP Services)](#7-audit-logging--splunk-telemetry-pipeline-snmp-services)
+- [8. Automated Unit Testing & CI/CD Validation (SNMP Services)](#8-automated-unit-testing--cicd-validation-snmp-services)
 
 ## 1. Intended State: NetBox Source of Truth (SNMP Infrastructure)
 
@@ -1055,7 +1054,7 @@ snmp-server host 10.10.10.50 version 2c MERIDIAN-RO
 > **Takeaway:**
 > The active purge mechanism ensures true idempotency. Rather than simply appending authorized commands alongside existing drift, the engine actively strips all unauthorized communities and rogue hosts, leaving the switch in an exact mirror of the NetBox Source of Truth.
 
-## 8. Audit Logging & Splunk Telemetry Pipeline (SNMP Services)
+## 7. Audit Logging & Splunk Telemetry Pipeline (SNMP Services)
 
 To guarantee that network monitoring, security access strings, and trap alerting parameters comply with enterprise governance, the SNMP module streams structured JSON telemetry directly to **Splunk via the HTTP Event Collector (HEC)** (`index="network_automation"`, `sourcetype="_json"`).
 
@@ -1288,7 +1287,7 @@ Throughout execution, the engine updates the device result context used to gener
 | **`device_result["critical_issues"]`** | Populated exclusively when remediation commands fail over SSH or if post-validation fails after changes were pushed. |
 | **`device_result["status"]`** | Reflects overall device health: `COMPLIANT`, `FAILED_CONFIG`, or `FAILED_VALIDATION`. |
 
-## 9. Automated Unit Testing & CI/CD Validation (SNMP Services)
+## 8. Automated Unit Testing & CI/CD Validation (SNMP Services)
 
 To guarantee that network monitoring, security access strings, and trap alerting parameters comply with enterprise standards without requiring live switch connectivity, the SNMP module includes a comprehensive **100% offline unit-testing suite** powered by **Pytest** and **unittest.mock**.
 
