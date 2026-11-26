@@ -813,6 +813,8 @@ After remediation commands are applied, the engine initiates a **closed-loop ver
 2. It re-normalizes the live logging state using `build_syslog_netmiko(new_state)`.
 3. It re-runs `check_syslog(exp_syslog, new_syslog, transport)` to verify all parameters match NetBox intent on physical hardware.
 
+![Cisco Console Syslog Before Remediation](screenshots/closed-loop-diagram-draw-io.png)
+
 ### Physical Device Verification: Before vs. After Execution
 
 #### 1. Device State: BEFORE Remediation (`CORE-SW-1`)
