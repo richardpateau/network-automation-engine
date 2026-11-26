@@ -183,7 +183,6 @@ At runtime, the inventory engine compiles the NetBox declarations and validates 
 
 > **Design Principle:**
 > By centralizing SNMP parameters into declarative NetBox Config Contexts, the downstream compliance engine (`check_snmp()`) audits all monitoring parameters communities, trap targets, contact info, and trap flag as a single coherent contract across both core and access switches.
-```
 
 ---
 
