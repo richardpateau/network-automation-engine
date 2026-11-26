@@ -168,7 +168,9 @@ def build_stp_interfaces(device_state):
 def build_snmp_netmiko(device_state):
     if not device_state:
         return {}
-    running_config = device_state.get("running_config") or ""
+    running_config = device_state.get("running_config") 
+    if not running_config: 
+        return {}
     parse = CiscoConfParse(running_config.splitlines())
     actual_snmp = {
         "communities": [],
@@ -195,13 +197,26 @@ def build_snmp_netmiko(device_state):
     for s in parse.find_objects(r"^snmp-server enable traps"):
         line = s.text.lower()
 
-        if " enable traps snmp" in line:
+        if "snmp" in line:
             actual_snmp["traps"]["snmp"] = True
-        if " enable traps syslog" in line:
-            actual_snmp["traps"]["syslog"] = True
+        if "authentication" in line:
+            actual_snmp["traps"]["authentication"] = True
+        if "linkdown" in line:
+            actual_snmp["traps"]["linkdown"] = True
+        if "linkup" in line:
+            actual_snmp["traps"]["linkup"] = True
+        if "coldstart" in line:
+            actual_snmp["traps"]["coldstart"] = True
+        if "warmstart" in line:
+            actual_snmp["traps"]["warmstart"] = True
+
     for s in parse.find_objects(r"^snmp-server host"):
         parts = s.text.split()
-        if len(parts) >= 6:
+        if len(parts) == 7:
+            actual_snmp["hosts"].append(
+                {"snmp_ip": parts[2], "snmp_version": parts[4], "snmp_name": parts[6]}
+            )
+        if len(parts) == 6:
             actual_snmp["hosts"].append(
                 {"snmp_ip": parts[2], "snmp_version": parts[4], "snmp_name": parts[5]}
             )

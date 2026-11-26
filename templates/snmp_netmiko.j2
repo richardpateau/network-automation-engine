@@ -1,0 +1,28 @@
+{% if snmp_data.get("communities") %}
+
+{% for a in snmp_data.get("communities") %}
+snmp-server community {{ a.get("snmp_name") }} {{ a.get("permission") }}
+{% endfor %}
+
+{% if snmp_data.get("hosts") %}
+
+{% for a in snmp_data.get("hosts") %}
+
+snmp-server host {{ a.get("snmp_ip") }} version {{ a.get("snmp_version") }} {{ a.get("snmp_name") }}
+{% endfor %}
+{% endif %}
+
+{% if snmp_data.get("location") %} 
+snmp-server location {{ snmp_data.get("location") }}
+{% endif %}
+
+{% if snmp_data.get("contact") %}
+snmp-server contact {{ snmp_data.get("contact") }}
+{% endif %}
+
+{% if true in snmp_data.get("traps").values() -%}
+snmp-server enable traps snmp {% for k,v in snmp_data.get("traps", {}).items() if v %} {{ k }}{% endfor %}
+{% endif %}
+
+
+{% endif %}

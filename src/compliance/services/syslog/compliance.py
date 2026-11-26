@@ -94,8 +94,6 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
                     result = configure_syslog_netmiko(sesh, exp_syslog, device_ip, transport, act_syslog, log)
 
                 summary = result.get("summary")
-                print("hello")
-                print(summary)
                 if summary:
                     device_result["actions_taken"].append(summary)
                 if result.get("status") == OperationalStatus.SUCCESS.value:

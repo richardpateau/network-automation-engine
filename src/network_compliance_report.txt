@@ -2,12 +2,12 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-25T14:22:05.155853
+Report Time: 2026-11-26T08:43:35.949523
 Devices Audited: 2
 
 SUMMARY
 ----------------
-Compliant: 0
+Compliant: 1
 Non-Compliant: 0
 Failed: 0
 
@@ -15,9 +15,7 @@ DEVICE DETAILS
 ----------------
 
 Device: CORE-SW-1
-Status: FAILED_VALIDATION
-Issues:
- - (SYSLOG) Mismatched Source Interface | Expected: loopback0 | Actual: cli
+Status: COMPLIANT
 Actions Taken:
  - VLAN Already Compliant | VLAN: 1 | Name: default
  - VLAN Already Compliant | VLAN: 10 | Name: USERS
@@ -40,7 +38,10 @@ Actions Taken:
  - Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 24576 | VLAN: 20 Priority: 28672 | VLAN: 30 Priority: 24576 | VLAN: 40 Priority: 28672 | VLAN: 50 Priority: 24576 | VLAN: 60 Priority: 28672 | VLAN: 70 Priority: 24576
  - STP Interface Configuration Already Compliant | Configuration: [{'interface': 'Ethernet0/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]
+ - SNMP (Switch) Configuration Successful | SNMP Name: MERIDIAN-RO | SNMP Permission: ro | SNMP Name: MERIDIAN-RW | SNMP Permission: rw | SNMP IP: 10.10.10.50 | Version: None | Location: New York HQ - Network Operations Room | Contact: Network Operations | Traps: {'linkup': True, 'linkdown': True, 'coldstart': True, 'warmstart': True, 'authentication': True} | Transport: NETMIKO
+ - SNMP Configuration Post Validation Successful | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.10.10.50 (MERIDIAN-RO)  | Traps: linkup, linkdown, coldstart, warmstart, authentication
  - Syslog Configuration Successful | Hosts: Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Facility: local7 | Source Interface: loopback0 | service timestamps log datetime msec: True | Severity: informational | Transport: NETMIKO
+ - Syslog Configuration Post Validation Successful | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational
 
 Device: ACCESS-SW-1
 Status: FAILED_VALIDATION
@@ -74,4 +75,5 @@ Actions Taken:
  - Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768
  - STP Interface Feature Successfully Configured | Interface: Ethernet0/0 | Feature: Portfast: True | Loop Guard: False | BPDU Guard: True | BPDU Filter: False | Root Guard: False
+ - SNMP Configuration Already Compliant | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.10.10.50 (MERIDIAN-RO)  | Traps: linkup, linkdown, coldstart, warmstart, authentication
  - Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational

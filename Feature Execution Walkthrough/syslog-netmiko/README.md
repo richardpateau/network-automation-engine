@@ -44,8 +44,8 @@ The Syslog Compliance module follows the project's Source of Truth-driven archit
 - [4. Configuration Remediation](#4-configuration-remediation)
 - [5. Safe Change Management: Dry-Run Mode](#5-safe-change-management-dry-run-mode)
 - [6. Post-Remediation Validation & Physical Device Proof](#6-post-remediation-validation--physical-device-proof)
-- [8. Audit Logging & Splunk Telemetry Pipeline (Syslog Service)](#8-audit-logging--splunk-telemetry-pipeline-syslog-service)
-- [9. Automated Unit Testing & CI/CD Validation (Syslog Service)](#9-automated-unit-testing--cicd-validation-syslog-service)
+- [7. Audit Logging & Splunk Telemetry Pipeline (Syslog Service)](#8-audit-logging--splunk-telemetry-pipeline-syslog-service)
+- [8. Automated Unit Testing & CI/CD Validation (Syslog Service)](#9-automated-unit-testing--cicd-validation-syslog-service)
 
 ## 1. Intended State: NetBox Source of Truth (Centralized Syslog Architecture)
 
@@ -906,12 +906,9 @@ No Inactive Message Discriminator.
     Logging Source-Interface:       VRF Name:
     Loopback0
 ```
-
-Your §8 is clean of interleaving this turn, but the five payloads are each **missing fields the screenshots plainly show** (`summary`, `taskName`, `hosts`), and there's a real SIEM gap in the SPL. I restored the missing fields from the captures, kept every visible value byte-true, and left `tags` out (collapsed in the UI, runtime-varying — noted below). Paste this as `## 8.`:
-
 ---
 
-## 8. Audit Logging & Splunk Telemetry Pipeline (Syslog Service)
+## 7. Audit Logging & Splunk Telemetry Pipeline (Syslog Service)
 
 To satisfy enterprise compliance, security logging standards, and SIEM auditing requirements, every operational phase of the syslog workflow — baseline verification, drift detection, exception handling, and closed-loop post-validation — streams structured JSON events directly to **Splunk via the HTTP Event Collector (HEC)** (`index="network_automation"`, `sourcetype="_json"`).
 
@@ -1159,7 +1156,7 @@ Throughout execution, the engine updates the device result context used to gener
 
 ---
 
-## 9. Automated Unit Testing & CI/CD Validation (Syslog Service)
+## 8. Automated Unit Testing & CI/CD Validation (Syslog Service)
 
 To guarantee that centralized logging enforcement is completely deterministic across different connection protocols, the syslog test suite implements **parametrized multi-transport testing** using **Pytest** and **unittest.mock**.
 
@@ -1362,7 +1359,6 @@ Key architectural wins validated in this project include:
 ### Next Steps & Future Enhancements
 To further evolve this automation engine, the following enhancements are planned:
 - **Multi-Vendor Abstraction:** Leverage Genie's vendor-agnostic parsing to extend this exact same compliance logic to Arista (EOS) and Juniper (Junos) platforms without rewriting the core diff engine.
-- **Advanced Logging Policy Validation:** Expand compliance checks to validate logging rate-limits, facility-specific filtering, and secure TLS-based syslog transport (RFC 5425).
 - **CI/CD Pipeline Integration:** Embed the existing 20-case Pytest suite into GitHub Actions to automatically block Pull Requests that introduce regressions to the compliance logic or Jinja2 templates.
 
 ---

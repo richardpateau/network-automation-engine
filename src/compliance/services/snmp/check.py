@@ -3,8 +3,8 @@ def check_snmp(expected_snmp, actual_config):
 	failures = []
 	exp_communities = expected_snmp.get("communities", [])
 	act_communities = actual_config.get("communities", [])
-	exp_tuple = {(e.get("snmp_name")):(e.get("permission")) for e in exp_communities}
-	act_tuple = {(a.get("snmp_name")): (a.get("permission")) for a in act_communities}
+	exp_tuple = {(e.get("snmp_name").lower()):(e.get("permission").lower()) for e in exp_communities}
+	act_tuple = {(a.get("snmp_name").lower()): (a.get("permission").lower()) for a in act_communities}
 	extra_c = act_tuple.keys() - exp_tuple.keys()
 	for name in extra_c: 
 		failures.append(
@@ -34,26 +34,26 @@ def check_snmp(expected_snmp, actual_config):
 	act_hosts = normalize_to_list(actual_config.get("hosts"))
 
 	exp_tuple = {
-			(h.get("snmp_name", ""), h.get("snmp_ip", ""), h.get("snmp_version", ""))
+			(h.get("snmp_name", "").lower(), h.get("snmp_ip", ""), h.get("snmp_version", ""))
 			for h in exp_hosts
 	}
 	act_tuple = {
-				(h.get("snmp_name", ""), h.get("snmp_ip", ""), h.get("snmp_version", ""))
+				(h.get("snmp_name", "").lower(), h.get("snmp_ip", ""), h.get("snmp_version", ""))
 				for h in act_hosts
 		}
 	extra = act_tuple - exp_tuple 
 
 	for name, ip, version in extra: 
 		failures.append(
-				f"(SNMP) Extra SNMP Found | Name: {name} | IP: {ip} | "
+				f"(SNMP) Extra SNMP Host Found | Name: {name} | IP: {ip} | "
 				f"Version: {version}"
 			)
-	act_lookup = {(a.get("snmp_name")): a for a in act_hosts}
+	act_lookup = {(a.get("snmp_name").lower()): a for a in act_hosts}
 	for e in exp_hosts: 
-		actual = act_lookup.get(e.get("snmp_name"))
+		actual = act_lookup.get(e.get("snmp_name").lower())
 		if not actual: 
 			failures.append(
-					f"(SNMP) Community Name Not Found | Name: {e.get('snmp_name')}"
+					f"(SNMP) Host Configuration | Community Name Not Found | Name: {e.get('snmp_name')}"
 				)
 			continue
 		if actual.get("snmp_ip") != e.get("snmp_ip"): 
@@ -68,25 +68,39 @@ def check_snmp(expected_snmp, actual_config):
 				)
 	if expected_snmp.get("location") != actual_config.get("location"): 
 		failures.append(
-				f"(SNMP) SNMP Location Mismath | Expected: {expected_snmp.get('location')} | "
+				f"(SNMP) SNMP Location Mismatch | Expected: {expected_snmp.get('location')} | "
 				f"Actual: {actual_config.get('location')}" 
 			)
 	exp_traps = expected_snmp.get("traps", {})
 	act_traps = actual_config.get("traps", {})
-	if exp_traps.get("config"): 
-		if exp_traps.get("config") != act_traps.get("config"):
+	if exp_traps.get("authentication"): 
+		if exp_traps.get("authentication") != act_traps.get("authentication"):
 			failures.append(
-					f"(SNMP) Mismatched Traps | Config | Expected: {exp_traps.get('config')} | "
-					f"Actual: {act_traps.get('config')}"
+					f"(SNMP) Mismatched Traps | Authentication | Expected: {exp_traps.get('authentication')} | "
+					f"Actual: {act_traps.get('authentication')}"
+			)
+	if exp_traps.get("linkup"):
+		if exp_traps.get('linkup') != act_traps.get('linkup'):
+			failures.append(
+					f"(SNMP) Mismatched Traps | linkup | Expected: {exp_traps.get('linkup')} | "
+					f"Actual: {act_traps.get('linkup')}"
 				)
-	if exp_traps.get('snmp') != act_traps.get('snmp'):
-		failures.append(
-				f"(SNMP) Mismatched Traps | SNMP | Expected: {exp_traps.get('snmp')} | "
-				f"Actual: {act_traps.get('snmp')}"
-			)
-	if exp_traps.get('syslog') != act_traps.get('syslog'): 
-		failures.append(
-				f"(SNMP) Mismatched Traps | Syslog | Expected: {exp_traps.get('syslog')} | "
-				f"Actual: {act_traps.get('syslog')}"
-			)
+	if exp_traps.get("linkdown"):
+		if exp_traps.get('linkdown') != act_traps.get('linkdown'): 
+			failures.append(
+					f"(SNMP) Mismatched Traps | linkdown | Expected: {exp_traps.get('linkdown')} | "
+					f"Actual: {act_traps.get('linkdown')}"
+				)
+	if exp_traps.get("coldstart"):
+		if exp_traps.get('coldstart') != act_traps.get('coldstart'): 
+			failures.append(
+					f"(SNMP) Mismatched Traps | coldstart | Expected: {exp_traps.get('coldstart')} | "
+					f"Actual: {act_traps.get('coldstart')}"
+				)
+	if exp_traps.get("warmstart"):
+		if exp_traps.get('warmstart') != act_traps.get('warmstart'): 
+			failures.append(
+					f"(SNMP) Mismatched Traps | warmstart | Expected: {exp_traps.get('syslog')} | "
+					f"Actual: {act_traps.get('syslog')}"
+				)
 	return len(failures) == 0, failures

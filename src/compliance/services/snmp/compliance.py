@@ -30,11 +30,11 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
             )
     if exp_snmp.get("hosts"):
         for h in exp_snmp.get("hosts"):
-            snmp_log.append(f"SNMP IP: {h.get('snmp_ip')} ({h.get('community')}) ")
+            snmp_log.append(f"SNMP IP: {h.get('snmp_ip')} ({h.get('snmp_name')}) ")
     if exp_snmp.get("traps"):
         traps = exp_snmp.get("traps", {})
         snmp_log.append(
-            f"Traps: {traps.get('config')}, {traps.get('snmp')}, {traps.get('syslog')}"
+            f"Traps: {', '.join(traps)}"
         )
     community_str = " | ".join(snmp_log)
 
@@ -44,6 +44,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "snmp_compliance",
             "protocol": "snmp",
             "transport": transport,
             "community_count": len(exp_snmp.get("communities", [])),
@@ -61,7 +62,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
         }
         if ok:
             log.info(
-                "snmp_netconf_compliant",
+                "snmp_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
@@ -73,7 +74,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
             )
         else:
             log.warning(
-                "snmp_netconf_non_compliant",
+                "snmp_non_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
@@ -88,9 +89,9 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
                 )
             else:
                 if transport == "NETCONF":
-                    result = configure_snmp_nc(sesh, exp_snmp, log)
+                    result = configure_snmp_nc(sesh, exp_snmp, act_snmp, device_ip, transport, log)
                 elif transport == "NETMIKO":
-                    result = configure_snmp_netmiko(sesh, exp_snmp, log)
+                    result = configure_snmp_netmiko(sesh, exp_snmp, act_snmp, device_ip, transport, log)
 
                 summary = result.get("summary")
                 if summary:
@@ -109,7 +110,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
             new_state = collect_netconf_state(sesh, log)
             new_snmp = build_snmp_netconf(new_state)
         if transport == "NETMIKO":
-            new_state = collect_device_state(sesh, log)
+            new_state = collect_device_state(sesh)
             new_snmp = build_snmp_netmiko(new_state)
 
         ok, failures = check_snmp(exp_snmp, new_snmp)
@@ -117,6 +118,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "snmp_compliance",
             "protocol": "snmp",
             "transport": transport,
             "community_count": len(exp_snmp.get("communities", [])),
@@ -135,7 +137,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
 
         if not ok:
             log.error(
-                "snmp_netconf_post_validation_failed",
+                "snmp_post_validation_failed",
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
@@ -146,7 +148,7 @@ def compliance_snmp(sesh, device_ip, context, device_state, device_result, log, 
             device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
         else:
             log.info(
-                "snmp_netconf_post_validation_success",
+                "snmp_post_validation_success",
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
