@@ -2,27 +2,51 @@
 
 ## Overview
 
-This walkthrough demonstrates the end-to-end VLAN compliance and remediation workflow implemented in the Network Automation Engine.
+In enterprise campus networks, Layer 2 broadcast domain integrity is foundational. Unmanaged VLAN sprawl introduces severe security risks—rogue devices can pivot across unauthorized segments, while inconsistent naming conventions break downstream automation and complicate incident response. Furthermore, missing VLANs on distribution switches cause immediate connectivity outages for dependent services.
 
-NetBox serves as the source of truth for VLAN configuration. The automation engine collects the current VLAN state from network devices, compares it against the intended configuration, identifies configuration drift, and generates remediation commands when necessary.
+The **VLAN Compliance & Automated Remediation** module is a production-grade, closed-loop automation engine designed to eliminate these risks. It enforces deterministic broadcast domain standards by reconciling live switch state against a **NetBox IPAM Source of Truth (SoT)**.
 
-After remediation, the engine collects the device state again and performs post-remediation validation to verify that the intended configuration was successfully applied.
+Rather than relying on brittle screen-scraping or manual CLI audits, this pipeline provides end-to-end lifecycle management. It extracts structured operational data via Cisco pyATS/Genie, identifies exact ID and name mismatches, safely remediates drift using idempotent Jinja2 templates, and verifies the fix before logging the outcome to a centralized SIEM.
 
-The workflow also integrates with Splunk for centralized event logging and uses pytest for unit testing.
+### Core Engineering Objectives
+- **Declarative Baseline:** Establish NetBox IPAM as the single source of truth for VLAN IDs, names, and operational statuses.
+- **Resilient Data Extraction:** Utilize Cisco pyATS/Genie to parse live switch state (`show vlan`) into normalized Python dictionaries, filtering out legacy FDDI/Token-Ring noise.
+- **Deterministic Diffing:** Compare live operational state against NetBox intent using strict ID-to-Name mapping, catching both missing VLANs and unauthorized name changes.
+- **Safe, Idempotent Remediation:** Apply configuration changes using targeted Jinja2 templates, gated by a global `DRY_RUN` safety switch for Change Advisory Board (CAB) review.
+- **Closed-Loop Verification:** Re-poll the device post-remediation to guarantee the physical data plane matches the intended state before marking the task complete.
+- **Enterprise Observability:** Stream structured, severity-coded JSON telemetry to Splunk for real-time NOC/SecOps dashboards and immutable audit trails.
+- **CI/CD Readiness:** Validate the entire state machine with offline Pytest cases, ensuring zero-regression deployments without requiring live hardware.
 
+---
 
-## Automation Workflow
+## Architecture
 
-The VLAN automation process follows these stages:
+The VLAN Compliance module follows the project's Source of Truth-driven architecture, decoupling data collection, normalization, decisioning, and remediation:
 
-1. **Source of Truth:** Retrieve intended VLAN configuration from NetBox.
-2. **Inventory Processing:** Load VLAN configuration into the automation context.
-3. **State Collection:** Collect existing VLAN information from the network device using Netmiko and Genie.
-4. **Compliance Checking:** Compare the actual VLAN configuration against the intended configuration.
-5. **Remediation:** Generate configuration commands using a Jinja2 template and apply them to the device.
-6. **Post-Validation:** Collect device state again and verify that remediation resolved the detected drift.
-7. **Event Logging:** Forward configuration and validation events to Splunk.
-8. **Unit Testing:** Test VLAN collection and compliance logic using pytest.
+| Component | Responsibility |
+|---|---|
+| **NetBox Inventory** | Supplies expected VLAN IDs, names, and statuses via REST API. |
+| **Genie Collector** | Collects and parses actual `show vlan` operational data over Netmiko SSH. |
+| **VLAN Builder** | Normalizes collected data, filters non-numeric keys, and creates a clean lookup dictionary. |
+| **Compliance Checker** | Compares expected NetBox intent against actual live state, flagging missing IDs or name mismatches. |
+| **Remediation Engine** | Applies targeted `vlan <id>` / `name <string>` configuration changes via Jinja2. |
+| **Post-Validation** | Re-queries and re-evaluates the device to verify that remediation achieved the expected configuration. |
+
+## Topology 
+
+![Python](screenshots/pnet-lab-topology.png)
+
+### Table of Contents
+
+- [Intended State: NetBox Source of Truth (SoT)](#intended-state-netbox-source-of-truth-sot)
+- [Live State Collection & Parsing Engine](#live-state-collection--parsing-engine)
+- [VLAN Compliance Checking](#vlan-compliance-checking)
+- [Compliance Resolution Engine & Drift Detection](#compliance-resolution-engine--drift-detection)
+- [Automated VLAN Remediation Engine](#automated-vlan-remediation-engine)
+- [Closed-Loop Post-Validation & Splunk Observability](#closed-loop-post-validation--splunk-observability)
+- [Unit Testing & Validation Framework](#unit-testing--validation-framework)
+- [Results & Operational Impact](#results--operational-impact)
+- [Conclusion & Engineering Takeaways](#conclusion--engineering-takeaways)
 
 ## End-to-End Demonstration
 
@@ -154,56 +178,50 @@ def build_vlan(device_state: dict) -> dict:
 
 ### Normalized Device State Output
 
-Once processed by `build_vlan()`, the switch's live operational state is formatted into a normalized key-value schema. The engine captures all active broadcast domains—including default Cisco VLANs (`1`, `1002–1005`):
+To demonstrate how `build_vlan()` processes and normalizes live CLI output, a test broadcast domain was manually provisioned directly on `ACCESS-SW-1`:
+
+![Cisco Console Test VLAN Config](screenshots/build-vlan-test-configuration.png)
+
+```cisco
+ACCESS-SW-1(config)# vlan 12
+ACCESS-SW-1(config-vlan)# name TEST-VLAN
+ACCESS-SW-1(config-vlan)# ex
+```
+
+#### Normalized Builder Runtime Output:
+When the engine collected device state via `show vlan` and parsed it through pyATS/Genie, `build_vlan()` stripped the operational counters (state, active interfaces, remote SPAN), filtered non-numeric VLAN identifiers, and converted the running broadcast domains — the user VLAN `12`, the default VLAN `1`, and the legacy FDDI/token-ring defaults `1002–1005` that IOS still reports — into a standardized lookup dictionary. The unexpected presence of VLAN `12` (absent from NetBox intent) is what triggered the `vlan_drift` WARNING:
+
+![Build VLAN Runtime Output](screenshots/print-build-vlan.png)
+
+```text
+2026-11-26 07:19:02,538 - WARNING - vlan_drift
+```
 
 ```json
 {
-  "1": {
-    "name": "default"
-  },
-  "10": {
-    "name": "USERS"
-  },
-  "20": {
-    "name": "VOICE"
-  },
-  "30": {
-    "name": "SERVERS"
-  },
-  "40": {
-    "name": "GUEST"
-  },
-  "50": {
-    "name": "MANAGEMENT"
-  },
-  "60": {
-    "name": "PRINTERS_IOT"
-  },
-  "70": {
-    "name": "NETWORK_INFRASTRUCTURE"
-  },
-  "999": {
-    "name": "NATIVE_UNUSED"
-  },
-  "1002": {
-    "name": "fddi-default"
-  },
-  "1003": {
-    "name": "token-ring-default"
-  },
-  "1004": {
-    "name": "fddinet-default"
-  },
-  "1005": {
-    "name": "trnet-default"
-  }
+    "1": {
+        "name": "default"
+    },
+    "12": {
+        "name": "TEST-VLAN"
+    },
+    "1002": {
+        "name": "fddi-default"
+    },
+    "1003": {
+        "name": "token-ring-default"
+    },
+    "1004": {
+        "name": "fddinet-default"
+    },
+    "1005": {
+        "name": "trnet-default"
+    }
 }
 ```
 
-![Build VLAN Terminal Output](screenshots/build-vlan-output.png)
-
-> ** Why Normalization Matters:**  
-> By decoupling raw Genie output from downstream business logic, the compliance checker (`check_vlan()`) only interacts with a clean dictionary. This keeps the check logic testable with standard unit mocks and resilient against future CLI syntax or parser schema updates.
+> **Why Normalization Matters:**
+> By decoupling raw Genie output from downstream business logic, the compliance checker (`check_vlan()`) only interacts with a clean dictionary mapping `"<vlan_id>": {"name": "<vlan_name>"}`. This makes the check logic testable with standard unit mocks and resilient against future CLI syntax or parser schema updates.
 
 ## VLAN Compliance Checking
 
@@ -397,6 +415,55 @@ Process finished with exit code 0
 ```
 ![VLAN Compliant - Terminal Output](screenshots/check-vlan-terminal-output-pass.png)
 
+### Machine-Readable Drift Artifact: `final_compliance_report.json`
+
+Following the compliance assessment, every discrepancy detected across the switch is compiled into the unified engine report at `src/final_compliance_report.json`. Because the report aggregates all audit domains, a single device entry can carry VLAN drift *alongside* concurrent STP protocol drift in the same `initial_issues` array.
+
+When the NetBox-declared VLANs are absent from the device (Scenario A), `check_vlan()` catalogs each missing broadcast domain. With no VLANs present, `show spanning-tree` yields no STP instances, so `build_stp_global()` cannot detect an operating mode and returns `unknown` — which `check_stp_global()` then flags as a mode mismatch (and short-circuits on, per its early-return design). The interface-level `loop_guard` drift is contributed independently by `check_stp_interfaces()`:
+
+![Final Compliance Report Initial Issues](screenshots/check-initial-issues.png)
+
+```json
+{
+  "devices": [
+    {
+      "checks": {
+        "access_ports": null,
+        "trunk_ports": null,
+        "interfaces": null,
+        "roas": null,
+        "ospf": null,
+        "ntp": null,
+        "qos": null,
+        "stp": null,
+        "hsrp": null,
+        "nat": null,
+        "dhcp": null,
+        "snmp": null,
+        "syslog": null,
+        "port_security": null,
+        "dhcp_snooping": null,
+        "dai": null,
+        "cdp": null,
+        "etherchannel": null,
+        "static_routes": null
+      },
+      "initial_issues": [
+        "VLAN 10 not found on device.",
+        "VLAN 20 not found on device.",
+        "VLAN 30 not found on device.",
+        "VLAN 40 not found on device.",
+        "VLAN 50 not found on device.",
+        "VLAN 60 not found on device.",
+        "VLAN 70 not found on device.",
+        "VLAN 999 not found on device.",
+        "Mismatched STP Mode | Expected: rapid-pvst | Actual: unknown",
+        "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False"
+      ]
+    }
+  ]
+}
+```
 ---
 
 ## Automated VLAN Remediation Engine
@@ -1019,7 +1086,36 @@ Following every execution run, the engine exports structured audit artifacts alo
 
 ---
 
-### Summary Takeaway
+---
 
-> ** Reliability Through Verification:**  
-> By treating device configurations as ephemeral states that must reconcile against a declarative Source of Truth, this automation workflow eliminates configuration drift at the access and distribution layers. The engine proves that network automation must not stop at *pushing configuration —it is only complete when the live running state has been **collected, re-parsed, and verified compliant**.
+## Conclusion & Engineering Takeaways
+
+This module demonstrates that VLAN management is not just about creating IDs and typing names. By decoupling data collection, normalization, decisioning, and remediation, this engine transforms Layer 2 hygiene from a manual, error-prone chore into a **deterministic, observable, and reversible software pipeline**.
+
+Key architectural wins validated in this project include:
+1. **Closed-Loop Verification:** Pushing a config via Netmiko is not proof of compliance. Re-querying the device via Genie and re-running the diff engine guarantees the hardware actually accepted and applied the change, catching silent syntax errors or mode conflicts.
+2. **Granular Remediation:** Instead of pushing a monolithic startup configuration that disrupts adjacent services, the engine constructs atomic config sets targeted strictly at drifted VLANs, minimizing blast radius during change windows.
+3. **Noise Filtering:** The builder intelligently filters out legacy FDDI/Token-Ring defaults (1002–1005) and Genie metadata, ensuring the compliance engine only evaluates relevant user-defined broadcast domains.
+4. **Resilient Exception Handling:** A broken Jinja2 template or SSH timeout doesn't crash the pipeline. The `try/except` boundary catches the error, streams it to Splunk as an `ERROR` event for immediate triage, and allows the audit of remaining VLANs to continue uninterrupted.
+
+### Next Steps & Future Enhancements
+To further evolve this automation engine, the following enhancements are planned:
+- **Multi-Vendor Abstraction:** Leverage Genie's vendor-agnostic parsing to extend this exact same compliance logic to Arista (EOS) and Juniper (Junos) platforms without rewriting the core diff engine.
+- **CI/CD Pipeline Integration:** Embed the existing Pytest suite into GitHub Actions to automatically block Pull Requests that introduce regressions to the compliance logic or Jinja2 templates.
+
+---
+
+### Return to Main Repository
+
+This module is part of a broader Network Automation Engine portfolio. 
+
+**Explore other modules:**
+- [SNMP Compliance & Remediation](../snmp-compliance/)
+- [Syslog Compliance & Remediation](../syslog-compliance/)
+- [Spanning Tree Protocol (STP) Compliance](../stp-compliance/)
+- [Interface Compliance & Remediation](../interface-compliance/)
+- [Trunk Port Compliance & Remediation](../trunk-ports/)
+- [Access Port Compliance & Remediation](../access-ports/)
+- [F5 BIG-IP LTM Cloud Load Balancing](../f5-big-ip-ltm-lab/)
+
+**[Return to Main Repository README](../README.md)**

@@ -19,6 +19,7 @@ def build_vlan(device_state):
         actual_vlans[str(vlan_id)] = {
             "name": vlan_values.get("name", ""),
         }
+    print(json.dumps(actual_vlans, indent=4))
     return actual_vlans
 
 
@@ -196,9 +197,7 @@ def build_snmp_netmiko(device_state):
         actual_snmp["contact"] = " ".join(parts[2:])
     for s in parse.find_objects(r"^snmp-server enable traps"):
         line = s.text.lower()
-
-        if "snmp" in line:
-            actual_snmp["traps"]["snmp"] = True
+        
         if "authentication" in line:
             actual_snmp["traps"]["authentication"] = True
         if "linkdown" in line:
