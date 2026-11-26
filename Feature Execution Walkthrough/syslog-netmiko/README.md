@@ -163,7 +163,6 @@ At runtime, the inventory engine compiles the NetBox declarations and validates 
 
 > **Design Principle:**
 > By treating centralized logging parameters as a declarative contract in NetBox, the downstream diff engine (`check_syslog()`) can simultaneously audit collector IPs, transport protocols (UDP vs. TCP), source interface bindings, and timestamp precision across the entire switching fabric.
-```
 
 ---
 
