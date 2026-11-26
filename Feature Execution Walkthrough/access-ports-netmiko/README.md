@@ -1026,7 +1026,6 @@ interface Ethernet1/1
 
 > **Takeaway:**
 > The physical switch verification proves complete reconciliation. Without disrupting existing Spanning Tree protections or adjacent trunk uplinks, the engine mapped each access port directly to its NetBox-defined broadcast domain, resolving the silent default-VLAN drift across the access layer.
-```
 
 ---
 
