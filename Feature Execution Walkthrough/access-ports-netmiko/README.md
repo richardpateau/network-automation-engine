@@ -535,7 +535,7 @@ def compliance_access(sesh, device_ip, context, device_state, device_result, log
 
 The engine was tested against two real‑world failure modes on `ACCESS-SW-1`.
 
-#### Scenario A — Access VLAN Assignment Drift
+#### Scenario A - Access VLAN Assignment Drift
 Interfaces were left in access mode but pinned to default `VLAN 1` instead of their NetBox broadcast domains (`10`, `20`, `30`, `40`, `50`, `60`, `70`):
 
 ![Access Port VLAN Drift Terminal Output](screenshots/print-check-vlan-wrong-access-vlan.png)
@@ -560,7 +560,7 @@ Interfaces were left in access mode but pinned to default `VLAN 1` instead of th
 2026-11-18 08:13:12,937 - INFO - ----- AUTOMATION COMPLETE -----
 ```
 
-#### Scenario B — Severe Drift: Unauthorized Mode Change (Trunk Hijack)
+#### Scenario B - Severe Drift: Unauthorized Mode Change (Trunk Hijack)
 An out‑of‑band manual change on the switch console forced access interfaces `Ethernet0/0`–`Ethernet0/3` into 802.1Q trunking mode:
 
 ```cisco
@@ -594,7 +594,7 @@ ACCESS-SW-1(config-if-range)# switchport mode trunk
 ```
 ![Access Port Trunk Drift Terminal Output](screenshots/print-check-vlan-failures-wrong-mode-terminal-output.png)
 
-#### Scenario C — Fully Compliant Baseline (Zero Failures / Fast‑Path Bypass)
+#### Scenario C - Fully Compliant Baseline (Zero Failures / Fast‑Path Bypass)
 
 When the live switch configuration already mirrors the NetBox Source of Truth, the engine executes a non‑disruptive, read‑only audit. All 8 physical access interfaces on `ACCESS-SW-1` (`Ethernet0/0` through `Ethernet1/3`) were evaluated against their assigned broadcast domains. Because the operational mode was verified as `static access` and every access VLAN matched NetBox intent:
 
@@ -774,23 +774,63 @@ def configure_access(conn, access_data, device_ip, transport, log):
 
 The automation engine includes a globally configurable `DRY_RUN` safety switch (`src/core/settings.py`). This allows operations teams to audit live devices and review planned changes without modifying switch state.
 
-![Remediation Access Code](screenshots/dry-run-draw-io.png)
-
 When `DRY_RUN = True`:
 * Compliance audits run completely against the live network.
 * Drift detection flags all mismatched and missing switchports.
 * Jinja2 templates render and are verified in memory.
-* SSH configuration calls (`conn.send_config_set`) are bypassed.
-* Planned actions are recorded for review without modifying the device.
+* **Socket transmissions (`conn.send_config_set`) are bypassed entirely.**
+* Planned actions are cataloged for review without modifying physical hardware.
 
-### Example Dry‑Run Preview Summary:
-```text
-[DRY_RUN] Would Configure Access Port | Interface: ethernet0/0 | VLAN: 10
-[DRY_RUN] Would Configure Access Port | Interface: ethernet0/1 | VLAN: 20
-[DRY_RUN] Would Configure Access Port | Interface: ethernet0/3 | VLAN: 30
-```
+![Remediation Access Dry-Run Flow](screenshots/dry-run-draw-io.png)
 
 ---
+
+### Machine-Readable Dry-Run Audit: `final_compliance_report.json`
+
+During dry-run execution on `ACCESS-SW-1`, the engine compiles the complete audit into `src/final_compliance_report.json`.
+
+The `actions_taken` collection documents the exact, port-by-port remediation commands that **would** be executed, while also validating that trunk links (`Ethernet0/1`), SNMP, and Syslog configurations are already compliant:
+
+![Final Compliance Report Access Port Dry-Run](screenshots/dry-run-would-configure-access-port.png)
+
+```json
+{
+  "device_name": "ACCESS-SW-1",
+  "device_ip": "10.10.10.20",
+  "status": "COMPLIANT",
+  "actions_taken": [
+    "VLAN Already Compliant | VLAN: 1 | Name: default",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 10 | Name: USERS",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 20 | Name: VOICE",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 30 | Name: SERVERS",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 40 | Name: GUEST",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 50 | Name: MANAGEMENT",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 60 | Name: PRINTERS_IOT",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
+    "[DRY_RUN] Would Configure VLANs | VLAN: 999 | Name: NATIVE_UNUSED",
+    "Interface Configuration Already Compliant | Interface: Ethernet0/0 | Description: Configured via Netmiko | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet0/1 | Description: Configured via Netmiko | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet0/2 | Description:  | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet0/3 | Description: Configured via Netmiko | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet1/0 | Description: Configured via Netmiko | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True",
+    "Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/0 | VLAN: 10",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/2 | VLAN: 20",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet0/3 | VLAN: 30",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/0 | VLAN: 40",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/1 | VLAN: 50",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/2 | VLAN: 60",
+    "[DRY_RUN] Would Configure Access Port | Interface: Ethernet1/3 | VLAN: 70",
+    "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
+    "[DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: …",
+    "[DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': Tru …",
+    "SNMP Configuration Already Compliant | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.…",
+    "SysLog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': …"
+  ]
+}
+```
 
 ## 6. Closed‑Loop Post‑Remediation Validation
 
@@ -1050,6 +1090,9 @@ Using `@patch` and `MagicMock`, this suite isolates `compliance_access()` from l
    * Asserts the module completes gracefully with zero issues and zero actions taken.
 
 #### Representative Mock Pattern (`test_compliance_access.py` Excerpt):
+
+![Compliance Unit Tests Passed](screenshots/unit-test-compliance-code.png)
+
 ```python
 @patch("src.compliance.switching.access.compliance.collect_device_state")
 @patch("src.compliance.switching.access.compliance.configure_access")
@@ -1174,6 +1217,6 @@ This module is part of a broader Network Automation Engine portfolio.
 - [Spanning Tree Protocol (STP) Compliance](../stp-compliance/)
 - [Interface Compliance & Remediation](../interface-compliance/)
 - [Trunk Port Compliance & Remediation](../trunk-ports/)
-- [F5 BIG-IP LTM Cloud Load Balancing](../f5-big-ip-ltm-lab/)
+- [F5 BIG-IP LTM Load Balancing](../f5-big-ip-ltm-lab/)
 
 **[Return to Main Repository README](../README.md)**
