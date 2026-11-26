@@ -287,7 +287,6 @@ Comparing the normalized output against the **NetBox Desired State** immediately
 | **Service Timestamps** | `True` (`msec`) | `True` (`msec`) | **COMPLIANT** |
 
 > **Next Step:** This normalized observed dictionary is fed directly into `check_syslog()`, triggering targeted remediation to remove rogue host `8.8.8.8`, restore dual collectors, re-bind `Loopback0`, and set trap levels to `informational`.
-```
 
 ---
 
