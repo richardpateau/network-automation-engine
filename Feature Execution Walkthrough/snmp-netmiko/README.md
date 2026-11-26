@@ -336,11 +336,6 @@ When the collector audited `CORE-SW-1`, `build_snmp_netmiko()` converted the raw
     "contact": "build-test@yahoo.com"
 }
 ```
-
-```text
-2026-11-26 01:28:46,903 - WARNING - snmp_netconf_non_compliant
-```
-
 ---
 
 ### 4. Operational Drift Baseline
@@ -355,7 +350,6 @@ Comparing this normalized live state against the **NetBox Desired State** immedi
 | **System Location** | `New York HQ - Network Operations Room` | `build-test` | **DRIFT (Incorrect MIB Location)** |
 
 > **Next Step:** This normalized observed dictionary is fed directly into `check_snmp()`, triggering targeted remediation to purge rogue community `BUILD-TEST`, delete unauthorized host `8.8.8.8`, and enforce the NetBox MIB and community standard.
-```
 
 ---
 
