@@ -81,6 +81,7 @@ def test_compliance_syslog_already_compliant(
             {},
             mock_device_result,
             mock_log,
+            transport
         )
 
         mock_log.info.assert_called_once()
@@ -103,7 +104,7 @@ def test_compliance_syslog_non_compliant_config_successful(
         patch_targets["build_syslog"]
     ) as mock_build_syslog, patch(patch_targets["check_syslog"]) as mock_check_syslog:
         mock_build_syslog.return_value = {}
-        mock_check_syslog.return_value = (False, ["(SYSLOG) Mismatched Trap Level"])
+        mock_check_syslog.side_effect = [(False, ["(SYSLOG) Mismatched Trap Level"]), (True, [])]
         mock_configure_syslog.return_value = {
             "status": OperationalStatus.SUCCESS.value,
             "summary": "Syslog Configuration Successfully Configured",
@@ -116,6 +117,7 @@ def test_compliance_syslog_non_compliant_config_successful(
             {},
             mock_device_result,
             mock_log,
+            transport
         )
 
         mock_log.warning.assert_called_once()
@@ -153,6 +155,7 @@ def test_compliance_syslog_non_compliant_config_failed(
             {},
             mock_device_result,
             mock_log,
+            transport
         )
 
         mock_log.warning.assert_called_once()
@@ -189,6 +192,7 @@ def test_compliance_syslog_dry_run(
             {},
             mock_device_result,
             mock_log,
+            transport
         )
 
         mock_log.warning.assert_called_once()
@@ -235,6 +239,7 @@ def test_compliance_syslog_post_validation_successful(
             {},
             mock_device_result,
             mock_log,
+            transport
         )
 
         mock_log.warning.assert_called_once()
@@ -289,6 +294,7 @@ def test_compliance_syslog_post_validation_failed(
             {},
             mock_device_result,
             mock_log,
+            transport
         )
 
         mock_log.warning.assert_called_once()
@@ -312,7 +318,7 @@ def test_compliance_syslog_empty(transport, mock_sesh, mock_device_result, mock_
     mock_sesh.transport = transport
 
     result = compliance_syslog(
-        mock_sesh, mock_sesh.device_ip, {"syslog": {}}, {}, mock_device_result, mock_log
+        mock_sesh, mock_sesh.device_ip, {"syslog": {}}, {}, mock_device_result, mock_log, transport
     )
 
     assert result["initial_issues"] == []

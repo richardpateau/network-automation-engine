@@ -28,7 +28,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
         syslog_log.append(f"Facility: {exp_syslog.get('facility', '')}")
     if exp_syslog.get("hosts"):
         for h in exp_syslog.get("hosts", []):
-            syslog_log.append(f"SYSLOG HOST IP: {h}")
+            syslog_log.append(f"Hosts: {h}")
     if exp_syslog.get("source_interface"):
         syslog_log.append(f"Source Interface: {exp_syslog.get('source_interface', '')}")
     if "timestamps" in exp_syslog:
@@ -45,6 +45,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "compliance_syslog",
             "protocol": "syslog",
             "transport": transport,
             "host_count": len(exp_syslog.get("hosts", [])),
@@ -61,7 +62,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
 
         if ok:
             log.info(
-                "syslog_netconf_compliant",
+                "syslog_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
@@ -73,7 +74,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
             )
         else:
             log.warning(
-                "syslog_netconf_non_compliant",
+                "syslog_non_compliant",
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
@@ -88,12 +89,13 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
                 )
             else:
                 if transport == "NETCONF":
-                    result = configure_syslog_netconf(sesh, exp_syslog, log)
+                    result = configure_syslog_netconf(sesh, exp_syslog, device_ip, transport, act_syslog, log)
                 elif transport == "NETMIKO":
-                    result = configure_syslog_netmiko(sesh, exp_syslog, log)
+                    result = configure_syslog_netmiko(sesh, exp_syslog, device_ip, transport, act_syslog, log)
 
                 summary = result.get("summary")
-
+                print("hello")
+                print(summary)
                 if summary:
                     device_result["actions_taken"].append(summary)
                 if result.get("status") == OperationalStatus.SUCCESS.value:
@@ -119,6 +121,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
             "component": "main_process",
             "protocol": "syslog",
             "transport": transport,
+            "event_type": "compliance_syslog",
             "host_count": len(exp_syslog.get("hosts", [])),
             "hosts": [h for h in exp_syslog.get("hosts", [])],
             "facility": exp_syslog.get("facility", ""),
@@ -133,7 +136,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
 
         if not ok:
             log.error(
-                "syslog_netconf_post_validation_failed",
+                "syslog_post_validation_failed",
                 extra={
                     **log_extra,
                     "status": StepStatus.FAILED.value,
@@ -144,7 +147,7 @@ def compliance_syslog(sesh, device_ip, context, device_state, device_result, log
             device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
         else:
             log.info(
-                "syslog_netconf_post_validation_success",
+                "syslog_post_validation_success",
                 extra={
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,

@@ -1,0 +1,33 @@
+{% if act_syslog.get("hosts") %}
+{% for h in act_syslog.get("hosts") %}
+no logging host {{ h.get("host") }}
+{% endfor %}
+{% endif %}
+
+{% if act_syslog.get("source_interface") %}
+no source interface {{ act_syslog.get("source_interface") }}
+{% endif %}
+
+{% if act_syslog.get("trap_level") %}
+no logging trap {{ act_syslog.trap_level }}
+{% endif %}
+
+
+{% if syslog_data.get("timestamps") %}
+service timestamps log datetime msec
+{% endif %}
+
+{% if syslog_data.get("hosts") %}
+{% for h in syslog_data.get("hosts") %}
+logging host {{ h.get("host") }} transport {{ h.get("transport") }} port {{ h.get("port") }}
+{% endfor %}
+{% endif %}
+
+{% if syslog_data.get("trap_level") %}
+logging trap {{ syslog_data.get("trap_level") }}
+{% endif %}
+
+{% if syslog_data.get("source_interface") %}
+logging source-interface {{ syslog_data.get("source_interface") }}
+{% endif %}
+

@@ -216,7 +216,7 @@ def build_syslog_netmiko(device_state):
         "hosts": [],
         "trap_level": "",
         "source_interface": "",
-        "timestamps": False,
+        "timestamps": False
     }
     state_logging = device_state.get("syslog") or {}
     logging = state_logging.get("logging") or {}
@@ -229,8 +229,12 @@ def build_syslog_netmiko(device_state):
     if trap_level:
         actual_syslog["trap_level"] = trap_level.lower()
     logging_to = logging.get("trap", {}).get("logging_to", {})
-    if logging_to:
-        actual_syslog["hosts"] = list(logging_to.keys())
+    for k,v in logging_to.items():
+        actual_syslog["hosts"].append({
+                "host": k,
+                "port": v.get("port"),
+                "transport": v.get("protocol")
+            })
     source_interface = logging.get("trap", {}).get("logging_source_interface", {})
     if source_interface:
         for interface in source_interface.keys():
@@ -416,6 +420,9 @@ def build_etherchannel(device_state):
                         "switchport_mode": None,
                         "type": None,
                         "enabled": True,
+                        "allowed_vlans": [],
+                        "access_vlan": None,
+                        "native_vlan": None,
                     },
                 )
                 group_entry["enabled"] = True
@@ -440,4 +447,12 @@ def build_etherchannel(device_state):
                 group_entry["description"] = " ".join(config[1:])
             elif full_config.startswith("switchport mode"):
                 group_entry["switchport_mode"] = config[-1]
+            elif full_config.startswith("switchport access vlan"):
+                group_entry["access_vlan"] = safe_int(config[-1])
+
+            elif full_config.startswith("switchport trunk allowed vlan"):
+                group_entry["allowed_vlans"] = config[-1]
+
+            elif full_config.startswith("switchport trunk native vlan"):
+                group_entry["native_vlan"] = safe_int(config[-1])
     return actual_ether

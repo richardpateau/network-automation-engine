@@ -3,7 +3,8 @@ from src.collectors.cli.builders import build_syslog_netmiko
 
 def test_build_syslog_valid(syslog_genie_output):
     result = build_syslog_netmiko(syslog_genie_output)
-    assert result["hosts"] == (["192.168.100.60", "192.168.100.61"])
+    assert any(r["host"] == "192.168.100.60" for r in result["hosts"])
+    assert any(r["host"] == "192.168.100.61" for r in result["hosts"])
     assert result["trap_level"] == "informational"
     assert result["source_interface"] == "loopback0"
     assert result["timestamps"] is True
@@ -25,7 +26,12 @@ def test_build_syslog_no_timestamps():
 def test_build_syslog_empty():
     assert build_syslog_netmiko({}) == {}
     assert build_syslog_netmiko(None) == {}
-    assert build_syslog_netmiko({"not_syslog": {}}) == {}
+    assert build_syslog_netmiko({"not_syslog": {}}) == {
+        "hosts": [],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
     assert build_syslog_netmiko({"syslog": {}}) == {
         "hosts": [],
         "trap_level": "",
@@ -72,12 +78,16 @@ def test_build_syslog_defaults():
 
     result = build_syslog_netmiko(data)
 
-    assert result["hosts"] == ["192.168.100.60"]
-    assert result["trap_level"] == ""
-    assert result["source_interface"] == ""
-    assert result["timestamps"] is False 
+    assert result == {
+        "hosts": [{"host": "192.168.100.60", "port": 514, "transport": "udp"}],
+        "trap_level": "",
+        "source_interface": "",
+        "timestamps": False,
+    }
+
+
 def test_build_syslog_source_interface():
-	data = {
+    data = {
 
         "syslog": {
             "logging": {
@@ -89,6 +99,7 @@ def test_build_syslog_source_interface():
             }
         }
     }
+
 
     result = build_syslog_netmiko(data)
 

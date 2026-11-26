@@ -2,12 +2,12 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-25T10:59:44.306885
+Report Time: 2026-11-25T14:22:05.155853
 Devices Audited: 2
 
 SUMMARY
 ----------------
-Compliant: 2
+Compliant: 0
 Non-Compliant: 0
 Failed: 0
 
@@ -15,7 +15,9 @@ DEVICE DETAILS
 ----------------
 
 Device: CORE-SW-1
-Status: COMPLIANT
+Status: FAILED_VALIDATION
+Issues:
+ - (SYSLOG) Mismatched Source Interface | Expected: loopback0 | Actual: cli
 Actions Taken:
  - VLAN Already Compliant | VLAN: 1 | Name: default
  - VLAN Already Compliant | VLAN: 10 | Name: USERS
@@ -36,11 +38,14 @@ Actions Taken:
  - Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: False
  - Trunk Interface Already Compliant | Interface: Ethernet0/0 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - Trunk Interface Already Compliant | Interface: Ethernet0/3 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
- - [DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 24576 | VLAN: 20 Priority: 28672 | VLAN: 30 Priority: 24576 | VLAN: 40 Priority: 28672 | VLAN: 50 Priority: 24576 | VLAN: 60 Priority: 28672 | VLAN: 70 Priority: 24576
+ - STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 24576 | VLAN: 20 Priority: 28672 | VLAN: 30 Priority: 24576 | VLAN: 40 Priority: 28672 | VLAN: 50 Priority: 24576 | VLAN: 60 Priority: 28672 | VLAN: 70 Priority: 24576
  - STP Interface Configuration Already Compliant | Configuration: [{'interface': 'Ethernet0/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]
+ - Syslog Configuration Successful | Hosts: Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Facility: local7 | Source Interface: loopback0 | service timestamps log datetime msec: True | Severity: informational | Transport: NETMIKO
 
 Device: ACCESS-SW-1
-Status: COMPLIANT
+Status: FAILED_VALIDATION
+Issues:
+ - (STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False
 Actions Taken:
  - VLAN Already Compliant | VLAN: 1 | Name: default
  - VLAN Already Compliant | VLAN: 10 | Name: USERS
@@ -66,6 +71,7 @@ Actions Taken:
  - Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50
  - Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60
  - Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70
- - [DRY_RUN] Would Configure_Trunk Port | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
- - [DRY_RUN] Would Configure Global STP | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768
- - [DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]
+ - Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
+ - STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768
+ - STP Interface Feature Successfully Configured | Interface: Ethernet0/0 | Feature: Portfast: True | Loop Guard: False | BPDU Guard: True | BPDU Filter: False | Root Guard: False
+ - Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational

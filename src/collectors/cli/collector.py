@@ -1,3 +1,4 @@
+import json
 def collect_device_state(conn):
     device_state = {}
     try:

@@ -2,7 +2,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_syslog_netmiko(conn, syslog_data, log):
+def configure_syslog_netmiko(conn, syslog_data, device_ip, transport, act_syslog, log): 
 	facility = syslog_data.get("facility", "")
 	hosts = syslog_data.get("hosts", [])
 	source_interface = syslog_data.get("source_interface", "")
@@ -10,12 +10,12 @@ def configure_syslog_netmiko(conn, syslog_data, log):
 	trap_level = syslog_data.get("trap_level", "")
 
 	hosts_log = " | ".join(
-			f"IP: {h}"
+			f"Hosts: {h}"
 			for h in hosts
 		)
 
 	try: 
-		template_syslog = template_env.get_template("SYSLOG_NETMIKO.j2")
+		template_syslog = template_env.get_template("syslog_netmiko.j2")
 
 		if DRY_RUN: 
 			return {
@@ -25,27 +25,25 @@ def configure_syslog_netmiko(conn, syslog_data, log):
 						f"Hosts: {hosts_log} | Facility: {facility} | "
 						f"Source Interface: {source_interface} | "
 						f"service timestamps log datetime msec: {timestamps} | "
-						f"Severity: {trap_level} | Transport: NEMIKO"
+						f"Severity: {trap_level} | Transport: { transport }"
 				)
 			}
 
 		commands_syslog = template_syslog.render(
-				facility=facility,
-				trap_level=trap_level,
-				hosts=hosts,
-				source_interface=source_interface,
-				timestamps=timestamps
+				syslog_data=syslog_data,
+				act_syslog=act_syslog
 			).splitlines()
 
-		conn.send_command(commands_syslog)
+		conn.send_config_set(commands_syslog)
+		conn.save_config()
 		
 		log.info(
 			"syslog_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "syslog_automation",
                 "event_type": "syslog_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "timestamps": timestamps,
                 "facility": facility,
@@ -69,18 +67,18 @@ def configure_syslog_netmiko(conn, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport}"
+							f"Severity: {trap_level} | Transport: {transport}"
                 	)
 			}
 	
 	except Exception as e: 
-		log.info(
+		log.exception(
             "syslog_config",
             extra={
-                "device_ip": conn.device_ip,
+                "device_ip": device_ip,
                 "component": "syslog_automation",
                 "event_type": "syslog_config",
-                "transport": conn.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "timestamps": timestamps,
                 "facility": facility,
@@ -92,7 +90,7 @@ def configure_syslog_netmiko(conn, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport}"
+							f"Severity: {trap_level} | Transport: {transport}"
 							f"Error: {str(e)}"
                 	)
             }
@@ -105,13 +103,13 @@ def configure_syslog_netmiko(conn, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport} | "
+							f"Severity: {trap_level} | Transport: {transport} | "
 							f"Error: {str(e)}"
                 	),
 				"error": str(e)
 			}
 
-def configure_syslog_netconf(session, syslog_data, log): 
+def configure_syslog_netconf(session, syslog_data, device_ip, transport, log):
 	facility = syslog_data.get("facility", "")
 	hosts = syslog_data.get("hosts", [])
 	source_interface = syslog_data.get("source_interface", "")
@@ -135,7 +133,7 @@ def configure_syslog_netconf(session, syslog_data, log):
 						f"Hosts: {hosts_log} | Facility: {facility} | "
 						f"Source Interface: {source_interface} | "
 						f"service timestamps log datetime msec: {timestamps} | "
-						f"Severity: {trap_level} | Transport: {conn.transport}"
+						f"Severity: {trap_level} | Transport: {transport}"
 				)
 			}
 
@@ -159,10 +157,10 @@ def configure_syslog_netconf(session, syslog_data, log):
 		log.info(
 			"syslog_config",
             extra={
-                "device_ip": session.device_ip,
+                "device_ip": device_ip,
                 "component": "syslog_automation",
                 "event_type": "syslog_config",
-                "transport": session.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "timestamps": timestamps,
                 "facility": facility,
@@ -186,7 +184,7 @@ def configure_syslog_netconf(session, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport}"
+							f"Severity: {trap_level} | Transport: {transport}"
                 	)
 			}
 	
@@ -194,10 +192,10 @@ def configure_syslog_netconf(session, syslog_data, log):
 		log.info(
             "syslog_config",
             extra={
-                "device_ip": session.device_ip,
+                "device_ip": device_ip,
                 "component": "syslog_automation",
                 "event_type": "syslog_config",
-                "transport": session.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "timestamps": timestamps,
                 "facility": facility,
@@ -221,7 +219,7 @@ def configure_syslog_netconf(session, syslog_data, log):
                 			f"Hosts: {hosts_log} | Facility: {facility} | "
 							f"Source Interface: {source_interface} | "
 							f"service timestamps log datetime msec: {timestamps} | "
-							f"Severity: {trap_level} | Transport: {conn.transport} | "
+							f"Severity: {trap_level} | Transport: {transport} | "
 							f"Error: {str(e)}"
                 	),
 				"error": str(e)

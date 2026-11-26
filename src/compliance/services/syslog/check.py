@@ -1,21 +1,27 @@
 def check_syslog(expected_syslog, actual_config, transport): 
 	failures = []
-	exp_hosts = set(expected_syslog.get("hosts", []))
-	act_hosts = set(actual_config.get("hosts", []))
+	exp_hosts = {
+		(
+			h.get("host"),
+			h.get("port", 514),
+			h.get("transport", "udp")
+		)
+		for h in expected_syslog.get("hosts", [])
+	}
+	act_hosts = {
+		(
+			h.get("host"),
+			h.get("port", 514),
+			h.get("transport", "udp")
+		)
+		for h in actual_config.get("hosts", [])
+	}
 
-	missing_hosts = exp_hosts - act_hosts
-	extra_hosts = act_hosts - exp_hosts
-
-	if missing_hosts:
-		for ip in missing_hosts: 
-			failures.append(
-					f"(SYSLOG) Missing Syslog Host | IP: {ip}"
-				)
-	if extra_hosts: 
-		for ip in extra_hosts: 
-			failures.append(
-					f"(SYSLOG) Drift: Extra Syslog Host | IP: {ip}"
-				)
+	if exp_hosts != act_hosts:
+		failures.append(
+				f"(SYSLOG) Mismatched Syslog Host Configuration | "
+				f"Expected: {','.join(map(str,exp_hosts))} | Actual: {','.join(map(str,act_hosts))}"
+			)
 	if transport == "NETCONF": 
 		if expected_syslog.get("facility") != actual_config.get("facility"): 
 			failures.append(
@@ -23,7 +29,7 @@ def check_syslog(expected_syslog, actual_config, transport):
 					f"Actual: {actual_config.get('facility')}"
 				)
 	if expected_syslog.get("source_interface"): 
-		if expected_syslog.get("source_interface") != actual_config.get("source_interface"):
+		if expected_syslog.get("source_interface").lower() != actual_config.get("source_interface").lower():
 			failures.append(
 					f"(SYSLOG) Mismatched Source Interface | "
 					f"Expected: {expected_syslog.get('source_interface')} | "
