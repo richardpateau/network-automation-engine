@@ -1,3 +1,42 @@
+# Router-on-a-Stick (ROAS) Compliance & RESTCONF Remediation
+
+## Overview
+
+In campus and branch topologies, inter-VLAN traffic exits each broadcast domain through a single physical trunk on the edge router, where logical 802.1Q subinterfaces act as the default gateway for every VLAN. A drifted subinterface here is not a cosmetic misconfiguration — a missing or mis-tagged gateway silently strands an entire subnet with no Layer 3 path, and a wrong encapsulation VLAN tag black-holes or cross-routes traffic between segments.
+
+The **ROAS Compliance & RESTCONF Remediation** module is a production-grade, closed-loop automation engine built specifically for this failure class. It is the portfolio's only **model-driven** module: rather than screen-scraping a CLI, it reads the router's live state as a structured **YANG data model** over **RESTCONF**, diffs it against a **NetBox Source of Truth**, and heals drift by issuing an idempotent **HTTP PATCH** upsert against the `Cisco-IOS-XE-native` interface container.
+
+Because the SoT must distinguish routing subinterfaces from physical uplinks, loopbacks, and tunnel endpoints, the engine introduces a **tag-based policy classification** pattern: NetBox interfaces carry an administrative `roas` tag, and the inventory engine uses that tag — combined with programmatic `ipaddress` CIDR splitting — to build an unambiguous gateway contract for the diff engine.
+
+### Core Engineering Objectives
+- **Declarative Baseline via Tagged SoT:** Establish NetBox IPAM + the `roas` interface tag as the single source of truth for subinterface identity, 802.1Q encapsulation VLAN, and gateway IP/mask.
+- **Model-Driven Collection (RESTCONF/YANG):** Query `/data/Cisco-IOS-XE-native:native/interface` over HTTPS with a persistent session, parsing the JSON-encoded YANG tree instead of scraping terminal output — eliminating regex fragility on subinterface syntax.
+- **Deterministic Subinterface Isolation:** `build_roas()` filters to logical ports via the `if "." not in name` guard and traverses `encapsulation/dot1Q/vlan-id` and `ip/address/primary` directly from the data model.
+- **Short-Circuit Multi-Gate Diff:** `check_roas()` evaluates existence → encapsulation-tag parity → gateway IP/mask, returning early on a missing subinterface so a non-existent port never produces spurious attribute mismatches.
+- **Idempotent RESTCONF Upsert:** Remediation is a keyed `PATCH` to the interface container — no `no`-command purge (SNMP/Syslog) and no `default interface` wipe (Access Ports) is needed, because PATCH on a keyed resource is naturally idempotent.
+- **Closed-Loop Verification:** Re-issue the RESTCONF GET, re-run `build_roas()` + `check_roas()` against fresh operational state, and assert the gateway is actually provisioned before marking success.
+- **Enterprise Observability:** Stream severity-coded JSON to Splunk via HEC, with the documented orchestrator-vs-handler schema asymmetry (`ip/mask` vs `ip`, `transport` present/absent) made explicit.
+- **CI/CD Readiness:** Validate the state machine with 22 offline Pytest cases (14 builder + 8 compliance); ROAS is RESTCONF-only, so — unlike SNMP/Syslog/STP — the compliance suite is *not* transport-parametrized.
+
+---
+
+## Architecture
+
+The ROAS module follows the project's Source-of-Truth-driven architecture, but with a model-driven collection/remediation path unique to this module:
+
+| Component | Responsibility |
+|---|---|
+| **NetBox (Interfaces + Tags + IPAM)** | Supplies expected subinterface names, the `roas` policy tag, tagged VLANs, and gateway CIDR addresses. |
+| **RESTCONF Collector** | `collect_restconf_state()` GETs the native interface YANG tree over HTTPS with per-request fault isolation. |
+| **ROAS Builder** | `build_roas()` traverses the YANG model, filters to `.`-bearing subinterfaces, and emits a normalized `{interface: {router_vlan, ip, mask}}` lookup. |
+| **Compliance Checker** | `check_roas()` runs the three-gate diff with a short-circuit existence return. |
+| **Remediation Engine** | `configure_roas()` renders `roas.j2` into a YANG JSON payload and issues an idempotent RESTCONF `PATCH`. |
+| **Post-Validation** | Re-GETs the interface container, re-builds, re-checks, and confirms the gateway is live on the data plane. |
+
+## Topology 
+
+![NetBox Add New Tag](screenshots/topology.png)
+
 ## 1. Intended State: NetBox Source of Truth (Router-on-a-Stick - ROAS)
 
 In campus and branch network architectures, inter-VLAN traffic is frequently routed through an upstream gateway using **Router-on-a-Stick (ROAS)**. A single physical trunk link connects to the router, where logical 802.1Q subinterfaces serve as the default gateways for each broadcast domain.
@@ -1293,7 +1332,32 @@ tests/unit/compliance/routing/test_compliance_roas.py::test_compliance_roas_mult
 
 ============================== 8 passed in 0.39s ===============================
 ```
+### Continuous Integration Ready
 
+The test framework is designed for CI/CD pipeline integration:
+
+```yaml
+# .github/workflows/test.yml (GitHub Actions Example)
+name: Run Unit Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests with coverage                            <--------- Pytests 
+        run: pytest tests/unit/ --cov=src --cov-report=xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+```
 ---
 
 ### Test Suite Execution Summary
@@ -1303,3 +1367,40 @@ tests/unit/compliance/routing/test_compliance_roas.py::test_compliance_roas_mult
 | **RESTCONF ROAS Builder** | `tests/unit/collectors/restconf/test_build_roas.py` | YANG model parsing, subinterface isolation (`.`), parametrized media types/IPs, missing parameter guards | **PASSED (14/14)** | 0.11s |
 | **ROAS Compliance Suite** | `tests/unit/compliance/routing/test_compliance_roas.py` | State-machine reconciliation, bypass logic, RESTCONF PATCH remediation, dry-run safety, post-validation | **PASSED (8/8)** | 0.39s |
 | **Total** | | **Comprehensive Offline RESTCONF Test Suite** | **22 / 22** | **0.50s** |
+
+---
+
+## Conclusion & Engineering Takeaways
+
+This module demonstrates that inter-VLAN routing assurance is not a CLI problem — it is a **data-model problem**, and the cleanest way to solve it is to stop scraping text and start reading the device's own structured state. By treating the router as a YANG resource tree and the switch/gateway contract as a NetBox declaration, the engine turns silent, subnet-wide outages into a deterministic, observable, and reversible pipeline.
+
+Key architectural wins validated in this project include:
+1. **Model-Driven, Not Screen-Scraped:** ROAS is the portfolio's only pure-RESTCONF module. Parsing `encapsulation/dot1Q/vlan-id` and `ip/address/primary` from a JSON YANG payload removes the regex fragility that every CLI-scraping module carries, and the test suite proves it with synthetic YANG fixtures rather than captured terminal text.
+2. **Tag-Based SoT Classification:** Using a NetBox `roas` tag to select routing subinterfaces — rather than pattern-matching interface names — cleanly separates logical gateways from physical uplinks, loopbacks, and tunnels. The `ipaddress.ip_interface()` split at ingestion then guarantees the gateway IP and dotted-decimal mask are derived programmatically, never hand-typed.
+3. **Short-Circuit Diff Semantics:** The existence gate's early `return` is a deliberate design choice that keeps drift reports honest: a missing subinterface yields exactly one `Missing ROAS Interface` line, while an existing-but-wrong port yields *both* a VLAN and an IP mismatch — the two failure classes never blur.
+4. **Idempotent PATCH Upsert:** Because RESTCONF `PATCH` operates on a keyed resource, remediation needs neither the SNMP/Syslog `no`-command purge nor the Access-Port `default interface` wipe. Provisioning `2.20`–`2.70` is a single upsert per subinterface, and re-running it is a no-op — true idempotency by construction.
+5. **Closed-Loop Proof on the Data Plane:** The `DMI-5-CONFIG_I ... Configured from NETCONF/RESTCONF` console line plus the re-queried `show running-config` confirm the engine didn't just send a payload — it verified the router applied it.
+
+### Next Steps & Future Enhancements
+To further evolve this module, the following are planned:
+- **VRF-Aware ROAS:** Extend the SoT schema and YANG traversal to validate subinterfaces bound to non-default VRFs (`ip vrf forwarding`), the common multi-tenant branch pattern.
+- **IPv6 Subinterface Gateways:** Add `ipv6 address` YANG traversal and prefix/mask diffing alongside the current IPv4 `ip/address/primary` path.
+- **CI/CD Pipeline Integration:** Embed the 22-case suite into GitHub Actions to block PRs that regress the YANG traversal or the short-circuit diff.
+
+---
+
+### Return to Main Repository
+
+This module is part of a broader Network Automation Engine portfolio.
+
+**Explore other modules:**
+- [VLAN Compliance & Remediation](../vlan-compliance/)
+- [Access Port Compliance & Remediation](../access-ports/)
+- [Trunk Port Compliance & Remediation](../trunk-ports/)
+- [Interface Compliance & Remediation](../interface-compliance/)
+- [Spanning Tree Protocol (STP) Compliance](../stp-compliance/)
+- [Syslog Compliance & Remediation](../syslog-compliance/)
+- [SNMP Compliance & Remediation](../snmp-compliance/)
+- [F5 BIG-IP LTM Cloud Load Balancing](../f5-big-ip-ltm-lab/)
+
+⬅️ **[Return to Main Repository README](../README.md)**
