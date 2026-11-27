@@ -810,7 +810,7 @@ The router console on `EDGE-1` logs the programmatic transaction received by Cis
 ---
 
 #### 2. Device State: BEFORE Remediation (`EDGE-1`)
-Prior to remediation, physical parent interface `GigabitEthernet2` had zero subinterfaces configured. The only subinterface present was the §2 test port `GigabitEthernet1.90`:
+Prior to remediation, physical parent interface `GigabitEthernet2` had zero subinterfaces configured. The only subinterface present was the test port `GigabitEthernet1.90`:
 
 ![Running Config Before Remediation EDGE-1](screenshots/live-config-before.png)
 
@@ -905,6 +905,45 @@ GigabitEthernet4           unassigned      YES NVRAM  administratively down down
 
 > **Takeaway:**
 > The physical router verification confirms complete inter-VLAN routing deployment. By sending native model-driven RESTCONF PATCH requests, the engine provisioned all logical subinterfaces and verified that the Layer 3 gateways are active on the physical data plane.
+
+#### Visual Configuration Diff
+
+```diff
+
+ interface GigabitEthernet2
+  ip address 10.10.10.1 255.255.255.0
+  negotiation auto
+  no mop enabled
+  no mop sysid
+ !
++interface GigabitEthernet2.20
++ encapsulation dot1Q 20
++ ip address 10.10.20.1 255.255.255.0
++!
++interface GigabitEthernet2.30
++ encapsulation dot1Q 30
++ ip address 10.10.30.1 255.255.255.0
++!
++interface GigabitEthernet2.40
++ encapsulation dot1Q 40
++ ip address 10.10.40.1 255.255.255.0
++!
++interface GigabitEthernet2.50
++ encapsulation dot1Q 50
++ ip address 10.10.50.1 255.255.255.0
++!
++interface GigabitEthernet2.60
++ encapsulation dot1Q 60
++ ip address 10.10.60.1 255.255.255.0
++!
++interface GigabitEthernet2.70
++ encapsulation dot1Q 70
++ ip address 10.10.70.1 255.255.255.0
++!
+ interface GigabitEthernet3
+  no ip address
+  shutdown
+```
 
 ## 7. Audit Logging & Splunk Telemetry Pipeline (ROAS via RESTCONF)
 
@@ -1073,7 +1112,7 @@ Following remediation, the engine re-queries `/Cisco-IOS-XE-native:native/interf
 ---
 
 #### 5. Exception & Template Fault Observability (`status: ERROR`)
-If an exception occurs during remediation such as a missing template file the engine's `try...except` boundary catches the error and streams it with full context. **Note the severity:** the event is indexed at `cisco_sev: 6` / `level: INFO` (not Severity 3) because the remediation handler's `except` block invokes `log.info(...)` with `status: ERROR` instead of `log.error(...)`. Unlike the success event, this one *does* carry `transport`:
+If an exception occurs during remediation such as a missing template file the engine's `try...except` boundary catches the error and streams it with full context.
 
 ![Splunk ROAS Exception Log](screenshots/splunk-try-exception-error.png)
 
