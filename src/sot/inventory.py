@@ -4,6 +4,7 @@ from src.utils.helpers import normalize_to_list
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import ipaddress
 import json
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -32,16 +33,19 @@ def get_netbox():
     for device_name in all_devices:
         if not device_name.primary_ip:
             continue
+        transport = device_name.custom_fields.get("Transport")
         host_ip = str(device_name.primary_ip.address.split("/")[0])
+        device_role = device_name.role.slug
         inventory.append(
             {
                 "device_ip": host_ip,
                 "username": ssh_username,
                 "password": ssh_password,
                 "secret": ssh_secret,
+                "device_role": device_role,
                 "device_type": "cisco_ios",
                 "name": device_name.name,
-                "transport": "NETMIKO",
+                "transport": transport,
             }
         )
 
@@ -104,7 +108,7 @@ def get_netbox():
             "static_routes": [],
         }
         is_switch = device_name.role.slug in ["access_switch", "core_switch"]
-        is_router = device_name.role.slug == "router"
+        is_router = device_name.role.slug == "edge_router"
         ospf_process = {}
         context = device_name.config_context or {}
         acl_context = context.get("acl", {})
@@ -193,11 +197,10 @@ def get_netbox():
                     )
             if is_router:
                 interface_ips = interface_ip.get(device_interface.id, [])
-                for interface_ip in interface_ips:
-                    r_ip = ipaddress.ip_interface(str(interface_ip.address))
+                for ip_obj in interface_ips:
                     if "roas" in tags:
                         for v in device_interface.tagged_vlans:
-                            r_ip = ipaddress.ip_interface(str(interface_ip.address))
+                            r_ip = ipaddress.ip_interface(str(ip_obj.address))
                             config_data[host_ip]["roas"].append(
                                 {
                                     "device_ip": host_ip,
@@ -241,6 +244,7 @@ def get_netbox():
                                 ),
                                 "actual_neighbors": set(),
                             }
+
         if ospf_process:
             ospf_context = device_name.config_context.get("ospf", {})
             for proc_id, proc_data in ospf_process.items():

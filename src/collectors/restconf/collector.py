@@ -1,8 +1,12 @@
+import requests
+import json
 def collect_restconf_state(restconf, log):
     restconf_state = {}
 
     try:
         session = restconf.session
+        session.verify = False
+
         base_url = restconf.base_url
 
         # Interface
@@ -13,8 +17,6 @@ def collect_restconf_state(restconf, log):
         restconf_state["interface_restconf"] = (
             restconf_get(session, interface_url)
         )
-
-
         # OSPF configuration
         ospf_url = (
             f"{base_url}/Cisco-IOS-XE-native:native/router"
@@ -27,7 +29,7 @@ def collect_restconf_state(restconf, log):
 
         # OSPF operational state
         ospf_oper_url = (
-            f"{base_url}/Cisco-IOS-XE-ospf_oper:ospf-oper-data"
+            f"{base_url}/Cisco-IOS-XE-ospf-oper:ospf-oper-data"
         )
 
         restconf_state["ospf_oper_restconf"] = (
@@ -44,9 +46,11 @@ def collect_restconf_state(restconf, log):
 
 def restconf_get(session, url):
     try:
-        response = session.get(url, verify=False)
+        response = session.get(url,timeout=120)
 
         response.raise_for_status()
+        if response.status_code == 204 or not response.text.strip():
+            return {}
 
         return response.json()
     except requests.exceptions.HTTPError as e:

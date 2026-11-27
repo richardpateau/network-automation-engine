@@ -2,6 +2,12 @@ from contextlib import contextmanager
 import requests
 from netmiko import ConnectHandler
 from ncclient import manager
+from dataclasses import dataclass
+@dataclass
+class SessionContext:
+    session: requests.Session
+    base_url: str
+    device_ip: str
 
 def get_session(device):
     transport = device.get("transport")
@@ -44,13 +50,13 @@ def create_restconf_session(device):
         "Content-Type": "application/yang-data+json"
     })
 
-    base_url = f"https://{device['ip']}/restconf/data"
+    base_url = f"https://{device['device_ip']}/restconf/data"
 
     try:
         yield SessionContext(
         		session=session,
         		base_url=base_url,
-        		device_ip=device["ip"]
+        		device_ip=device["device_ip"]
         	)
     finally:
         session.close()
@@ -59,9 +65,9 @@ def create_netconf_session(device):
     session = manager.connect(
         host=device["ip"],
         port=830,
-        username=device["ssh_username"],
-        password=device["ssh_password"],
-        secret=device["ssh_secret"],
+        username=device["username"],
+        password=device["password"],
+        secret=device["secret"],
         hostkey_verify=False,
     )
 

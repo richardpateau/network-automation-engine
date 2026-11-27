@@ -1,10 +1,65 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-26T13:07:44.580992",
-        "total_devices": 2,
-        "successful_runs": 2
+        "timestamp": "2026-11-27T09:03:39.404768",
+        "total_devices": 3,
+        "successful_runs": 3
     },
     "devices": [
+        {
+            "device_name": "HQ-EDGE-1",
+            "device_ip": "192.168.255.10",
+            "hostname": null,
+            "status": "COMPLIANT",
+            "actions_taken": [
+                "ROAS Configuration Already Compliant | GigabitEthernet2.20 | VLAN: 20 | IP/Mask: 10.10.20.1/255.255.255.0",
+                "ROAS Configuration Already Compliant | GigabitEthernet2.30 | VLAN: 30 | IP/Mask: 10.10.30.1/255.255.255.0",
+                "ROAS Configuration Already Compliant | GigabitEthernet2.40 | VLAN: 40 | IP/Mask: 10.10.40.1/255.255.255.0",
+                "ROAS Configuration Already Compliant | GigabitEthernet2.50 | VLAN: 50 | IP/Mask: 10.10.50.1/255.255.255.0",
+                "ROAS Configuration Already Compliant | GigabitEthernet2.60 | VLAN: 60 | IP/Mask: 10.10.60.1/255.255.255.0",
+                "ROAS Configuration Already Compliant | GigabitEthernet2.70 | VLAN: 70 | IP/Mask: 10.10.70.1/255.255.255.0"
+            ],
+            "events": [],
+            "checks_passed": 0,
+            "checks_failed": 0,
+            "checks": {
+                "vlans": null,
+                "access_ports": null,
+                "trunk_ports": null,
+                "interfaces": null,
+                "roas": null,
+                "ospf": null,
+                "ntp": null,
+                "qos": null,
+                "stp": null,
+                "hsrp": null,
+                "nat": null,
+                "dhcp": null,
+                "snmp": null,
+                "syslog": null,
+                "port_security": null,
+                "dhcp_snooping": null,
+                "dai": null,
+                "cdp": null,
+                "etherchannel": null,
+                "static_routes": null
+            },
+            "initial_issues": [],
+            "critical_issues": [],
+            "warnings": [],
+            "Remediation": {
+                "attempted": false,
+                "successful": false,
+                "changes": []
+            },
+            "connection": {
+                "transport": null,
+                "method": null
+            },
+            "start_time": "2026-11-27T09:03:19.490700+00:00",
+            "end_time": "2026-11-27T09:03:21.758145+00:00",
+            "duration_seconds": 2.267445,
+            "errors": []
+        },
         {
             "device_name": "CORE-SW-1",
             "device_ip": "10.10.10.10",
@@ -72,9 +127,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-26T13:07:16.801399+00:00",
-            "end_time": "2026-11-26T13:07:23.754884+00:00",
-            "duration_seconds": 6.953485,
+            "start_time": "2026-11-27T09:03:19.490223+00:00",
+            "end_time": "2026-11-27T09:03:27.027457+00:00",
+            "duration_seconds": 7.537234,
             "errors": []
         },
         {
@@ -84,23 +139,14 @@
             "status": "FAILED_VALIDATION",
             "actions_taken": [
                 "VLAN Already Compliant | VLAN: 1 | Name: default",
-                "VLAN configured successfully | VLAN: 10 | Name: USERS",
-                "VLAN configured successfully | VLAN: 20 | Name: VOICE",
-                "VLAN configured successfully | VLAN: 30 | Name: SERVERS",
-                "VLAN configured successfully | VLAN: 40 | Name: GUEST",
-                "VLAN configured successfully | VLAN: 50 | Name: MANAGEMENT",
-                "VLAN configured successfully | VLAN: 60 | Name: PRINTERS_IOT",
-                "VLAN configured successfully | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
-                "VLAN configured successfully | VLAN: 999 | Name: NATIVE_UNUSED",
-                "VLAN Configuration Post Validation Successful | VLAN: 1 | Name: default",
-                "VLAN Configuration Post Validation Successful | VLAN: 10 | Name: USERS",
-                "VLAN Configuration Post Validation Successful | VLAN: 20 | Name: VOICE",
-                "VLAN Configuration Post Validation Successful | VLAN: 30 | Name: SERVERS",
-                "VLAN Configuration Post Validation Successful | VLAN: 40 | Name: GUEST",
-                "VLAN Configuration Post Validation Successful | VLAN: 50 | Name: MANAGEMENT",
-                "VLAN Configuration Post Validation Successful | VLAN: 60 | Name: PRINTERS_IOT",
-                "VLAN Configuration Post Validation Successful | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
-                "VLAN Configuration Post Validation Successful | VLAN: 999 | Name: NATIVE_UNUSED",
+                "VLAN Already Compliant | VLAN: 10 | Name: USERS",
+                "VLAN Already Compliant | VLAN: 20 | Name: VOICE",
+                "VLAN Already Compliant | VLAN: 30 | Name: SERVERS",
+                "VLAN Already Compliant | VLAN: 40 | Name: GUEST",
+                "VLAN Already Compliant | VLAN: 50 | Name: MANAGEMENT",
+                "VLAN Already Compliant | VLAN: 60 | Name: PRINTERS_IOT",
+                "VLAN Already Compliant | VLAN: 70 | Name: NETWORK_INFRASTRUCTURE",
+                "VLAN Already Compliant | VLAN: 999 | Name: NATIVE_UNUSED",
                 "Interface Configuration Already Compliant | Interface: Ethernet0/0 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet0/1 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet0/2 | Description:  | Should Be Up: True",
@@ -109,26 +155,19 @@
                 "Interface Configuration Already Compliant | Interface: Ethernet1/1 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet1/2 | Description: Configured via Netmiko | Should Be Up: True",
                 "Interface Configuration Already Compliant | Interface: Ethernet1/3 | Description: Configured via Netmiko | Should Be Up: True",
-                "Access Port configured successfully | Interface: Ethernet0/0 | VLAN: 10",
-                "Access Port configured successfully | Interface: Ethernet0/2 | VLAN: 20",
-                "Access Port configured successfully | Interface: Ethernet0/3 | VLAN: 30",
-                "Access Port configured successfully | Interface: Ethernet1/0 | VLAN: 40",
-                "Access Port configured successfully | Interface: Ethernet1/1 | VLAN: 50",
-                "Access Port configured successfully | Interface: Ethernet1/2 | VLAN: 60",
-                "Access Port configured successfully | Interface: Ethernet1/3 | VLAN: 70",
-                "Access Interface Post Validation Successful | Interface: Ethernet0/0 | VLAN: 10",
-                "Access Interface Post Validation Successful | Interface: Ethernet0/2 | VLAN: 20",
-                "Access Interface Post Validation Successful | Interface: Ethernet0/3 | VLAN: 30",
-                "Access Interface Post Validation Successful | Interface: Ethernet1/0 | VLAN: 40",
-                "Access Interface Post Validation Successful | Interface: Ethernet1/1 | VLAN: 50",
-                "Access Interface Post Validation Successful | Interface: Ethernet1/2 | VLAN: 60",
-                "Access Interface Post Validation Successful | Interface: Ethernet1/3 | VLAN: 70",
+                "Access Interface Already Compliant | Interface: Ethernet0/0 | VLAN: 10",
+                "Access Interface Already Compliant | Interface: Ethernet0/2 | VLAN: 20",
+                "Access Interface Already Compliant | Interface: Ethernet0/3 | VLAN: 30",
+                "Access Interface Already Compliant | Interface: Ethernet1/0 | VLAN: 40",
+                "Access Interface Already Compliant | Interface: Ethernet1/1 | VLAN: 50",
+                "Access Interface Already Compliant | Interface: Ethernet1/2 | VLAN: 60",
+                "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
-                "STP Successfully Configured | Mode: rapid-pvst | VLAN/Priority: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
-                "STP Global Configuration Post Validation Successful | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
+                "STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
                 "STP Interface Feature Successfully Configured | Interface: Ethernet0/0 | Feature: Portfast: True | Loop Guard: False | BPDU Guard: True | BPDU Filter: False | Root Guard: False",
                 "SNMP Configuration Already Compliant | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.10.10.50 (MERIDIAN-RO)  | Traps: linkup, linkdown, coldstart, warmstart, authentication",
-                "Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational"
+                "Syslog Configuration Successful | Hosts: Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Facility: local7 | Source Interface: loopback0 | service timestamps log datetime msec: True | Severity: informational | Transport: NETMIKO",
+                "Syslog Configuration Post Validation Successful | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational"
             ],
             "events": [],
             "checks_passed": 0,
@@ -156,23 +195,8 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "VLAN 10 not found on device.",
-                "VLAN 20 not found on device.",
-                "VLAN 30 not found on device.",
-                "VLAN 40 not found on device.",
-                "VLAN 50 not found on device.",
-                "VLAN 60 not found on device.",
-                "VLAN 70 not found on device.",
-                "VLAN 999 not found on device.",
-                "Mismatched Access Port VLAN | Interface: ethernet0/0 | VLAN: Expected VLAN: 10 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet0/2 | VLAN: Expected VLAN: 20 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet0/3 | VLAN: Expected VLAN: 30 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/0 | VLAN: Expected VLAN: 40 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/1 | VLAN: Expected VLAN: 50 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/2 | VLAN: Expected VLAN: 60 | Actual VLAN: 1",
-                "Mismatched Access Port VLAN | Interface: ethernet1/3 | VLAN: Expected VLAN: 70 | Actual VLAN: 1",
-                "Mismatched STP Mode | Expected: rapid-pvst | Actual: unknown",
-                "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False"
+                "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False",
+                "(SYSLOG) Mismatched Source Interface | Expected: loopback0 | Actual: o"
             ],
             "critical_issues": [
                 "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False"
@@ -187,14 +211,14 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-26T13:07:16.800611+00:00",
-            "end_time": "2026-11-26T13:07:44.580192+00:00",
-            "duration_seconds": 27.779581,
+            "start_time": "2026-11-27T09:03:19.489643+00:00",
+            "end_time": "2026-11-27T09:03:39.404197+00:00",
+            "duration_seconds": 19.914554,
             "errors": []
         }
     ],
     "summary": {
-        "compliant": 1,
+        "compliant": 2,
         "non_compliant": 0,
         "failed": 0
     }

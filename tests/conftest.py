@@ -193,6 +193,8 @@ def roas_restconf():
     fixture_path = (
         Path(__file__).parent / "fixtures" / "restconf" / "roas_restconf.json"
     )
+    with open(fixture_path) as f:
+        return json.load(f)
 
 
 @pytest.fixture
@@ -200,3 +202,5 @@ def ospf_restconf():
     fixture_path = (
         Path(__file__).parent / "fixtures" / "restconf" / "ospf_restconf.json"
     )
+    with open(fixture_path) as f:
+        return json.load(f)

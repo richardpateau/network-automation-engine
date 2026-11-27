@@ -34,6 +34,7 @@ PIPELINE = {
         "depends_on": [],
         "context_key": "vlans",
     	"transport": "NETMIKO",
+        "device_roles": ["access_switch", "core_switch"]
     },
 
     "interfaces": {
@@ -41,6 +42,7 @@ PIPELINE = {
         "depends_on": ["vlans"],
         "context_key": "interfaces",
     	"transport": "NETMIKO",
+        "device_roles": ["access_switch", "core_switch"]
     },
 
     "access_ports": {
@@ -48,6 +50,7 @@ PIPELINE = {
         "depends_on": ["vlans", "interfaces"],
         "context_key": "access_ports",
     	"transport": "NETMIKO",
+        "device_roles": ["access_switch", "core_switch"]
     },
 
     "trunk_ports": {
@@ -66,6 +69,7 @@ PIPELINE = {
         ],
         "context_key": "etherchannel",
     	"transport": "NETMIKO",
+        "device_roles": ["access_switch", "core_switch"]
     },
 
     "stp": {
@@ -76,6 +80,7 @@ PIPELINE = {
         ],
         "context_key": "stp",
     	"transport": "NETMIKO",
+        "device_roles": ["access_switch", "core_switch"]
     },
 
     "stp_interfaces": {
@@ -86,6 +91,7 @@ PIPELINE = {
         ],
         "context_key": "interfaces",
     	"transport": "NETMIKO",
+        "device_roles": ["access_switch", "core_switch"]
     },
 
 
@@ -97,6 +103,7 @@ PIPELINE = {
         ],
         "context_key": "roas",
     	"transport": "RESTCONF",
+        "device_roles": ["edge_router"]
     },
 
     "hsrp": {
@@ -106,6 +113,7 @@ PIPELINE = {
         ],
         "context_key": "hsrp",
     	"transport": "NETCONF",
+        "device_roles": ["edge_router"]
     },
 
     "ospf": {
@@ -115,6 +123,7 @@ PIPELINE = {
         ],
         "context_key": "ospf",
     	"transport": "RESTCONF",
+        "device_roles": ["edge_router"]
     },
 
     "static_routes": {
@@ -124,6 +133,7 @@ PIPELINE = {
         ],
         "context_key": "static_routes",
     	"transport": "NETCONF",
+        "device_roles": ["edge_router"]
     },
 
     "nat": {
@@ -134,6 +144,7 @@ PIPELINE = {
         ],
         "context_key": "nat",
     	"transport": "NETMIKO",
+        "device_roles": ["edge_router"]
     },
 
 
@@ -184,6 +195,7 @@ PIPELINE = {
         ],
         "context_key": "ntp",
     	"transport": "NETCONF",
+        "device_roles": ["edge_router"]
     },
 
     "snmp": {

@@ -32,7 +32,7 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log,
                     **log_extra,
                     "status": StepStatus.SUCCESS.value,
                     "detail": "VLAN Configuration Already Compliant"
-    
+
                 }
             )
             device_result["actions_taken"].append(
@@ -40,9 +40,9 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log,
                 f"VLAN: {vlan_id} | Name: {vlan_name}"
             )
             continue
-    
+
         device_result["initial_issues"].extend(failures)
-    
+
         log.warning(
             "vlan_drift",
             extra={
@@ -51,7 +51,7 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log,
                 "detail": "VLAN Configuration Non-Compliant"
             }
         )
-        if DRY_RUN: 
+        if DRY_RUN:
             device_result["actions_taken"].append(
                     f"[DRY_RUN] Would Configure VLANs | VLAN: {vlan_id} | Name: {vlan_name}"
                 )
@@ -63,11 +63,11 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log,
         if result.get("status") == OperationalStatus.SUCCESS.value:
             vlan_updated = True
         else:
-            device_result["status"] = OperationalStatus.FAILED_CONFIG.value 
+            device_result["status"] = OperationalStatus.FAILED_CONFIG.value
             device_result["critical_issues"].append(
                     f"Failed To Remediate VLAN | VLAN: {vlan_id} | Name: {vlan_name}"
                 )
-    
+
     if vlan_updated and not DRY_RUN:
         new_state = collect_device_state(sesh)
         new_vlan = build_vlan(new_state)
@@ -87,7 +87,7 @@ def compliance_vlans(sesh, device_ip, context, device_state, device_result, log,
                 "failure_count": len(failures) if failures else 0,
                 "failures": failures
             }
-    
+
             if not ok:
                 device_result["critical_issues"].extend(failures)
                 device_result["status"] = OperationalStatus.FAILED_VALIDATION.value

@@ -1,6 +1,6 @@
 def check_roas(expected_roas, actual_config): 
 	failures = []
-	exp_interface = expected_roas.get("interface", "")
+	exp_interface = expected_roas.get("interface", "").lower()
 	exp_vlan = str(expected_roas.get("router_vlan", ""))
 	exp_ip = expected_roas.get("ip", "")
 	exp_mask = expected_roas.get("mask", "")
@@ -17,7 +17,6 @@ def check_roas(expected_roas, actual_config):
 		failures.append(
 				f"ROAS VLAN Mismatch | Expected: {exp_vlan} | Actual: {actual_vlan}"
 			)
-		return False, failures
 	actual_ip = actual.get("ip", "")
 	actual_mask = actual.get("mask", "")
 	actual_ip_mask = f"{actual_ip}/{actual_mask}"

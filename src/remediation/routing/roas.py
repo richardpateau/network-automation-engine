@@ -3,7 +3,7 @@ from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
 
-def configure_roas(session, roas_data, log): 
+def configure_roas(session, roas_data, device_ip, transport, log):
 	interface = roas_data.get("interface", "")
 	router_vlan = roas_data.get("router_vlan", "")
 	ip = roas_data.get("ip", "")
@@ -11,12 +11,12 @@ def configure_roas(session, roas_data, log):
 	new_int = re.search(r'[\d./]+$', interface).group()
 
 	try: 
-		template = template_env.get_template("restconf_roas.j2")
+		template = template_env.get_template("roas.j2")
 		commands = template.render(
-				new_interface=new_int,
-				router_vlan=router_vlan,
+				new_int=new_int,
 				ip=ip,
-				mask=mask
+				mask=mask,
+				router_vlan=router_vlan
 			)
 		if DRY_RUN:
 			return {
@@ -24,16 +24,16 @@ def configure_roas(session, roas_data, log):
 				"summary": (
 						f"[DRY_RUN] Would Configure ROAS | "
 						f"Interface: {interface} | VLAN: {router_vlan} | "
-						f"IP: {ip}/{mask} | Transport: {session.transport}"
+						f"IP: {ip}/{mask} | Transport: {transport}"
 				)
 			}
-		response = session.patch(
-				url=f"{sesssion.base_url}/Cisco-IOS-XE-native:native/interface",
+		response = session.session.patch(
+				url=f"{session.base_url}/Cisco-IOS-XE-native:native/interface",
 				data=commands
 			)
 		if response.status_code not in [200,201,204]: 
 			return {
-                "status": OperationalStatus.CONFIG_FAILED.value,
+                "status": OperationalStatus.FAILED_CONFIG.value,
                 "summary": (f"ROAS config failed {response.text}"
                 		    f"Interface: {interface} | VLAN: {router_vlan} | "
 						    f"IP: {ip}/{mask}"
@@ -44,7 +44,7 @@ def configure_roas(session, roas_data, log):
 		log.info(
             "roas_config",
             extra={
-                "device_ip": session.device_ip,
+                "device_ip": device_ip,
                 "component": "roas_automation",
                 "event_type": "roas_config",
                 "status": StepStatus.SUCCESS.value,
@@ -62,7 +62,7 @@ def configure_roas(session, roas_data, log):
 				"status": OperationalStatus.SUCCESS.value,
 				"summary": (f"ROAS Successfully Configured | "
 						    f"Interface: {interface} | VLAN: {router_vlan} | "
-						    f"IP: {ip}/{mask} | Transport: {session.transport}"
+						    f"IP: {ip}/{mask} | Transport: {transport}"
                 	)
 			}
 	except Exception as e: 
@@ -72,10 +72,11 @@ def configure_roas(session, roas_data, log):
                 "device_ip": device_ip,
                 "component": "roas_automation",
                 "event_type": "roas_config",
-                "transport": session.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "interface": interface,
                 "vlan_id": router_vlan,
+				"error": f"{str(e)}",
                 "ip": f"{ip}/{mask}",
                 "detail": (f"Try/Exception Error | ROAS Configuration | "
                 			f"Interface: {interface} | VLAN: {router_vlan} | "
@@ -88,7 +89,7 @@ def configure_roas(session, roas_data, log):
 				"status": OperationalStatus.ERROR.value,
 				"summary":(f"Try/Exception Error | ROAS Configuration | "
                 			f"Interface: {interface} | VLAN: {router_vlan} | "
-						    f"IP: {ip}/{mask} | Transport: {session.transport}"
+						    f"IP: {ip}/{mask} | Transport: {transport}"
                 	),
 				"error": str(e)
 			}

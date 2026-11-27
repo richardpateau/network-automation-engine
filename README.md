@@ -12,7 +12,7 @@ An enterprise-grade, closed-loop network compliance and automated remediation fr
 
 ---
 
-## 📖 Feature Execution Walkthroughs
+## Feature Execution Walkthroughs
 
 Each protocol implementation includes an end-to-end case study documenting **NetBox modeling → live collection → diff detection → Jinja2 remediation → physical switch verification → Splunk audit telemetry → offline unit tests**:
 
@@ -28,7 +28,7 @@ Each protocol implementation includes an end-to-end case study documenting **Net
 
 ---
 
-## 🔄 Architecture & Closed-Loop Lifecycle
+## Architecture & Closed-Loop Lifecycle
 
 The engine operates on a deterministic, closed-loop reconciliation cycle:
 
@@ -77,7 +77,7 @@ The engine operates on a deterministic, closed-loop reconciliation cycle:
 
 ---
 
-## 🛠 Core Engineering Principles
+## Core Engineering Principles
 
 ### 1. Declarative Source of Truth (NetBox)
 Configurations never originate on switch CLIs. NetBox models the entire desired network state:
@@ -104,7 +104,7 @@ Built-in `DRY_RUN` execution intercepts the pipeline before any network sockets 
 
 ---
 
-## 📝 Jinja2 Template Architecture
+## Jinja2 Template Architecture
 
 The engine uses three distinct template patterns depending on the remediation strategy required:
 

@@ -104,17 +104,31 @@ def run_pipeline(
     device_result,
     log,
     device_ip,
-    transport
+    transport,
+    device_role
 ):
     order = resolve_pipeline(pipeline)
 
     if context is None:
         context = {}
 
+    device_role = str(device_role).lower().strip()
+
     for feature in order:
 
         feature_config = pipeline[feature]
         context_key = feature_config.get("context_key", feature)
+
+        allowed_roles = feature_config.get("device_roles")
+
+        if allowed_roles and device_role not in allowed_roles:
+            log.debug(
+                "Skipping feature | %s | Device role '%s' not in allowed roles %s",
+                feature,
+                device_role,
+                allowed_roles
+            )
+            continue
 
         if not has_expected_config(context_key, context):
             log.debug(
@@ -133,7 +147,8 @@ def run_pipeline(
                 device_state,
                 device_result,
                 log,
-                transport
+                transport,
+
             )
 
         except Exception as e:

@@ -19,6 +19,7 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log, 
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "roas_compliance",
             "protocol": "roas",
             "transport": transport,
             "interface": interface,
@@ -60,7 +61,7 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log, 
             )
             continue
 
-        result = configure_roas(sesh, roas_data, log)
+        result = configure_roas(sesh, roas_data, device_ip, transport,log)
 
         summary = result.get("summary")
         if summary:
@@ -69,8 +70,8 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log, 
         if result.get("status") == OperationalStatus.SUCCESS.value:
             roas_updated = True
         else:
-            device_result["status"] = OperationalStatus.FAILD_CONFIG.value
-            device_result["critical_issues"] = (
+            device_result["status"] = OperationalStatus.FAILED_CONFIG.value
+            device_result["critical_issues"].append(
                 f"Failed to Remediate ROAS | Interface: {interface} | "
                 f"VLAN: {vlan} | IP/Mask: {ip}/{mask}"
             )
@@ -89,6 +90,7 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log, 
             log_extra = {
                 "device_ip": device_ip,
                 "component": "main_process",
+                "event_type": "roas_compliance",
                 "protocol": "roas",
                 "transport": transport,
                 "interface": interface,

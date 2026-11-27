@@ -1,5 +1,5 @@
 from src.utils.helpers import normalize_to_list, safe_int
-
+import json
 
 # ROAS
 def build_roas(restconf_state):
@@ -23,7 +23,7 @@ def build_roas(restconf_state):
             mask = g.get("ip", {}).get("address", {}).get("primary", {}).get("mask", "")
             if not vlan_id or not ip_address or not mask:
                 continue
-            actual_roas[full_interface] = {
+            actual_roas[full_interface.lower()] = {
                 "interface": full_interface,
                 "router_vlan": safe_int(vlan_id),
                 "ip": ip_address,

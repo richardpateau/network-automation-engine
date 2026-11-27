@@ -1,0 +1,22 @@
+{
+  "Cisco-IOS-XE-native:interface": {
+    "GigabitEthernet": [
+      {
+        "name": {{ new_int }},
+        "encapsulation": {
+          "dot1Q": {
+            "vlan-id": {{ router_vlan }}
+          }
+        },
+        "ip": {
+          "address": {
+            "primary": {
+              "address": "{{ ip }}",
+              "mask": "{{ mask }}"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

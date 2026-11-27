@@ -51,16 +51,17 @@ def create_restconf_session(device):
         "Content-Type": "application/yang-data+json"
     })
 
-    base_url = f"https://{device['ip']}/restconf/data"
+    base_url = f"https://{device['device_ip']}/restconf/data"
 
     try:
         yield SessionContext(
         		session=session,
         		base_url=base_url,
-        		device_ip=device["ip"]
+        		device_ip=device["device_ip"]
         	)
     finally:
         session.close()
+
 @contextmanager
 def create_netconf_session(device):
     session = manager.connect(

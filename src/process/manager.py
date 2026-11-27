@@ -20,9 +20,11 @@ class MergingLoggerAdapter(logging.LoggerAdapter):
         }
 
         return msg, kwargs
+
 def main_process(task):
     device = task["device"]
     context = task.get("context", {})
+    device_role = device.get("device_role")
     device_ip = device.get("device_ip")
     adapter = MergingLoggerAdapter(
         logger,
@@ -118,7 +120,8 @@ def main_process(task):
                     device_result,
                     adapter,
                     device_ip,
-                    transport
+                    transport,
+                    device_role
                 )
     except Exception as e:
         adapter.exception(
