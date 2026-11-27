@@ -37,6 +37,17 @@ The ROAS module follows the project's Source-of-Truth-driven architecture, but w
 
 ![NetBox Add New Tag](screenshots/topology.png)
 
+### Table of Contents
+
+- [1. Intended State: NetBox Source of Truth (Router-on-a-Stick - ROAS)](#1-intended-state-netbox-source-of-truth-router-on-a-stick---roas)
+- [2. Live Device State Collection & RESTCONF Parsing](#2-live-device-state-collection--restconf-parsing)
+- [3. ROAS Compliance Diff Engine & Drift Detection](#3-roas-compliance-diff-engine--drift-detection)
+- [4. Configuration Remediation](#4-configuration-remediation)
+- [5. Safe Change Management: Dry-Run Mode](#5-safe-change-management-dry-run-mode)
+- [6. Post-Remediation Validation & Physical Device Proof](#6-post-remediation-validation--physical-device-proof)
+- [7. Audit Logging & Splunk Telemetry Pipeline (ROAS via RESTCONF)](#7-audit-logging--splunk-telemetry-pipeline-roas-via-restconf)
+- [8. Automated Unit Testing & CI/CD Validation (ROAS via RESTCONF)](#8-automated-unit-testing--cicd-validation-roas-via-restconf)
+
 ## 1. Intended State: NetBox Source of Truth (Router-on-a-Stick - ROAS)
 
 In campus and branch network architectures, inter-VLAN traffic is frequently routed through an upstream gateway using **Router-on-a-Stick (ROAS)**. A single physical trunk link connects to the router, where logical 802.1Q subinterfaces serve as the default gateways for each broadcast domain.
