@@ -2,21 +2,21 @@
 
 ## Overview
 
-In campus and branch topologies, inter-VLAN traffic exits each broadcast domain through a single physical trunk on the edge router, where logical 802.1Q subinterfaces act as the default gateway for every VLAN. A drifted subinterface here is not a cosmetic misconfiguration — a missing or mis-tagged gateway silently strands an entire subnet with no Layer 3 path, and a wrong encapsulation VLAN tag black-holes or cross-routes traffic between segments.
+In campus and branch topologies, inter-VLAN traffic exits each broadcast domain through a single physical trunk on the edge router, where logical 802.1Q subinterfaces act as the default gateway for every VLAN. A drifted subinterface here is not a cosmetic misconfiguration, a missing or mis-tagged gateway silently strands an entire subnet with no Layer 3 path, and a wrong encapsulation VLAN tag black-holes or cross-routes traffic between segments.
 
 The **ROAS Compliance & RESTCONF Remediation** module is a production-grade, closed-loop automation engine built specifically for this failure class. It is the portfolio's only **model-driven** module: rather than screen-scraping a CLI, it reads the router's live state as a structured **YANG data model** over **RESTCONF**, diffs it against a **NetBox Source of Truth**, and heals drift by issuing an idempotent **HTTP PATCH** upsert against the `Cisco-IOS-XE-native` interface container.
 
-Because the SoT must distinguish routing subinterfaces from physical uplinks, loopbacks, and tunnel endpoints, the engine introduces a **tag-based policy classification** pattern: NetBox interfaces carry an administrative `roas` tag, and the inventory engine uses that tag — combined with programmatic `ipaddress` CIDR splitting — to build an unambiguous gateway contract for the diff engine.
+Because the SoT must distinguish routing subinterfaces from physical uplinks, loopbacks, and tunnel endpoints, the engine introduces a **tag-based policy classification** pattern: NetBox interfaces carry an administrative `roas` tag, and the inventory engine uses that tag combined with programmatic `ipaddress` CIDR splitting to build an unambiguous gateway contract for the diff engine.
 
 ### Core Engineering Objectives
 - **Declarative Baseline via Tagged SoT:** Establish NetBox IPAM + the `roas` interface tag as the single source of truth for subinterface identity, 802.1Q encapsulation VLAN, and gateway IP/mask.
-- **Model-Driven Collection (RESTCONF/YANG):** Query `/data/Cisco-IOS-XE-native:native/interface` over HTTPS with a persistent session, parsing the JSON-encoded YANG tree instead of scraping terminal output — eliminating regex fragility on subinterface syntax.
+- **Model-Driven Collection (RESTCONF/YANG):** Query `/data/Cisco-IOS-XE-native:native/interface` over HTTPS with a persistent session, parsing the JSON-encoded YANG tree instead of scraping terminal output eliminating regex fragility on subinterface syntax.
 - **Deterministic Subinterface Isolation:** `build_roas()` filters to logical ports via the `if "." not in name` guard and traverses `encapsulation/dot1Q/vlan-id` and `ip/address/primary` directly from the data model.
 - **Short-Circuit Multi-Gate Diff:** `check_roas()` evaluates existence → encapsulation-tag parity → gateway IP/mask, returning early on a missing subinterface so a non-existent port never produces spurious attribute mismatches.
-- **Idempotent RESTCONF Upsert:** Remediation is a keyed `PATCH` to the interface container — no `no`-command purge (SNMP/Syslog) and no `default interface` wipe (Access Ports) is needed, because PATCH on a keyed resource is naturally idempotent.
+- **Idempotent RESTCONF Upsert:** Remediation is a keyed `PATCH` to the interface container no `no`-command purge (SNMP/Syslog) and no `default interface` wipe (Access Ports) is needed, because PATCH on a keyed resource is naturally idempotent.
 - **Closed-Loop Verification:** Re-issue the RESTCONF GET, re-run `build_roas()` + `check_roas()` against fresh operational state, and assert the gateway is actually provisioned before marking success.
 - **Enterprise Observability:** Stream severity-coded JSON to Splunk via HEC, with the documented orchestrator-vs-handler schema asymmetry (`ip/mask` vs `ip`, `transport` present/absent) made explicit.
-- **CI/CD Readiness:** Validate the state machine with 22 offline Pytest cases (14 builder + 8 compliance); ROAS is RESTCONF-only, so — unlike SNMP/Syslog/STP — the compliance suite is *not* transport-parametrized.
+- **CI/CD Readiness:** Validate the state machine with 22 offline Pytest cases (14 builder + 8 compliance); ROAS is RESTCONF-only, so unlike SNMP/Syslog/STP the compliance suite is *not* transport-parametrized.
 
 ---
 
@@ -488,7 +488,7 @@ def compliance_roas(sesh, device_ip, context, device_state, device_result, log, 
 
 ### 2. Multi-Tier Subinterface Diff Engine (`src/compliance/routing/roas/check.py`)
 
-The `check_roas()` function evaluates three distinct failure gates. Note that the existence gate **short-circuits** (`return False, failures`) so a missing subinterface never falls through to the VLAN/IP gates — which is why Scenario A produces only `Missing` lines, while Scenario B's existing-but-wrong `2.20` produces *both* a VLAN and an IP mismatch.
+The `check_roas()` function evaluates three distinct failure gates. Note that the existence gate **short-circuits** (`return False, failures`) so a missing subinterface never falls through to the VLAN/IP gates, which is why Scenario A produces only `Missing` lines, while Scenario B's existing-but-wrong `2.20` produces *both* a VLAN and an IP mismatch.
 
 ![ROAS Check Implementation](screenshots/code-check-roas.png)
 
@@ -596,7 +596,7 @@ Missing ROAS Interface on Device | Interface: gigabitethernet2.70 | VLAN: 70 | I
 
 ### 4. Machine-Readable Drift Artifact: `final_compliance_report.json`
 
-All initial discrepancies detected during the RESTCONF audit are cataloged into `src/final_compliance_report.json` under `initial_issues` (the `critical_issues` array is empty — this was a read-only audit pass, no remediation executed):
+All initial discrepancies detected during the RESTCONF audit are cataloged into `src/final_compliance_report.json` under `initial_issues` (the `critical_issues` array is empty, this was a read-only audit pass, no remediation executed):
 
 ![Final Compliance Report Initial Issues ROAS](screenshots/check-initial-issues.png)
 
@@ -875,7 +875,7 @@ interface GigabitEthernet2.70
 
 ---
 
-#### 4. Operational State Verification (`show ip interface brief`) — *illustrative, capture pending*
+#### 4. Operational State Verification (`show ip interface brief`), *illustrative, capture pending*
 
 Executing `show ip int brief` on `EDGE-1` is expected to confirm that all six subinterfaces are operational (`Status: up`, `Protocol: up`), with the `Method` column reflecting the provisioning channel:
 
@@ -902,9 +902,9 @@ GigabitEthernet4           unassigned      YES NVRAM  administratively down down
 
 ## 7. Audit Logging & Splunk Telemetry Pipeline (ROAS via RESTCONF)
 
-To satisfy enterprise change governance and SIEM auditing requirements, every operational phase of the Router-on-a-Stick workflow pre-checks, drift detection, RESTCONF HTTP PATCH execution, template exception handling, and post-validation—generates structured JSON events streamed directly to **Splunk via the HTTP Event Collector (HEC)** (`index="network_automation"`, `sourcetype="_json"`).
+To satisfy enterprise change governance and SIEM auditing requirements, every operational phase of the Router-on-a-Stick workflow pre-checks, drift detection, RESTCONF HTTP PATCH execution, template exception handling, and post-validation generates structured JSON events streamed directly to **Splunk via the HTTP Event Collector (HEC)** (`index="network_automation"`, `sourcetype="_json"`).
 
-Note the **schema asymmetry between the two event families**: orchestrator events (`event_type: roas_compliance`) carry `transport: "RESTCONF"`, `protocol: "roas"`, and `compliant`, while remediation-handler events (`event_type: roas_config`) omit `protocol` and `compliant`, and—on the success path—omit `transport` as well. The SPL below therefore filters on `protocol` *or* `event_type` so neither family is missed.
+Note the **schema asymmetry between the two event families**: orchestrator events (`event_type: roas_compliance`) carry `transport: "RESTCONF"`, `protocol: "roas"`, and `compliant`, while remediation-handler events (`event_type: roas_config`) omit `protocol` and `compliant`, and on the success path omit `transport` as well. The SPL below therefore filters on `protocol` *or* `event_type` so neither family is missed.
 
 ```spl
 index="network_automation" sourcetype="_json" (protocol="roas" OR event_type="roas_config")
@@ -1002,7 +1002,7 @@ When an intended subinterface is missing from the router's running configuration
 ---
 
 #### 3. Targeted RESTCONF Remediation Push (`roas_config`)
-Emitted immediately after the RESTCONF HTTP PATCH request successfully provisions the subinterface with status code 200/204. This event originates from the **remediation handler** (`roas_automation`), so it carries no `protocol`, no `compliant`, and—unlike the orchestrator events—**no `transport`** field, and uses `ip` (combined) rather than `ip/mask`:
+Emitted immediately after the RESTCONF HTTP PATCH request successfully provisions the subinterface with status code 200/204. This event originates from the **remediation handler** (`roas_automation`), so it carries no `protocol`, no `compliant`, and unlike the orchestrator events **no `transport`** field, and uses `ip` (combined) rather than `ip/mask`:
 
 ![Splunk ROAS Configured Successfully](screenshots/splunk-configured-successfully.png)
 
@@ -1067,7 +1067,7 @@ Following remediation, the engine re-queries `/Cisco-IOS-XE-native:native/interf
 ---
 
 #### 5. Exception & Template Fault Observability (`status: ERROR`)
-If an exception occurs during remediation—such as a missing template file—the engine's `try...except` boundary catches the error and streams it with full context. **Note the severity:** the event is indexed at `cisco_sev: 6` / `level: INFO` (not Severity 3) because the remediation handler's `except` block invokes `log.info(...)` with `status: ERROR` instead of `log.error(...)`. Unlike the success event, this one *does* carry `transport`:
+If an exception occurs during remediation such as a missing template file the engine's `try...except` boundary catches the error and streams it with full context. **Note the severity:** the event is indexed at `cisco_sev: 6` / `level: INFO` (not Severity 3) because the remediation handler's `except` block invokes `log.info(...)` with `status: ERROR` instead of `log.error(...)`. Unlike the success event, this one *does* carry `transport`:
 
 ![Splunk ROAS Exception Log](screenshots/splunk-try-exception-error.png)
 
@@ -1237,7 +1237,7 @@ tests/unit/collectors/restconf/test_build_roas.py::test_build_roas_no_mask PASSE
 
 ### Layer 2: ROAS Compliance Decision Engine Tests (`test_compliance_roas.py`)
 
-Using `@patch` and `MagicMock`, this suite evaluates `compliance_roas()` across all lifecycle states. Unlike the dual-transport Syslog/SNMP/STP suites, ROAS is **RESTCONF-only**, so these tests are *not* parametrized over `TRANSPORT` — a single `mock_transport = "RESTCONF"` fixture is threaded through every call.
+Using `@patch` and `MagicMock`, this suite evaluates `compliance_roas()` across all lifecycle states. Unlike the dual-transport Syslog/SNMP/STP suites, ROAS is **RESTCONF-only**, so these tests are *not* parametrized over `TRANSPORT`, a single `mock_transport = "RESTCONF"` fixture is threaded through every call.
 
 #### Test Scenarios Covered (8 Tests):
 1. **`test_compliance_roas_already_compliant`**: Confirms that when a subinterface matches NetBox specifications, `mock_log.info` is called once, `mock_log.warning` is not called, and `initial_issues` remains empty.
@@ -1372,14 +1372,14 @@ jobs:
 
 ## Conclusion & Engineering Takeaways
 
-This module demonstrates that inter-VLAN routing assurance is not a CLI problem — it is a **data-model problem**, and the cleanest way to solve it is to stop scraping text and start reading the device's own structured state. By treating the router as a YANG resource tree and the switch/gateway contract as a NetBox declaration, the engine turns silent, subnet-wide outages into a deterministic, observable, and reversible pipeline.
+This module demonstrates that inter-VLAN routing assurance is not a CLI problem, it is a **data-model problem**, and the cleanest way to solve it is to stop scraping text and start reading the device's own structured state. By treating the router as a YANG resource tree and the switch/gateway contract as a NetBox declaration, the engine turns silent, subnet-wide outages into a deterministic, observable, and reversible pipeline.
 
 Key architectural wins validated in this project include:
 1. **Model-Driven, Not Screen-Scraped:** ROAS is the portfolio's only pure-RESTCONF module. Parsing `encapsulation/dot1Q/vlan-id` and `ip/address/primary` from a JSON YANG payload removes the regex fragility that every CLI-scraping module carries, and the test suite proves it with synthetic YANG fixtures rather than captured terminal text.
-2. **Tag-Based SoT Classification:** Using a NetBox `roas` tag to select routing subinterfaces — rather than pattern-matching interface names — cleanly separates logical gateways from physical uplinks, loopbacks, and tunnels. The `ipaddress.ip_interface()` split at ingestion then guarantees the gateway IP and dotted-decimal mask are derived programmatically, never hand-typed.
-3. **Short-Circuit Diff Semantics:** The existence gate's early `return` is a deliberate design choice that keeps drift reports honest: a missing subinterface yields exactly one `Missing ROAS Interface` line, while an existing-but-wrong port yields *both* a VLAN and an IP mismatch — the two failure classes never blur.
-4. **Idempotent PATCH Upsert:** Because RESTCONF `PATCH` operates on a keyed resource, remediation needs neither the SNMP/Syslog `no`-command purge nor the Access-Port `default interface` wipe. Provisioning `2.20`–`2.70` is a single upsert per subinterface, and re-running it is a no-op — true idempotency by construction.
-5. **Closed-Loop Proof on the Data Plane:** The `DMI-5-CONFIG_I ... Configured from NETCONF/RESTCONF` console line plus the re-queried `show running-config` confirm the engine didn't just send a payload — it verified the router applied it.
+2. **Tag-Based SoT Classification:** Using a NetBox `roas` tag to select routing subinterfaces, rather than pattern-matching interface names, cleanly separates logical gateways from physical uplinks, loopbacks, and tunnels. The `ipaddress.ip_interface()` split at ingestion then guarantees the gateway IP and dotted-decimal mask are derived programmatically, never hand-typed.
+3. **Short-Circuit Diff Semantics:** The existence gate's early `return` is a deliberate design choice that keeps drift reports honest: a missing subinterface yields exactly one `Missing ROAS Interface` line, while an existing-but-wrong port yields *both* a VLAN and an IP mismatch, the two failure classes never blur.
+4. **Idempotent PATCH Upsert:** Because RESTCONF `PATCH` operates on a keyed resource, remediation needs neither the SNMP/Syslog `no`-command purge nor the Access-Port `default interface` wipe. Provisioning `2.20`–`2.70` is a single upsert per subinterface, and re-running it is a no-op, true idempotency by construction.
+5. **Closed-Loop Proof on the Data Plane:** The `DMI-5-CONFIG_I ... Configured from NETCONF/RESTCONF` console line plus the re-queried `show running-config` confirm the engine didn't just send a payload, it verified the router applied it.
 
 ### Next Steps & Future Enhancements
 To further evolve this module, the following are planned:
