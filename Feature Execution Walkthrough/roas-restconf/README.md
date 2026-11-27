@@ -177,13 +177,8 @@ At runtime, the inventory engine compiles the subinterface definitions for `HQ-E
 
 > **Design Principle:**
 > By combining NetBox interface tagging (`roas`) with programmatic IP calculation (`ipaddress.ip_interface`), the compliance engine (`check_roas()`) receives exact requirements for physical subinterface names, 802.1Q encapsulation VLAN IDs, and gateway subnet masks, eliminating manual routing inconsistencies.
-```
 
 ---
-
-Here is the cleaned, production-grade version of **Section 2**. I removed the AI artifacts, corrected the `builders.py` code block to match the screenshot exactly (removing the redundant `.lower()` call on line 26 since the variable was already lowercased on line 18), and ensured the console capture reflects the typo correction shown in your screenshot.
-
-***
 
 ## 2. Live Device State Collection & RESTCONF Parsing
 
