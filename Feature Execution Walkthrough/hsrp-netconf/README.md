@@ -733,7 +733,7 @@ When HSRP configuration drift or missing gateway groups are detected, remediatio
 
 The remediation controller decouples vendor XML syntax using a **declarative Jinja2 XML template** (`templates/hsrp.j2`). It extracts the interface type and number using a regular expression, renders the `Cisco-IOS-XE-native` YANG XML payload, and executes an `edit_config` RPC against the router's running datastore over NETCONF.
 
-![Final Compliance Report HSRP Initial Issues](screenshots/check-initial-issues.png)
+![Final Compliance Report HSRP Initial Issues](screenshots/remediation-draw-io.png)
 
 ---
 
