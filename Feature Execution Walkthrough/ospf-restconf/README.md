@@ -341,7 +341,6 @@ Comparing this normalized operational state against the **NetBox Desired State**
 | **Network Advertisements** | `192.168.255.0 0.0.0.255 area 0`<br>`10.10.10.0 0.0.0.255 area 0` | `8.8.8.0 0.0.0.255 area 100` | **DRIFT (Wrong Area ID & Unauthorized Subnet)** |
 
 > **Next Step:** This normalized observed dictionary is fed directly into `check_ospf()`, triggering targeted remediation to remove rogue OSPF process 90, instantiate authorized process 10, bind Router ID `1.1.1.1`, and advertise the authorized Area 0 subnets.
-```
 
 ---
 
