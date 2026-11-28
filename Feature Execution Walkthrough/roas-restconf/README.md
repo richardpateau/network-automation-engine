@@ -37,6 +37,10 @@ The ROAS module follows the project's Source-of-Truth-driven architecture, but w
 
 ![NetBox Add New Tag](screenshots/topology.png)
 
+## End to End Demostration
+
+https://github.com/user-attachments/assets/2702f566-44a1-4c8c-9e54-15c3c0b01851
+
 ### Table of Contents
 
 - [1. Intended State: NetBox Source of Truth (Router-on-a-Stick - ROAS)](#1-intended-state-netbox-source-of-truth-router-on-a-stick---roas)
