@@ -270,7 +270,7 @@ def build_hsrp(netconf_state):
 
 ### 3. Live Router State vs. Injected HSRP Drift
 
-To test model-driven extraction, out-of-band configuration drift was present on `EDGE-1`. The relevant slice from the live paged `show running-config` (shot 4):
+To test model-driven extraction, out-of-band configuration drift was present on `EDGE-1`. The relevant section from the live paged `show running-config` (shot 4):
 
 ![Cisco Console HSRP Drift](screenshots/print-build-hsrp-test-configuration.png)
 
@@ -644,7 +644,7 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
 To validate both diff engines, multiple drift conditions were applied on `EDGE-1`.
 
 #### A. Multi-Attribute Drift Injection
-The router carried an **unauthorized** standby group (`standby 1` on physical `GigabitEthernet1`), an **incomplete** standby definition on subinterface `GigabitEthernet1.10` (wrong VIP `192.168.10.3`, default priority, no `preempt`, no `standby 10 version` → v1), and a **completely missing** standby group on `GigabitEthernet2.20`. The relevant slice from the live paged `show running-config` (shot 3):
+The router carried an **unauthorized** standby group (`standby 1` on physical `GigabitEthernet1`), an **incomplete** standby definition on subinterface `GigabitEthernet1.10` (wrong VIP `192.168.10.3`, default priority, no `preempt`, no `standby 10 version` → v1), and a **completely missing** standby group on `GigabitEthernet2.20`. The relevant section from the live paged `show running-config` (shot 3):
 
 ![Cisco Console HSRP Drift Injected](screenshots/check-intentional-wrong-configurations.png)
 

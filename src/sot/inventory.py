@@ -307,6 +307,9 @@ def get_netbox():
                         "mask": h.get("mask", "")
                     }
                 )
+        if hsrp_context:
+            h = config_data[host_ip]["hsrp"]
+            print(json.dumps(h, indent=4))
 
         if nat_context:
             nat["dynamic"].extend(nat_context.get("dynamic", []))
