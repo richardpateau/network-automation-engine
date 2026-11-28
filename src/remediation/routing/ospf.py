@@ -2,8 +2,9 @@ import re
 from src.core.settings import DRY_RUN
 from src.core.enums import StepStatus, OperationalStatus
 from src.remediation.template_env import template_env
+import time
 
-def configure_ospf(session, ospf_data, log): 
+def configure_ospf(session, ospf_data, device_ip, transport, act_ospf, log): 
 	process_id = ospf_data.get("process_id", "")
 	router_id = ospf_data.get("router_id", "")
 	network_list = ospf_data.get("network_list", [])
@@ -12,7 +13,7 @@ def configure_ospf(session, ospf_data, log):
 			for n in network_list
 		)
 	try: 
-		template = template_env.get_template("OSPF.j2")
+		template = template_env.get_template("ospf.j2")
 		commands = template.render(
 				process_id=process_id,
 				router_id=router_id,
@@ -24,31 +25,41 @@ def configure_ospf(session, ospf_data, log):
 				"summary": (
 						f"[DRY_RUN] Would Configure OSPF | "
 						f"Process ID: {process_id} | "
-						f"RID: {router_id} | Networks: {network} | Transport: {session.transport}"
+						f"RID: {router_id} | Networks: {network} | Transport: {transport}"
 				)
 			}
-		response = session.patch( 
+		if act_ospf:
+			for ospf_proc in act_ospf.keys(): 
+				delete_stale = session.session.delete( 
+						url = f"{session.base_url}/Cisco-IOS-XE-native:native/router/Cisco-IOS-XE-ospf:ospf={ospf_proc}",
+					)
+		
+		response = session.session.patch( 
 				url = f"{session.base_url}/Cisco-IOS-XE-native:native/router",
 				data=commands
 			)
+		save_response = session.session.post(
+			    url=f"{session.base_url.replace('/data', '/operations')}/cisco-ia:save-config"
+			)
+
 		if response.status_code not in [200,201,204]: 
 			return {
-                "status": OperationalStatus.CONFIG_FAILED.value,
+                "status": OperationalStatus.FAILED_CONFIG.value,
                 "summary": (
                 			f"OSPF config failed {response.text}"
                 		    f"Process ID: {process_id} | "
-						    f"RID: {router_id} | Networks: {network} | Transport: {session.transport}"
+						    f"RID: {router_id} | Networks: {network} | Transport: {transport}"
                 	),
                 "error": response.text
             }
-
+        
 		log.info(
             "ospf_config",
             extra={
-                "device_ip": session.device_ip,
+                "device_ip": device_ip,
                 "component": "ospf_automation",
                 "event_type": "ospf_config",
-                "transport": session.transport,
+                "transport": transport,
                 "status": StepStatus.SUCCESS.value,
                 "process_id": process_id,
                 "RID": router_id,
@@ -66,22 +77,23 @@ def configure_ospf(session, ospf_data, log):
 				"summary": (
 					 		f"OSPF Successfully Configured | "
 						    f"Process ID: {process_id} | "
-						    f"RID: {router_id} | Networks: {network} | Transport: {session.transport}"
+						    f"RID: {router_id} | Networks: {network} | Transport: {transport}"
                 	)
 			}
 	except Exception as e: 
-		log.info(
+		log.exception(
             "ospf_config",
             extra={
-                "device_ip": session.device_ip,
+                "device_ip": device_ip,
                 "component": "ospf_automation",
                 "event_type": "ospf_config",
-                "transport": session.transport,
+                "transport": transport,
                 "status": StepStatus.ERROR.value,
                 "process_id": process_id,
                 "RID": router_id,
                 "networks": network,
-                "detail": (f"Try/Exception Error | OSPF Configuration | "
+                "error": f"{str(e)}",
+				"detail": (f"Try/Exception Error | OSPF Configuration | "
                 			f"Process ID: {process_id} | "
 						    f"RID: {router_id} | Networks: {network}"
                 	)
@@ -93,7 +105,7 @@ def configure_ospf(session, ospf_data, log):
 				"summary":(
 							f"Try/Exception Error | OSPF Configuration | "
                 			f"Process ID: {process_id} | "
-						    f"RID: {router_id} | Networks: {network} | Transport: {session.transport}"
+						    f"RID: {router_id} | Networks: {network} | Transport: {transport}"
                 	),
 				"error": str(e)
 			}

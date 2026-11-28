@@ -4,22 +4,24 @@ from src.remediation.routing.ospf import configure_ospf
 from src.collectors.restconf.builders import build_ospf
 from src.compliance.routing.ospf.check import check_ospf
 from src.core.settings import DRY_RUN
+import json
 
 def compliance_ospf(sesh, device_ip, context, device_state, device_result, log, transport):
     exp_ospf = context.get("ospf", [])
     act_ospf = build_ospf(device_state)
     ospf_updated = False
-
     for ospf_data in exp_ospf:
         process_id = ospf_data.get("process_id", "")
         router_id = ospf_data.get("router_id", "")
         interfaces = ospf_data.get("interfaces", {})
         interface = [i for i in interfaces]
         ok, failures = check_ospf(ospf_data, act_ospf)
+        print("\n".join(failures))
 
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
+            "event_type": "ospf_compliance",
             "protocol": "ospf",
             "transport": transport,
             "interfaces": interface,
@@ -61,8 +63,7 @@ def compliance_ospf(sesh, device_ip, context, device_state, device_result, log, 
                 f"RID: {router_id} | Interfaces: {interface}"
             )
             continue
-        result = configure_ospf(sesh, ospf_data, log)
-
+        result = configure_ospf(sesh, ospf_data, device_ip, transport, act_ospf, log)
         summary = result.get("summary")
         if summary:
             device_result["actions_taken"].append(summary)
@@ -83,12 +84,13 @@ def compliance_ospf(sesh, device_ip, context, device_state, device_result, log, 
             process_id = ospf_data.get("process_id", "")
             router_id = ospf_data.get("router_id", "")
             interfaces = ospf_data.get("interfaces", [])
-            interface = [i.get("name") for i in interfaces]
+            interface = [i for i in interfaces.keys()]
             ok, failures = check_ospf(ospf_data, new_ospf_state)
 
             log_extra = {
                 "device_ip": device_ip,
                 "component": "main_process",
+                "event_type": "ospf_compliance",
                 "protocol": "ospf",
                 "transport": transport,
                 "interfaces": interface,

@@ -6,7 +6,7 @@ In enterprise infrastructure, Simple Network Management Protocol (SNMP) is the b
 
 The **SNMP Compliance & Remediation** module is a production-grade, closed-loop automation engine designed to eliminate these risks. It enforces deterministic monitoring baselines across all network devices by reconciling live switch state against a **NetBox Source of Truth (SoT)**.
 
-Unlike naive automation scripts that merely append configuration, this pipeline provides end-to-end lifecycle management. It extracts operational state via Cisco pyATS/Genie and `CiscoConfParse`, performs **set-equality diffing** on trap hosts (order-independent, case-insensitive on community names), and applies a **two-phase reconciliation pattern** — actively purging all existing `snmp-server` lines before enforcing the authorized NetBox baseline — guaranteeing true idempotency and preventing orphaned communities or rogue trap destinations.
+Unlike naive automation scripts that merely append configuration, this pipeline provides end-to-end lifecycle management. It extracts operational state via Cisco pyATS/Genie and `CiscoConfParse`, performs **set-equality diffing** on trap hosts (order-independent, case-insensitive on community names), and applies a **two-phase reconciliation pattern** actively purging all existing `snmp-server` lines before enforcing the authorized NetBox baseline guaranteeing true idempotency and preventing orphaned communities or rogue trap destinations.
 
 ### Core Engineering Objectives
 - **Declarative Baseline:** Establish NetBox Config Contexts as the single source of truth for SNMP communities, trap receivers, MIB metadata, and trap flags.
@@ -187,7 +187,7 @@ At runtime, the inventory engine compiles the NetBox declarations and validates 
 
 ## 2. Live Device State Collection & SNMP Parsing
 
-SNMP configurations on Cisco IOS-XE—including community permissions, trap receivers, and contact metadata—are global directives defined under `snmp-server`. Operational show commands can obscure community strings or omit specific trap categories.
+SNMP configurations on Cisco IOS-XE including community permissions, trap receivers, and contact metadata are global directives defined under `snmp-server`. Operational show commands can obscure community strings or omit specific trap categories.
 
 To guarantee accurate extraction, the engine pairs **Netmiko** for secure CLI retrieval with **`CiscoConfParse`** for hierarchical regex parsing on the switch's running configuration.
 
@@ -364,7 +364,7 @@ The compliance runner supports a **multi-transport architecture** that can audit
 
 ### 1. Multi-Attribute Diff Engine (`src/compliance/services/snmp/check.py`)
 
-The `check_snmp()` function audits communities, MIB metadata, trap hosts, and trap flags. Communities and hosts are normalized into **lowercased key / tuple sets** so the comparison is order-independent and case-insensitive on the community name (the builder lowercases `snmp_name` in the communities loop but leaves it raw in the hosts loop — see Notes).
+The `check_snmp()` function audits communities, MIB metadata, trap hosts, and trap flags. Communities and hosts are normalized into **lowercased key / tuple sets** so the comparison is order-independent and case-insensitive on the community name (the builder lowercases `snmp_name` in the communities loop but leaves it raw in the hosts loop see Notes).
 
 ![SNMP Check Implementation](screenshots/code-check-snmp.png)
 
@@ -745,8 +745,8 @@ When the compliance engine audited `CORE-SW-1`, `check_snmp()` evaluated the liv
 
 When SNMP drift is detected, the engine routes remediation through the transport-matched handler in `src/remediation/services/snmp.py`:
 
-1. **`configure_snmp_netmiko`** — purges all existing `^snmp-server` lines, then renders and pushes `templates/snmp_netmiko.j2`, persisting to NVRAM via `conn.save_config()`.
-2. **`configure_snmp_nc`** — renders `templates/SNMP_NC.j2` and applies the change via `session.edit_config(target="running")`.
+1. **`configure_snmp_netmiko`** purges all existing `^snmp-server` lines, then renders and pushes `templates/snmp_netmiko.j2`, persisting to NVRAM via `conn.save_config()`.
+2. **`configure_snmp_nc`** renders `templates/SNMP_NC.j2` and applies the change via `session.edit_config(target="running")`.
 
 To prevent orphaned community strings, rogue SNMPv3 groups, or legacy trap hosts from remaining on the switch, the Netmiko handler implements an **active purge strategy** before pushing the declarative template:
 1. **Dynamic Purge:** Queries the running switch for existing `^snmp-server` lines, reverses the list, and executes `no <command>` for every existing line.
@@ -1079,7 +1079,7 @@ The telemetry pipeline records five distinct operational events across `CORE-SW-
 | **4. Post-Validation Pass** | `snmp_compliance` | `snmp_post_validation_success` | `6 (INFO)` | `SUCCESS` | Re-queried live operational state confirms all SNMP parameters match NetBox. |
 | **5. Exception Capture** | `snmp_config` | `snmp_config` | `6 (INFO)`* | `ERROR` | Catches Jinja2 nesting errors (`unknown tag 'endif'`) without crashing. |
 
-> \* Indexed at INFO/`cisco_sev: 6` because the remediation handler's `except` block calls `log.info(...)` with `status: ERROR` rather than `log.error(...)` — see Notes.
+> \* Indexed at INFO/`cisco_sev: 6` because the remediation handler's `except` block calls `log.info(...)` with `status: ERROR` rather than `log.error(...)` see Notes.
 
 ---
 
@@ -1243,7 +1243,7 @@ Following remediation, the engine re-queries the device state over SSH. When all
 ---
 
 #### 5. Exception & Template Fault Observability (`status: ERROR`)
-If a template rendering error occurs (such as a nesting syntax mistake like `Encountered unknown tag 'endif'`), the engine's `try...except` boundary catches the error and streams it with full context. **Note the severity:** the event is indexed at `cisco_sev: 6` / `level: INFO` (not Severity 3) because the remediation handler's `except` block invokes `log.info(...)` with `status: ERROR` instead of `log.error(...)` — see Notes:
+If a template rendering error occurs (such as a nesting syntax mistake like `Encountered unknown tag 'endif'`), the engine's `try...except` boundary catches the error and streams it with full context. **Note the severity:** the event is indexed at `cisco_sev: 6` / `level: INFO` (not Severity 3) because the remediation handler's `except` block invokes `log.info(...)` with `status: ERROR` instead of `log.error(...)` see Notes:
 
 ![Splunk SNMP Exception Log](screenshots/splunk-try-exception-error.png)
 

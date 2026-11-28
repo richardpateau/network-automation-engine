@@ -36,33 +36,29 @@ def build_roas(restconf_state):
 def build_ospf(restconf_state):
     if not restconf_state:
         return {}
+    actual_ospf = {}
     restconf_state_ospf = restconf_state.get("ospf_restconf") or {}
     get_ospf = restconf_state_ospf.get("Cisco-IOS-XE-native:router", {}).get(
-        "Cisco-IOS-XE-ospf:router-ospf", {}
+        "Cisco-IOS-XE-ospf:ospf", []
     )
-    ospf = get_ospf.get("ospf") or {}
-    process_id = ospf.get("process-id", [])
-    process = normalize_to_list(process_id)
-    actual_ospf = {}
-    for proc in process:
-        proc_id = safe_int(proc.get("id", ""))
-        router_id = proc.get("router-id", "")
-        networks = proc.get("network", [])
-        network = normalize_to_list(networks)
-
-        if proc_id is None:
-            continue
-        actual_ospf[proc_id] = {
-            "process_id": proc_id,
-            "router_id": router_id,
-            "network_list": [],
-        }
-        for net in network:
-            actual_ospf[proc_id]["network_list"].append(
-                {
-                    "subnet": net.get("ip", ""),
-                    "wildcard": net.get("wildcard", ""),
-                    "area": safe_int(net.get("area", "")),
-                }
-            )
+    ospf_list = normalize_to_list(get_ospf)
+    for o in ospf_list:
+        process_id = o.get("id", "")
+        if not process_id: 
+            return {}
+        router_id = o.get("router-id", "")
+        network_list = o.get("network", [])
+        if process_id is not None:
+            actual_ospf[process_id] = {
+                "process_id": process_id,
+                "router_id": router_id,
+                "network_list": []
+            }
+            for n in network_list: 
+                actual_ospf[process_id]["network_list"].append({
+                        "subnet": n.get("ip", ""),
+                        "wildcard": n.get("mask", ""),
+                        "area": n.get("area", "")
+                    })
     return actual_ospf
+

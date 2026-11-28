@@ -1417,9 +1417,8 @@ jobs:
 
 ## Conclusion & Engineering Takeaways
 
-This module demonstrates that inter-VLAN routing assurance is not a CLI problem, it is a **data-model problem**, and the cleanest way to solve it is to stop scraping text and start reading the device's own structured state. By treating the router as a YANG resource tree and the switch/gateway contract as a NetBox declaration, the engine turns silent, subnet-wide outages into a deterministic, observable, and reversible pipeline.
-
 Key architectural wins validated in this project include:
+
 1. **Model-Driven, Not Screen-Scraped:** ROAS is the portfolio's only pure-RESTCONF module. Parsing `encapsulation/dot1Q/vlan-id` and `ip/address/primary` from a JSON YANG payload removes the regex fragility that every CLI-scraping module carries, and the test suite proves it with synthetic YANG fixtures rather than captured terminal text.
 2. **Tag-Based SoT Classification:** Using a NetBox `roas` tag to select routing subinterfaces, rather than pattern-matching interface names, cleanly separates logical gateways from physical uplinks, loopbacks, and tunnels. The `ipaddress.ip_interface()` split at ingestion then guarantees the gateway IP and dotted-decimal mask are derived programmatically, never hand-typed.
 3. **Short-Circuit Diff Semantics:** The existence gate's early `return` is a deliberate design choice that keeps drift reports honest: a missing subinterface yields exactly one `Missing ROAS Interface` line, while an existing-but-wrong port yields *both* a VLAN and an IP mismatch, the two failure classes never blur.

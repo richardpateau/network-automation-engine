@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-27T09:03:39.404768",
+        "timestamp": "2026-11-28T05:26:11.219545",
         "total_devices": 3,
         "successful_runs": 3
     },
@@ -16,7 +16,8 @@
                 "ROAS Configuration Already Compliant | GigabitEthernet2.40 | VLAN: 40 | IP/Mask: 10.10.40.1/255.255.255.0",
                 "ROAS Configuration Already Compliant | GigabitEthernet2.50 | VLAN: 50 | IP/Mask: 10.10.50.1/255.255.255.0",
                 "ROAS Configuration Already Compliant | GigabitEthernet2.60 | VLAN: 60 | IP/Mask: 10.10.60.1/255.255.255.0",
-                "ROAS Configuration Already Compliant | GigabitEthernet2.70 | VLAN: 70 | IP/Mask: 10.10.70.1/255.255.255.0"
+                "ROAS Configuration Already Compliant | GigabitEthernet2.70 | VLAN: 70 | IP/Mask: 10.10.70.1/255.255.255.0",
+                "[DRY_RUN] Would Configure OSPF | Process ID: 10 | RID: 1.1.1.1 | Interfaces: ['gigabitethernet1', 'gigabitethernet2']"
             ],
             "events": [],
             "checks_passed": 0,
@@ -43,7 +44,11 @@
                 "etherchannel": null,
                 "static_routes": null
             },
-            "initial_issues": [],
+            "initial_issues": [
+                "Expected OSPF Network Not Found | Network Address: 192.168.255.0 | Wildcard: 0.0.0.255 | Area: 0 | ",
+                "Expected OSPF Network Not Found | Network Address: 10.10.10.0 | Wildcard: 0.0.0.255 | Area: 0 | ",
+                "Unexpected OSPF Network Found | Network Address: 8.8.8.0 | Wildcard: 0.0.0.255 | Area: 100"
+            ],
             "critical_issues": [],
             "warnings": [],
             "Remediation": {
@@ -55,9 +60,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-27T09:03:19.490700+00:00",
-            "end_time": "2026-11-27T09:03:21.758145+00:00",
-            "duration_seconds": 2.267445,
+            "start_time": "2026-11-28T05:26:03.806340+00:00",
+            "end_time": "2026-11-28T05:26:05.420124+00:00",
+            "duration_seconds": 1.613784,
             "errors": []
         },
         {
@@ -127,16 +132,16 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-27T09:03:19.490223+00:00",
-            "end_time": "2026-11-27T09:03:27.027457+00:00",
-            "duration_seconds": 7.537234,
+            "start_time": "2026-11-28T05:26:03.805881+00:00",
+            "end_time": "2026-11-28T05:26:10.881645+00:00",
+            "duration_seconds": 7.075764,
             "errors": []
         },
         {
             "device_name": "ACCESS-SW-1",
             "device_ip": "10.10.10.20",
             "hostname": null,
-            "status": "FAILED_VALIDATION",
+            "status": "COMPLIANT",
             "actions_taken": [
                 "VLAN Already Compliant | VLAN: 1 | Name: default",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
@@ -164,10 +169,9 @@
                 "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
                 "STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
-                "STP Interface Feature Successfully Configured | Interface: Ethernet0/0 | Feature: Portfast: True | Loop Guard: False | BPDU Guard: True | BPDU Filter: False | Root Guard: False",
+                "[DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]",
                 "SNMP Configuration Already Compliant | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.10.10.50 (MERIDIAN-RO)  | Traps: linkup, linkdown, coldstart, warmstart, authentication",
-                "Syslog Configuration Successful | Hosts: Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Facility: local7 | Source Interface: loopback0 | service timestamps log datetime msec: True | Severity: informational | Transport: NETMIKO",
-                "Syslog Configuration Post Validation Successful | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational"
+                "Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational"
             ],
             "events": [],
             "checks_passed": 0,
@@ -195,12 +199,9 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False",
-                "(SYSLOG) Mismatched Source Interface | Expected: loopback0 | Actual: o"
-            ],
-            "critical_issues": [
                 "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False"
             ],
+            "critical_issues": [],
             "warnings": [],
             "Remediation": {
                 "attempted": false,
@@ -211,14 +212,14 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-27T09:03:19.489643+00:00",
-            "end_time": "2026-11-27T09:03:39.404197+00:00",
-            "duration_seconds": 19.914554,
+            "start_time": "2026-11-28T05:26:03.804917+00:00",
+            "end_time": "2026-11-28T05:26:11.218543+00:00",
+            "duration_seconds": 7.413626,
             "errors": []
         }
     ],
     "summary": {
-        "compliant": 2,
+        "compliant": 3,
         "non_compliant": 0,
         "failed": 0
     }

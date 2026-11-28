@@ -212,79 +212,52 @@ def get_netbox():
                             )
                     ospf_custom = ospf_config_by_interface.get(device_interface.id, {})
                     if "ospf" in tags and ospf_custom:
-                        proc_id = ospf_custom.get("process_id", "")
-                        area_id = ospf_custom.get("area_id", "")
-
+                        proc_id = ospf_custom.get("process_id")
+                        area_id = ospf_custom.get("area_id")
+                        r_ip = ipaddress.ip_interface(str(ip_obj.address))
                         if proc_id not in ospf_process:
                             ospf_process[proc_id] = {
                                 "interfaces": {},
                                 "router_id": None,
-                                "auth_type": ospf_custom.get("auth_type", ""),
+                                "auth_type": ospf_custom.get("auth_type", "none"),
                             }
-                        if (
-                            device_interface.name
-                            not in ospf_process[proc_id]["interfaces"]
-                        ):
-                            ospf_process[proc_id]["interfaces"][
-                                device_interface.name
-                            ] = {
-                                "network_address": str(r_ip.network.network_address),
-                                "wildcard": str(r_ip.network.hostmask),
-                                "area": area_id,
-                                "ospf_interface": device_interface.name,
-                                "expected_dr": ospf_custom.get("ospf_dr", ""),
-                                "expected_bdr": ospf_custom.get("ospf_bdr", ""),
-                                "network_type": ospf_custom.get("network_type", ""),
-                                "ospf_hello": ospf_custom.get("ospf_hello", ""),
-                                "ospf_dead": ospf_custom.get("ospf_dead", ""),
-                                "expected_neighbors": set(
-                                    ospf_custom.get("ospf_neighbors", {}).get(
-                                        "expected_neighbors", []
-                                    )
-                                ),
-                                "actual_neighbors": set(),
-                            }
+
+                        ospf_process[proc_id]["interfaces"][device_interface.name] = {
+                            "interface": device_interface.name,
+                            "network_address": str(r_ip.network.network_address),
+                            "wildcard": str(r_ip.network.hostmask),
+                            "area": area_id,
+                        }
 
         if ospf_process:
             ospf_context = device_name.config_context.get("ospf", {})
-            for proc_id, proc_data in ospf_process.items():
-                interfaces_payload = {}
 
-                for interface_name, interface_data in data["interfaces"].items():
-                    interfaces_payload[interface_name.lower()] = {
+            for proc_id, proc_data in ospf_process.items():
+                interfaces_payload = {
+                    interface_name.lower(): {
                         "name": interface_name.lower(),
-                        "subnet": interface_data.get("subnet"),
-                        "wildcard": interface_data.get("wildcard"),
-                        "area": interface_data.get("area"),
-                        "network_type": interface_data.get("network_type"),
-                        "hello_interval": interface_data.get("hello_interval"),
-                        "dead_interval": interface_data.get("dead_interval"),
-                        "expected_dr": interface_data.get("expected_dr"),
-                        "expected_bdr": interface_data.get("expected_bdr"),
-                        "expected_neighbors": interface_data.get(
-                            "expected_neighbors", []
-                        ),
+                        "subnet": interface_data["network_address"],
+                        "wildcard": interface_data["wildcard"],
+                        "area": interface_data["area"],
                     }
-                config_data["ospf"].append(
-                    {
-                        "device": host_ip,
-                        "process_id": int(proc_id),
-                        "router_id": context.get(int(proc_id), {}).get("router_id", ""),
-                        "auth_type": data.get("auth_type", "none"),
-                        "hello_interval": data.get("hello_interval", 10),
-                        "dead_interval": data.get("dead_interval", 40),
-                        "interfaces": interfaces_payload,
-                        "network_list": [
-                            {
-                                "subnet": i["subnet"],
-                                "wildcard": i["wildcard"],
-                                "area": i["area"],
-                                "interface": i["name"],
-                            }
-                            for i in interfaces_payload.values()
-                        ],
-                    }
-                )
+                    for interface_name, interface_data in proc_data["interfaces"].items()
+                }
+
+                config_data[host_ip]["ospf"].append({
+                    "device": host_ip,
+                    "process_id": int(proc_id),
+                    "router_id": ospf_context.get(str(proc_id), {}).get("router_id", ""),
+                    "interfaces": interfaces_payload,
+                    "network_list": [
+                        {
+                            "subnet": interface["subnet"],
+                            "wildcard": interface["wildcard"],
+                            "area": interface["area"],
+                            "interface": interface["name"],
+                        }
+                        for interface in interfaces_payload.values()
+                    ],
+                })
         if acl_context:
             config_data[host_ip]["acl"] = acl_context
         for binding in acl_binding_context:

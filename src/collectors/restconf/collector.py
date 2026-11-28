@@ -25,8 +25,7 @@ def collect_restconf_state(restconf, log):
         restconf_state["ospf_restconf"] = (
             restconf_get(session, ospf_url)
         )
-
-
+        print(json.dumps(restconf_state["ospf_restconf"], indent=4))
         # OSPF operational state
         ospf_oper_url = (
             f"{base_url}/Cisco-IOS-XE-ospf-oper:ospf-oper-data"

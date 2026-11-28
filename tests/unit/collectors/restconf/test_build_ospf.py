@@ -15,7 +15,7 @@ def test_build_ospf_valid(ospf_restconf):
                     "wildcard": "0.0.0.255",
                     "area": 0,
                 }
-            ],
+            ]
         },
         2: {
             "process_id": 2,
@@ -26,7 +26,7 @@ def test_build_ospf_valid(ospf_restconf):
                     "wildcard": "0.0.0.255",
                     "area": 1,
                 }
-            ],
+            ]
         },
     }
 
@@ -51,19 +51,19 @@ def test_build_ospf_parameters(proc_id, rid, subnet, wildcard, area):
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "id": proc_id,
+                        "network": [
                             {
-                                "id": proc_id,
-                                "network": [
-                                    {"ip": subnet, "wildcard": wildcard, "area": area}
-                                ],
-                                "router-id": rid,
+                                "ip": subnet,
+                                "mask": wildcard,
+                                "area": area
                             }
-                        ]
+                        ],
+                        "router-id": rid
                     }
-                }
+                ]
             }
         }
     }
@@ -89,22 +89,18 @@ def test_build_ospf_no_proc_id():
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "network": [
                             {
-                                "network": [
-                                    {
-                                        "ip": "192.168.20.1",
-                                        "wildcard": "0.0.0.255",
-                                        "area": 0,
-                                    }
-                                ],
-                                "router-id": "1.1.1.1",
+                                "ip": "192.168.20.1",
+                                "mask": "0.0.0.255",
+                                "area": 0
                             }
-                        ]
+                        ],
+                        "router-id": "1.1.1.1"
                     }
-                }
+                ]
             }
         }
     }
@@ -118,22 +114,18 @@ def test_build_ospf_no_rid():
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "id": 1,
+                        "network": [
                             {
-                                "id": 1,
-                                "network": [
-                                    {
-                                        "ip": "192.168.20.1",
-                                        "wildcard": "0.0.0.255",
-                                        "area": 0,
-                                    }
-                                ],
+                                "ip": "192.168.20.1",
+                                "mask": "0.0.0.255",
+                                "area": 0
                             }
                         ]
                     }
-                }
+                ]
             }
         }
     }
@@ -147,11 +139,13 @@ def test_build_ospf_no_networks():
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [{"id": 1, "network": [], "router-id": "1.1.1.1"}]
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "id": 1,
+                        "router-id": "1.1.1.1",
+                        "network": []
                     }
-                }
+                ]
             }
         }
     }
@@ -165,17 +159,18 @@ def test_build_ospf_no_ip():
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "id": 1,
+                        "router-id": "1.1.1.1",
+                        "network": [
                             {
-                                "id": 1,
-                                "network": [{"wildcard": "0.0.0.255", "area": 0}],
-                                "router-id": "1.1.1.1",
+                                "mask": "0.0.0.255",
+                                "area": 0
                             }
                         ]
                     }
-                }
+                ]
             }
         }
     }
@@ -189,46 +184,43 @@ def test_build_ospf_no_area():
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "id": 1,
+                        "router-id": "1.1.1.1",
+                        "network": [
                             {
-                                "id": 1,
-                                "network": [
-                                    {
-                                        "ip": "192.168.20.1",
-                                        "wildcard": "0.0.0.255",
-                                    }
-                                ],
-                                "router-id": "1.1.1.1",
+                                "ip": "192.168.20.1",
+                                "mask": "0.0.0.255"
                             }
                         ]
                     }
-                }
+                ]
             }
         }
     }
 
     result = build_ospf(data)
 
-    assert result[1]["network_list"][0]["area"] is None
+    assert result[1]["network_list"][0]["area"] is ""
 
 
 def test_build_ospf_no_mask():
     data = {
         "ospf_restconf": {
             "Cisco-IOS-XE-native:router": {
-                "Cisco-IOS-XE-ospf:router-ospf": {
-                    "ospf": {
-                        "process-id": [
+                "Cisco-IOS-XE-ospf:ospf": [
+                    {
+                        "id": 1,
+                        "router-id": "1.1.1.1",
+                        "network": [
                             {
-                                "id": 1,
-                                "network": [{"ip": "192.168.20.1", "area": 0}],
-                                "router-id": "1.1.1.1",
+                                "ip": "192.168.20.1",
+                                "area": 0
                             }
                         ]
                     }
-                }
+                ]
             }
         }
     }

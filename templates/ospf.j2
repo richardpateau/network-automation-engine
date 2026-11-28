@@ -1,0 +1,19 @@
+{
+  "Cisco-IOS-XE-native:router": {
+    "Cisco-IOS-XE-ospf:ospf": [
+      {
+        "id": {{ process_id }},
+        "router-id": "{{ router_id }}",
+        "network": [
+        {% for n in network_list %}
+          {
+            "ip": "{{ n.subnet }}",
+            "mask": "{{ n.wildcard }}",
+            "area": {{ n.area }}
+          }{% if not loop.last %},{% endif %}
+         {% endfor %}
+        ]
+      }
+    ]
+  }
+}

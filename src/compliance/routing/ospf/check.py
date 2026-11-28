@@ -1,3 +1,4 @@
+from src.utils.helpers import safe_int
 def check_ospf(expected_ospf, actual_config): 
     failures = []
     exp_proc = expected_ospf.get("process_id", "")
@@ -30,14 +31,35 @@ def check_ospf(expected_ospf, actual_config):
             if (
                 exp_subnet == act_subnet and
                 exp_wildcard == act_wildcard and
-                exp_area == act_area
+                safe_int(exp_area) == safe_int(act_area)
                 ):
                 matched = True
-            if not matched:
-                failures.append(
-                    f"Expected OSPF Network Not Found | "
-                    f"Nework Address: {exp_subnet} | "
-                    f"Wildcard: {exp_wildcard} | "
-                    f"Area: {exp_area}"
-                )
+        if not matched:
+            failures.append(
+                f"Expected OSPF Network Not Found | "
+                f"Network Address: {exp_subnet} | "
+                f"Wildcard: {exp_wildcard} | "
+                f"Area: {exp_area} | "
+        )
+    for act_net in actual_net_list:
+        act_subnet = str(act_net.get("subnet", ""))
+        act_wildcard = str(act_net.get("wildcard", ""))
+        act_area = str(act_net.get("area", ""))
+        expected_match = False
+        for exp_net in exp_net_list:
+            if (
+                act_subnet == str(exp_net.get("subnet", "")) and
+                act_wildcard == str(exp_net.get("wildcard", "")) and
+                safe_int(act_area) == safe_int(exp_net.get("area", ""))
+            ):
+                expected_match = True
+                break
+
+        if not expected_match:
+            failures.append(
+                f"Unexpected OSPF Network Found | "
+                f"Network Address: {act_subnet} | "
+                f"Wildcard: {act_wildcard} | "
+                f"Area: {act_area}"
+            )
     return len(failures) == 0, failures

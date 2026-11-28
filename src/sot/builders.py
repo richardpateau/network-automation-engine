@@ -6,7 +6,6 @@ def build_index(interfaces, ip_addresses, vlans):
 	subnet_ip = defaultdict(list)
 	ospf_config_by_interface = {}
 	vlan_by_id = {}
-
 	for interface in interfaces:
 		if interface.device:
 			device_interfaces[interface.device.id].append(interface)
@@ -14,12 +13,6 @@ def build_index(interfaces, ip_addresses, vlans):
 			ospf_config_by_interface[interface.id] = {
 				"process_id": interface.custom_fields.get("ospf_process_id", 1),
 				"area_id": interface.custom_fields.get("ospf_area_id", 0),
-				"auth_type": interface.custom_fields.get("ospf_auth_type", ""),
-				"ospf_dr": interface.custom_fields.get("ospf_dr", ""),
-				"ospf_bdr": interface.custom_fields.get("ospf_bdr", ""),
-				"ospf_hello": interface.custom_fields.get("ospf_hello_interval", 10),
-				"ospf_dead": interface.custom_fields.get("ospf_dead_interval", 40),
-				"network_type": interface.custom_fields.get("ospf_network_type", "")
 			}
 	for ip in ip_addresses:
 		if ip.assigned_object_id:
@@ -32,5 +25,4 @@ def build_index(interfaces, ip_addresses, vlans):
 			"vlan_id": v.vid,
 			"name": v.name,
 		}
-
 	return device_interfaces, interface_ip, subnet_ip, ospf_config_by_interface, vlan_by_id
