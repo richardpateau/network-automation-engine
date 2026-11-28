@@ -38,6 +38,8 @@ The HSRP module follows the project's Source-of-Truth-driven architecture, but w
 
 ## End to End Execution 
 
+https://github.com/user-attachments/assets/3f4c55f7-d3c9-413a-b9bf-28b173dbd62b
+
 ### Table of Contents
 
 - [1. Intended State: NetBox Source of Truth (First Hop Redundancy - HSRP)](#1-intended-state-netbox-source-of-truth-first-hop-redundancy---hsrp)
