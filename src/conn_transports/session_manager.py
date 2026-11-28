@@ -8,6 +8,10 @@ class SessionContext:
     session: requests.Session
     base_url: str
     device_ip: str
+@dataclass
+class NetconfContext:
+    session: any
+    device_ip: str
 
 def get_session(device):
     transport = device.get("transport")
@@ -63,18 +67,14 @@ def create_restconf_session(device):
 @contextmanager
 def create_netconf_session(device):
     session = manager.connect(
-        host=device["ip"],
+        host=device["device_ip"],
         port=830,
         username=device["username"],
         password=device["password"],
-        secret=device["secret"],
         hostkey_verify=False,
     )
 
     try:
-        yield {
-            "session": session,
-            "device_ip": device["ip"]
-        }
+        yield NetconfContext(session=session, device_ip=device["device_ip"])
     finally:
         session.close_session()

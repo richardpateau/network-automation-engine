@@ -1,0 +1,35 @@
+<config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+    <native xmlns="http://cisco.com/ns/yang/Cisco-IOS-XE-native">
+        <interface>
+            <GigabitEthernet>
+                <name>{{ int_num }}</name>
+                <encapsulation>
+                    <dot1Q>
+                        <vlan-id>{{ router_vlan }}</vlan-id>
+                    </dot1Q>
+                </encapsulation>
+                <ip>
+                    <address>
+                        <primary>
+                            <address>{{ ip }}</address>
+                            <mask>{{ mask }}</mask>
+                        </primary>
+                    </address>
+                </ip>
+                <standby>
+                    <version>{{ version }}</version>
+                    <standby-list>
+                        <group-number>{{ group }}</group-number>
+                        <priority>{{ priority }}</priority>
+                        <ip>
+                            <address>{{ vip }}</address>
+                        </ip>
+                        {% if preempt %}
+                        <preempt/>
+                        {% endif %}
+                    </standby-list>
+                </standby>
+            </GigabitEthernet>
+        </interface>
+    </native>
+</config>

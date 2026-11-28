@@ -1,5 +1,5 @@
 from src.utils.helpers import safe_int, normalize_to_list, is_ip_address
-
+import json
 
 # NTP
 def build_ntp(netconf_state):
@@ -110,32 +110,31 @@ def build_hsrp(netconf_state):
     actual_hsrp = []
     native = netconf_state.get("native_netconf") or {}
     interfaces = native.get("interface") or {}
-
     for int_type, int_list in interfaces.items():
         interface_type = str(int_type)
         for value in int_list:
             interface_num = str(value.get("name", "")).strip()
             full_int = f"{interface_type}{interface_num}".lower()
             standby_list = value.get("standby", {}).get("standby-list") or {}
-
+            stand_list = normalize_to_list(standby_list)
             if not standby_list:
                 continue
-
-            actual_hsrp.append(
-                {
-                    "interface": full_int,
-                    "version": safe_int(value.get("standby", {}).get("version", "")),
-                    "group": safe_int(standby_list.get("group-number", "")),
-                    "vip": standby_list.get("ip", {}).get("address", ""),
-                    "preempt": "preempt" in standby_list,
-                    "priority": standby_list.get("priority", None),
-                    "router_vlan": safe_int(
-                        value.get("encapsulation", {})
-                        .get("dot1Q", {})
-                        .get("vlan-id", "")
-                    ),
-                }
-            )
+            for s in stand_list: 
+                actual_hsrp.append(
+                    {
+                        "interface": full_int,
+                        "version": safe_int(value.get("standby", {}).get("version", "")),
+                        "group": safe_int(s.get("group-number", "")),
+                        "vip": (s.get("ip") or {}).get("address", None),
+                        "preempt": "preempt" in standby_list,
+                        "priority": s.get("priority") or 100,
+                        "router_vlan": safe_int(
+                            value.get("encapsulation", {})
+                            .get("dot1Q", {})
+                            .get("vlan-id", "")
+                        ),
+                    }
+                )
     return actual_hsrp
 
 

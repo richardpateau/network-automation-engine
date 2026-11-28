@@ -2,7 +2,7 @@ from src.core.enums import StepStatus, OperationalStatus
 from src.collectors.netconf.collector import collect_netconf_state
 from src.remediation.routing.hsrp import configure_hsrp
 from src.collectors.netconf.builders import build_hsrp
-from src.compliance.routing.hsrp.check import check_hsrp
+from src.compliance.routing.hsrp.check import check_hsrp, check_extra_hsrp
 from src.core.settings import DRY_RUN
 
 def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, transport):
@@ -10,6 +10,23 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
     act_hsrp = build_hsrp(device_state)
     hsrp_updated = False
 
+    extra_ok, extra_failures = check_extra_hsrp(exp_hsrp, act_hsrp)
+    if not extra_ok:
+        log.error(
+            "hsrp_post_validation_failed",
+            extra={
+                "device_ip": device_ip,
+                "component": "main_process",
+                "event_type": "hsrp_compliance",
+                "protocol": "hsrp",
+                "transport": transport,
+                "status": StepStatus.FAILED.value,
+                "detail": "(HSRP) Rogue - Unexpected Configuration Found",
+                "rouge_configuration": extra_failures
+            },
+        )
+        device_result["critical_issues"].extend(extra_failures)
+        device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
     for hsrp_data in exp_hsrp:
         group_num = hsrp_data.get("group", None)
         interface = hsrp_data.get("interface", "")
@@ -20,10 +37,12 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
 
         ok, failures = check_hsrp(hsrp_data, act_hsrp)
 
+
         log_extra = {
             "device_ip": device_ip,
             "component": "main_process",
             "protocol": "hsrp",
+            "event_type": "hsrp_compliance",
             "transport": transport,
             "group": group_num,
             "interface": interface,
@@ -33,6 +52,7 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
             "vip": vip,
             "failures_count": len(failures) if failures else 0,
             "failures": failures,
+            "rogue_configurations": extra_failures
         }
 
         if ok:
@@ -65,11 +85,14 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
 
         if DRY_RUN:
             device_result["actions_taken"].append(
-                f"[DRY_RUN] Would configure HSRP: Group {group_num}"
+                f"[DRY_RUN] Would configure HSRP: | "
+                f"Group: {group_num} | Interface: {interface} | "
+                f"Priority: {priority} | VLAN: {vlan_id} | "
+                f"Version: {version} | VIP: {vip}"
             )
             continue
 
-        result = configure_hsrp(sesh, device_ip, hsrp_data, log)
+        result = configure_hsrp(sesh, hsrp_data, device_ip, transport, log)
         summary = result.get("summary")
 
         if summary:
@@ -89,6 +112,23 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
         new_state = collect_netconf_state(sesh, log)
         new_hsrp = build_hsrp(new_state)
 
+        extra_ok, extra_failures = check_extra_hsrp(exp_hsrp, act_hsrp)
+        if not extra_ok:
+            log.error(
+                "hsrp_post_validation_failed",
+                extra={
+                    "device_ip": device_ip,
+                    "component": "main_process",
+                    "event_type": "hsrp_compliance",
+                    "protocol": "hsrp",
+                    "transport": transport,
+                    "status": StepStatus.FAILED.value,
+                    "detail": "HSRP Configuration Post Validation Failed",
+                    "rouge_configuration": extra_failures
+                },
+            )
+            device_result["critical_issues"].extend(extra_failures)
+            device_result["status"] = OperationalStatus.FAILED_VALIDATION.value
         for hsrp_data in exp_hsrp:
             group_num = hsrp_data.get("group", None)
             interface = hsrp_data.get("interface", "")
@@ -99,10 +139,12 @@ def compliance_hsrp(sesh, device_ip, context, device_state, device_result, log, 
 
             ok, failures = check_hsrp(hsrp_data, new_hsrp)
 
+
             log_extra = {
                 "device_ip": device_ip,
                 "component": "main_process",
                 "protocol": "hsrp",
+                "event_type": "hsrp_compliance",
                 "transport": transport,
                 "group": group_num,
                 "interface": interface,

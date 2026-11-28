@@ -299,17 +299,18 @@ def get_netbox():
                         "interface": h.get("interface", 2),
                         "version": h.get("version", ""),
                         "group": h.get("group", ""),
-                        "vip": h.get("ip", ""),
+                        "vip": h.get("vip", ""),
                         "priority": h.get("priority", 100),
                         "preempt": h.get("preempt", False),
                         "router_vlan": h.get("router_vlan", ""),
+                        "ip": h.get("ip", ""),
+                        "mask": h.get("mask", "")
                     }
                 )
+
         if nat_context:
-            # list
             nat["dynamic"].extend(nat_context.get("dynamic", []))
             nat["static"].extend(nat_context.get("static", []))
-            # vs dicts
             if nat_context.get("pat"):
                 nat["pat"] = nat_context.get("pat")
             nat["interfaces"]["inside"].extend(

@@ -1,3 +1,4 @@
+import xmltodict
 def collect_netconf_state(netconf, log):
 
     netconf_state = {}
@@ -12,17 +13,10 @@ def collect_netconf_state(netconf, log):
             source="running",
             filter=("subtree", filter_xml)
         )
-
         if response.ok:
-            data = xmltodict.parse(
-                response.data_xml
-            )
-
-            netconf_state["native_netconf"] = (
-                data.get("rpc-reply", {})
-                    .get("data", {})
-                    .get("native", {})
-            )
+            parsed = xmltodict.parse(response.data_xml)
+            data = parsed.get("data") or parsed.get("rpc-reply", {}).get("data") or {}
+            netconf_state["native_netconf"] = data.get("native") or {}
 
     except Exception as e:
 

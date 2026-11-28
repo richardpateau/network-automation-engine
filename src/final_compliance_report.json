@@ -1,6 +1,6 @@
 {
     "run_metadata": {
-        "timestamp": "2026-11-28T05:26:11.219545",
+        "timestamp": "2026-11-28T09:53:14.066603",
         "total_devices": 3,
         "successful_runs": 3
     },
@@ -11,13 +11,10 @@
             "hostname": null,
             "status": "COMPLIANT",
             "actions_taken": [
-                "ROAS Configuration Already Compliant | GigabitEthernet2.20 | VLAN: 20 | IP/Mask: 10.10.20.1/255.255.255.0",
-                "ROAS Configuration Already Compliant | GigabitEthernet2.30 | VLAN: 30 | IP/Mask: 10.10.30.1/255.255.255.0",
-                "ROAS Configuration Already Compliant | GigabitEthernet2.40 | VLAN: 40 | IP/Mask: 10.10.40.1/255.255.255.0",
-                "ROAS Configuration Already Compliant | GigabitEthernet2.50 | VLAN: 50 | IP/Mask: 10.10.50.1/255.255.255.0",
-                "ROAS Configuration Already Compliant | GigabitEthernet2.60 | VLAN: 60 | IP/Mask: 10.10.60.1/255.255.255.0",
-                "ROAS Configuration Already Compliant | GigabitEthernet2.70 | VLAN: 70 | IP/Mask: 10.10.70.1/255.255.255.0",
-                "[DRY_RUN] Would Configure OSPF | Process ID: 10 | RID: 1.1.1.1 | Interfaces: ['gigabitethernet1', 'gigabitethernet2']"
+                "HSRP Configuration Successful | Interface: GigabitEthernet1.10 | Version: 2 | Group: 10 | VLAN: 10 | VIP: 192.168.10.1 | Preempt: True | Transport: NETCONF",
+                "HSRP Configuration Successful | Interface: GigabitEthernet2.20 | Version: 2 | Group: 20 | VLAN: 20 | VIP: 192.168.20.1 | Preempt: False | Transport: NETCONF",
+                "HSRP Configuration Post Validation Successful | Group: 10 | Interface: GigabitEthernet1.10 | Priority: 110 | VLAN: 10 | Version: 2 | VIP: 192.168.10.1",
+                "HSRP Configuration Post Validation Successful | Group: 20 | Interface: GigabitEthernet2.20 | Priority: 100 | VLAN: 20 | Version: 2 | VIP: 192.168.20.1"
             ],
             "events": [],
             "checks_passed": 0,
@@ -45,9 +42,8 @@
                 "static_routes": null
             },
             "initial_issues": [
-                "Expected OSPF Network Not Found | Network Address: 192.168.255.0 | Wildcard: 0.0.0.255 | Area: 0 | ",
-                "Expected OSPF Network Not Found | Network Address: 10.10.10.0 | Wildcard: 0.0.0.255 | Area: 0 | ",
-                "Unexpected OSPF Network Found | Network Address: 8.8.8.0 | Wildcard: 0.0.0.255 | Area: 100"
+                "(HSRP) Missing Configuration | Interface: gigabitethernet1.10 | VLAN: 10 | Group: 10",
+                "(HSRP) Missing Configuration | Interface: gigabitethernet2.20 | VLAN: 20 | Group: 20"
             ],
             "critical_issues": [],
             "warnings": [],
@@ -60,9 +56,9 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-28T05:26:03.806340+00:00",
-            "end_time": "2026-11-28T05:26:05.420124+00:00",
-            "duration_seconds": 1.613784,
+            "start_time": "2026-11-28T09:52:56.623109+00:00",
+            "end_time": "2026-11-28T09:52:59.616862+00:00",
+            "duration_seconds": 2.993753,
             "errors": []
         },
         {
@@ -132,16 +128,16 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-28T05:26:03.805881+00:00",
-            "end_time": "2026-11-28T05:26:10.881645+00:00",
-            "duration_seconds": 7.075764,
+            "start_time": "2026-11-28T09:52:56.622709+00:00",
+            "end_time": "2026-11-28T09:53:02.855064+00:00",
+            "duration_seconds": 6.232355,
             "errors": []
         },
         {
             "device_name": "ACCESS-SW-1",
             "device_ip": "10.10.10.20",
             "hostname": null,
-            "status": "COMPLIANT",
+            "status": "FAILED_VALIDATION",
             "actions_taken": [
                 "VLAN Already Compliant | VLAN: 1 | Name: default",
                 "VLAN Already Compliant | VLAN: 10 | Name: USERS",
@@ -169,9 +165,10 @@
                 "Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70",
                 "Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999",
                 "STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768",
-                "[DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]",
+                "STP Interface Feature Successfully Configured | Interface: Ethernet0/0 | Feature: Portfast: True | Loop Guard: False | BPDU Guard: True | BPDU Filter: False | Root Guard: False",
                 "SNMP Configuration Already Compliant | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.10.10.50 (MERIDIAN-RO)  | Traps: linkup, linkdown, coldstart, warmstart, authentication",
-                "Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational"
+                "Syslog Configuration Successful | Hosts: Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Facility: local7 | Source Interface: loopback0 | service timestamps log datetime msec: True | Severity: informational | Transport: NETMIKO",
+                "Syslog Configuration Post Validation Successful | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational"
             ],
             "events": [],
             "checks_passed": 0,
@@ -199,9 +196,12 @@
                 "static_routes": null
             },
             "initial_issues": [
+                "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False",
+                "(SYSLOG) Mismatched Source Interface | Expected: loopback0 | Actual: pe"
+            ],
+            "critical_issues": [
                 "(STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False"
             ],
-            "critical_issues": [],
             "warnings": [],
             "Remediation": {
                 "attempted": false,
@@ -212,14 +212,14 @@
                 "transport": null,
                 "method": null
             },
-            "start_time": "2026-11-28T05:26:03.804917+00:00",
-            "end_time": "2026-11-28T05:26:11.218543+00:00",
-            "duration_seconds": 7.413626,
+            "start_time": "2026-11-28T09:52:56.622200+00:00",
+            "end_time": "2026-11-28T09:53:14.066058+00:00",
+            "duration_seconds": 17.443858,
             "errors": []
         }
     ],
     "summary": {
-        "compliant": 3,
+        "compliant": 2,
         "non_compliant": 0,
         "failed": 0
     }

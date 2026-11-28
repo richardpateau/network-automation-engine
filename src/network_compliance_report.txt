@@ -2,12 +2,12 @@
 NETWORK COMPLIANCE REPORT
 ============================================================
 
-Report Time: 2026-11-28T05:26:11.219545
+Report Time: 2026-11-28T09:53:14.066603
 Devices Audited: 3
 
 SUMMARY
 ----------------
-Compliant: 3
+Compliant: 2
 Non-Compliant: 0
 Failed: 0
 
@@ -17,13 +17,10 @@ DEVICE DETAILS
 Device: HQ-EDGE-1
 Status: COMPLIANT
 Actions Taken:
- - ROAS Configuration Already Compliant | GigabitEthernet2.20 | VLAN: 20 | IP/Mask: 10.10.20.1/255.255.255.0
- - ROAS Configuration Already Compliant | GigabitEthernet2.30 | VLAN: 30 | IP/Mask: 10.10.30.1/255.255.255.0
- - ROAS Configuration Already Compliant | GigabitEthernet2.40 | VLAN: 40 | IP/Mask: 10.10.40.1/255.255.255.0
- - ROAS Configuration Already Compliant | GigabitEthernet2.50 | VLAN: 50 | IP/Mask: 10.10.50.1/255.255.255.0
- - ROAS Configuration Already Compliant | GigabitEthernet2.60 | VLAN: 60 | IP/Mask: 10.10.60.1/255.255.255.0
- - ROAS Configuration Already Compliant | GigabitEthernet2.70 | VLAN: 70 | IP/Mask: 10.10.70.1/255.255.255.0
- - [DRY_RUN] Would Configure OSPF | Process ID: 10 | RID: 1.1.1.1 | Interfaces: ['gigabitethernet1', 'gigabitethernet2']
+ - HSRP Configuration Successful | Interface: GigabitEthernet1.10 | Version: 2 | Group: 10 | VLAN: 10 | VIP: 192.168.10.1 | Preempt: True | Transport: NETCONF
+ - HSRP Configuration Successful | Interface: GigabitEthernet2.20 | Version: 2 | Group: 20 | VLAN: 20 | VIP: 192.168.20.1 | Preempt: False | Transport: NETCONF
+ - HSRP Configuration Post Validation Successful | Group: 10 | Interface: GigabitEthernet1.10 | Priority: 110 | VLAN: 10 | Version: 2 | VIP: 192.168.10.1
+ - HSRP Configuration Post Validation Successful | Group: 20 | Interface: GigabitEthernet2.20 | Priority: 100 | VLAN: 20 | Version: 2 | VIP: 192.168.20.1
 
 Device: CORE-SW-1
 Status: COMPLIANT
@@ -53,7 +50,9 @@ Actions Taken:
  - Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational
 
 Device: ACCESS-SW-1
-Status: COMPLIANT
+Status: FAILED_VALIDATION
+Issues:
+ - (STP) Mismatched STP Mode | Interface: ethernet0/1 | Feature: loop_guard | Expected: True | Actual: False
 Actions Taken:
  - VLAN Already Compliant | VLAN: 1 | Name: default
  - VLAN Already Compliant | VLAN: 10 | Name: USERS
@@ -81,6 +80,7 @@ Actions Taken:
  - Access Interface Already Compliant | Interface: Ethernet1/3 | VLAN: 70
  - Trunk Interface Already Compliant | Interface: Ethernet0/1 | Allowed VLAN(s): 1,10,20,30,40,50,60,70,999
  - STP Global Configuration Already Compliant | Mode: rapid-pvst | VLAN Priorities: VLAN: 10 Priority: 32768 | VLAN: 20 Priority: 32768 | VLAN: 30 Priority: 32768 | VLAN: 40 Priority: 32768 | VLAN: 50 Priority: 32768 | VLAN: 60 Priority: 32768 | VLAN: 70 Priority: 32768
- - [DRY_RUN] Would Configure STP Features Interfaces | Expected Configuration: [{'interface': 'Ethernet0/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/1', 'portfast': False, 'bpdu_guard': False, 'root_guard': False, 'loop_guard': True, 'bpdu_filter': False}, {'interface': 'Ethernet0/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet0/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/0', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/1', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/2', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}, {'interface': 'Ethernet1/3', 'portfast': True, 'bpdu_guard': True, 'root_guard': False, 'loop_guard': False, 'bpdu_filter': False}]
+ - STP Interface Feature Successfully Configured | Interface: Ethernet0/0 | Feature: Portfast: True | Loop Guard: False | BPDU Guard: True | BPDU Filter: False | Root Guard: False
  - SNMP Configuration Already Compliant | Community Name: MERIDIAN-RO Permission: ro | Community Name: MERIDIAN-RW Permission: rw | SNMP IP: 10.10.10.50 (MERIDIAN-RO)  | Traps: linkup, linkdown, coldstart, warmstart, authentication
- - Syslog Configuration Already Compliant | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational
+ - Syslog Configuration Successful | Hosts: Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Facility: local7 | Source Interface: loopback0 | service timestamps log datetime msec: True | Severity: informational | Transport: NETMIKO
+ - Syslog Configuration Post Validation Successful | Facility: local7 | Hosts: {'host': '10.10.10.50', 'port': 514, 'transport': 'udp'} | Hosts: {'host': '10.10.10.51', 'port': 514, 'transport': 'tcp'} | Source Interface: loopback0 | Service Timestamps (msec): True | Severity: informational
