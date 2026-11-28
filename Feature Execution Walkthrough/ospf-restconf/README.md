@@ -37,6 +37,9 @@ The OSPF module follows the project's Source-of-Truth-driven architecture, but w
 
 ![NetBox Custom Fields Overview](screenshots/topology.png)
 
+## End to End Demonstration 
+
+
 ### Table of Contents
 
 - [1. Intended State: NetBox Source of Truth (OSPF Dynamic Routing)](#1-intended-state-netbox-source-of-truth-ospf-dynamic-routing)
@@ -948,7 +951,7 @@ Following automated RESTCONF execution:
 * Rogue process `90` was completely deleted via HTTP `DELETE`.
 * Process `10` was rebuilt via HTTP `PATCH` to advertise the authorized Area 0 subnets (`10.10.10.0/24` and `192.168.255.0/24`) with Router ID `1.1.1.1`:
 
-![Running Config After OSPF Remediation](screenshots/clive-config-after.png)
+![Running Config After OSPF Remediation](screenshots/live-config-after.png)
 
 ```cisco
 ! --- EDGE-1: Running Configuration AFTER Remediation ---
