@@ -990,9 +990,6 @@ Unlike ROAS (whose `ospf_config`-style handler success omitted `transport`), **e
 index="network_automation" sourcetype="_json" (protocol="ospf" OR event_type="ospf_config")
 | table asctime cisco_sev event_type message process_id router_id RID interfaces networks status compliant detail
 ```
-
-> `router_id`/`interfaces` populate only on orchestrator events; `RID`/`networks` only on handler events. The collapsed `tags` object (runtime-varying pid/pname/tid/tname) is omitted from the curated payloads below.
-
 ---
 
 ### Telemetry Lifecycle Matrix
