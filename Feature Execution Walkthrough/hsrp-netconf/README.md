@@ -275,7 +275,6 @@ To test model-driven extraction, out-of-band configuration drift was present on 
 ![Cisco Console HSRP Drift](screenshots/print-build-hsrp-test-configuration.png)
 
 ```cisco
-! --- EDGE-1: show running-config (paged) GigabitEthernet1 carries a rogue standby group ---
 interface GigabitEthernet1
  ip address 192.168.255.10 255.255.255.0
  standby version 2
